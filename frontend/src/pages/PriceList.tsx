@@ -36,6 +36,7 @@ interface PriceItem {
   _id: string;
   id: string;
   code?: string;
+  ref?: string;
   description: string;
   // Construction-specific fields
   material_type?: string;
@@ -56,6 +57,9 @@ interface PriceItem {
   location?: string;
   availability?: string;
   lastUpdated?: number;
+  // Additional fields
+  keywords?: string[];
+  remark?: string;
 }
 
 type SortField = 'code' | 'description' | 'category' | 'rate' | 'unit';
@@ -416,7 +420,7 @@ export default function PriceList() {
         setShowDeleteDialog(true);
         startPollingDeleteStatus(data.jobId);
       } else if (data.deletedCount === 0) {
-        toast.info('No items to delete');
+        toast('No items to delete');
       }
     },
     onError: (error: any) => {

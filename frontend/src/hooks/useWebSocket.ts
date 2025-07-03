@@ -32,7 +32,8 @@ export function useWebSocket() {
   const [jobProgress, setJobProgress] = useState<Record<string, JobProgress>>({});
   const [jobLogs, setJobLogs] = useState<Record<string, JobLog[]>>({});
   const [processorStatus, setProcessorStatus] = useState<ProcessorStatus | null>(null);
-  const { token, user } = useAuthStore();
+  const { user } = useAuthStore();
+  const token = localStorage.getItem('accessToken');
 
   // Connect to WebSocket server
   useEffect(() => {
@@ -116,7 +117,7 @@ export function useWebSocket() {
 
     socket.on('job:cancelled', (data) => {
       console.log('Job cancelled:', data);
-      toast.info('Job cancelled');
+      toast('Job cancelled');
       
       // Remove from progress
       setJobProgress(prev => {

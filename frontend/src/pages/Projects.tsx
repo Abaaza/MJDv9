@@ -135,7 +135,7 @@ export default function Projects() {
     },
     enabled: !!selectedJobId,
     // Disable polling if we have WebSocket connection
-    refetchInterval: connected ? false : (data) => getRefetchInterval(data?.status),
+    refetchInterval: connected ? false : (query) => getRefetchInterval(query.state.data?.status),
     staleTime: 5 * 1000, // 5 seconds for active jobs
   });
 
@@ -1143,7 +1143,7 @@ export default function Projects() {
                             onChange={() => {
                               if (!isAIDisabled) {
                                 setSelectedMatchTypes(prev => ({ ...prev, [result._id]: 'AI' }));
-                                toast.info('AI matching will be implemented');
+                                toast('AI matching will be implemented');
                               }
                             }}
                             disabled={isAIDisabled}
@@ -1161,7 +1161,7 @@ export default function Projects() {
                             checked={selectedMatchTypes[result._id] === 'LOCAL'}
                             onChange={() => {
                               setSelectedMatchTypes(prev => ({ ...prev, [result._id]: 'LOCAL' }));
-                              toast.info('Local matching will be implemented');
+                              toast('Local matching will be implemented');
                             }}
                             className="text-green-600"
                           />

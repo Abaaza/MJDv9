@@ -100,7 +100,8 @@ export default function PriceMatching() {
       return response.data;
     },
     enabled: !!currentJobId,
-    refetchInterval: (data) => {
+    refetchInterval: (query) => {
+      const data = query.state.data;
       if (data?.status === 'completed' || data?.status === 'failed') {
         return false;
       }

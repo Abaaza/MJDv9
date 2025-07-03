@@ -184,7 +184,7 @@ export default function Clients() {
     }
   };
 
-  const filteredClients = clients.filter(client => {
+  const filteredClients = clients.filter((client: Client) => {
     // Filter out inactive clients (for backward compatibility until Convex is redeployed)
     // This ensures clients marked as inactive via the fallback mechanism are hidden
     if ('isActive' in client && client.isActive === false) return false;
@@ -241,7 +241,7 @@ export default function Clients() {
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredClients.map((client) => (
+          {filteredClients.map((client: Client) => (
             <Card key={client._id}>
               <CardHeader>
                 <div className="flex justify-between items-start">

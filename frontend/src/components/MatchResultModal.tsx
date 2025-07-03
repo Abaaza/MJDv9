@@ -149,7 +149,7 @@ export default function MatchResultModal({
                 {result.contextHeaders.map((header, index) => (
                   <span key={index}>
                     {header}
-                    {index < result.contextHeaders.length - 1 && ' > '}
+                    {index < result.contextHeaders!.length - 1 && ' > '}
                   </span>
                 ))}
               </div>

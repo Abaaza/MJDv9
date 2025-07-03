@@ -122,7 +122,7 @@ export default function PriceMatchingNew() {
       
       // If no clientId but we have a client name, create the client first
       if (!clientId && formData.clientName.trim()) {
-        const existingClient = clients.find(c => c.name.toLowerCase() === formData.clientName.toLowerCase());
+        const existingClient = clients.find((c: any) => c.name.toLowerCase() === formData.clientName.toLowerCase());
         if (existingClient) {
           clientId = existingClient._id;
         } else {
@@ -209,7 +209,8 @@ export default function PriceMatchingNew() {
       }
     },
     enabled: !!currentJobId,
-    refetchInterval: (data) => {
+    refetchInterval: (query) => {
+      const data = query.state.data;
       if (data?.status === 'completed' || data?.status === 'failed' || data?.status === 'stopped') {
         return false;
       }
@@ -510,13 +511,13 @@ export default function PriceMatchingNew() {
                 </div>
               </div>
 
-              {jobStatus.error && (
+              {jobStatus?.error && (
                 <div className="p-3 bg-red-50 text-red-700 rounded-lg text-sm">
                   {jobStatus.error}
                 </div>
               )}
 
-              {jobStatus.status === 'completed' && (
+              {jobStatus?.status === 'completed' && (
                 <div className="flex gap-3">
                   <Button
                     onClick={() => window.location.href = `/projects#${currentJobId}`}

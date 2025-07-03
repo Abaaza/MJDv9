@@ -20,6 +20,7 @@ interface ClientSearchProps {
   onCreateNew?: () => void;
   placeholder?: string;
   className?: string;
+  disabled?: boolean;
 }
 
 export function ClientSearch({
@@ -30,6 +31,7 @@ export function ClientSearch({
   onCreateNew,
   placeholder = "Search or create client...",
   className,
+  disabled = false,
 }: ClientSearchProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
@@ -129,6 +131,7 @@ export function ClientSearch({
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
           className="pl-9 pr-10"
+          disabled={disabled}
         />
         {exactMatch && (
           <Check className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-green-500" />
