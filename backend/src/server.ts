@@ -15,11 +15,10 @@ import adminRoutes from './routes/admin.routes.js';
 import clientsRoutes from './routes/clients.routes.js';
 import projectsRoutes from './routes/projects.routes.js';
 import testRoutes from './routes/test.routes.js';
-import { websocketService } from './services/websocket.service.js';
+import jobsRoutes from './routes/jobs.routes.js';
 import { fileStorage } from './services/fileStorage.service.js';
 
 const app = express();
-const httpServer = createServer(app);
 
 // Security middleware
 app.use(helmet());
@@ -64,6 +63,7 @@ const statusLimiter = rateLimit({
 app.use('/api/price-matching/:jobId/status', statusLimiter);
 app.use('/api/price-matching/processor/status', statusLimiter);
 app.use('/api/projects/:projectId/jobs', statusLimiter);
+app.use('/api/jobs/:jobId/status', statusLimiter);
 
 // File upload rate limiter (more restrictive)
 const uploadLimiter = rateLimit({
@@ -88,6 +88,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/clients', clientsRoutes);
 app.use('/api/projects', projectsRoutes);
 app.use('/api/test', testRoutes);
+app.use('/api/jobs', jobsRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
@@ -109,17 +110,15 @@ app.use((req, res) => {
 const PORT = env.PORT || 5000;
 
 // Initialize services
-websocketService.initialize(httpServer);
 fileStorage.initialize().catch(console.error);
 
 // For local development
 if (process.env.NODE_ENV !== 'production') {
-  httpServer.listen(PORT, () => {
+  app.listen(PORT, () => {
     console.log('\\n=================================');
     console.log('🚀 Backend Server Started!');
     console.log('=================================');
     console.log(`📡 HTTP Server: http://localhost:${PORT}`);
-    console.log(`🔌 WebSocket: ws://localhost:${PORT}`);
     console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
     console.log(`📊 Convex URL: ${process.env.CONVEX_URL?.substring(0, 50)}...`);
     console.log('=================================');
@@ -143,23 +142,9 @@ if (process.env.NODE_ENV !== 'production') {
 const gracefulShutdown = async (signal: string) => {
   console.log(`\n${signal} signal received: closing HTTP server`);
   
-  httpServer.close(async () => {
-    console.log('HTTP server closed');
-    
-    try {
-      // Shutdown WebSocket service
-      await websocketService.shutdown();
-      console.log('WebSocket service shut down');
-      
-      // Close database connections (if needed)
-      // await closeConvexConnection();
-      
-      process.exit(0);
-    } catch (error) {
-      console.error('Error during graceful shutdown:', error);
-      process.exit(1);
-    }
-  });
+  // No HTTP server to close for serverless
+  console.log('Shutting down gracefully...');
+  process.exit(0);
   
   // Force shutdown after 10 seconds
   setTimeout(() => {

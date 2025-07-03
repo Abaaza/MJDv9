@@ -34,7 +34,7 @@ import { DiscountMarkupModal } from '../components/DiscountMarkupModal';
 import { useCurrency } from '../hooks/useCurrency';
 import { queryKeys, getRefetchInterval } from '../lib/query-config';
 import { useDebouncedCallback } from '../hooks/useDebounce';
-import { useWebSocket } from '../hooks/useWebSocket';
+import { useJobPolling } from '../hooks/useJobPolling';
 import { JobLogs } from '../components/JobLogs';
 import { JobStatusIndicator } from '../components/JobStatusIndicator';
 import { QueuePosition } from '../components/QueuePosition';
@@ -78,7 +78,7 @@ interface MatchResult {
 
 export default function Projects() {
   const { formatPrice } = useCurrency();
-  const { connected, jobProgress, jobLogs, subscribeToJob, unsubscribeFromJob } = useWebSocket();
+  const { connected, jobProgress, jobLogs, subscribeToJob, unsubscribeFromJob } = useJobPolling();
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [editingResultId, setEditingResultId] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<Partial<MatchResult>>({});

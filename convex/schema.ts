@@ -202,4 +202,13 @@ export default defineSchema({
     .index("by_user", ["userId"])
     .index("by_status", ["status"])
     .index("by_created", ["createdAt"]),
+
+  jobLogs: defineTable({
+    jobId: v.string(),
+    level: v.union(v.literal("info"), v.literal("error"), v.literal("warning")),
+    message: v.string(),
+    timestamp: v.number(),
+  })
+    .index("by_job", ["jobId"])
+    .index("by_timestamp", ["timestamp"]),
 });

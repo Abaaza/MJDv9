@@ -16,7 +16,7 @@ import { api as convexApi } from '../../../convex/_generated/api';
 import { useAuthStore } from '../stores/auth.store';
 import { ClientSearch } from '../components/ClientSearch';
 import { Textarea } from '../components/ui/textarea';
-import { useWebSocket } from '../hooks/useWebSocket';
+import { useJobPolling } from '../hooks/useJobPolling';
 import { JobLogs } from '../components/JobLogs';
 
 interface UploadFormData {
@@ -55,7 +55,7 @@ export default function PriceMatchingNew() {
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { user } = useAuthStore();
-  const { connected, jobProgress, jobLogs, subscribeToJob, unsubscribeFromJob } = useWebSocket();
+  const { connected, jobProgress, jobLogs, subscribeToJob, unsubscribeFromJob } = useJobPolling();
   const [currentJobId, setCurrentJobId] = useState<string | null>(null);
   const [showNewClientDialog, setShowNewClientDialog] = useState(false);
   const [showLogs, setShowLogs] = useState(false);
