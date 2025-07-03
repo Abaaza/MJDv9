@@ -21,6 +21,7 @@
     "@tanstack/react-virtual": "^3.13.12",
     "@types/lodash": "^4.17.20",
     "@types/node-cache": "^4.2.5",
+    "@vercel/blob": "^1.1.1",
     "axios": "^1.10.0",
     "bcryptjs": "^3.0.2",
     "cohere-ai": "^7.17.1",

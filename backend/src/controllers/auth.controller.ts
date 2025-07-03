@@ -104,23 +104,37 @@ export async function login(req: Request<{}, {}, LoginRequest>, res: Response): 
 
 export async function refresh(req: Request, res: Response): Promise<void> {
   try {
+    console.log('[Auth] Refresh request - Cookies:', Object.keys(req.cookies));
     const { refreshToken } = req.cookies;
 
     if (!refreshToken) {
+      console.log('[Auth] No refresh token in cookies');
       res.status(401).json({ error: 'No refresh token' });
       return;
     }
 
-    // Verify refresh token
-    const payload = verifyRefreshToken(refreshToken);
-
-    // Check if token exists in database
-    const user = await convex.query(api.users.getByRefreshToken, { refreshToken });
-    if (!user || user._id !== payload.id) {
+    console.log('[Auth] Refresh token found, verifying...');
+    let payload;
+    try {
+      // Verify refresh token
+      payload = verifyRefreshToken(refreshToken);
+      console.log('[Auth] Refresh token verified successfully');
+    } catch (verifyError: any) {
+      console.log('[Auth] Refresh token verification failed:', verifyError.message);
       res.status(401).json({ error: 'Invalid refresh token' });
       return;
     }
 
+    // Check if token exists in database
+    console.log('[Auth] Checking refresh token in database...');
+    const user = await convex.query(api.users.getByRefreshToken, { refreshToken });
+    if (!user || user._id !== payload.id) {
+      console.log('[Auth] Refresh token not found in database or user mismatch');
+      res.status(401).json({ error: 'Invalid refresh token' });
+      return;
+    }
+
+    console.log('[Auth] User found, generating new tokens...');
     // Generate new tokens
     const tokens = generateTokens({
       id: user._id,
@@ -142,9 +156,10 @@ export async function refresh(req: Request, res: Response): Promise<void> {
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
+    console.log('[Auth] Token refresh successful');
     res.json({ accessToken: tokens.accessToken });
   } catch (error) {
-    console.error('Refresh error:', error);
+    console.error('[Auth] Refresh error:', error);
     res.status(401).json({ error: 'Token refresh failed' });
   }
 }
