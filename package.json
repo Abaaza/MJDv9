@@ -1,0 +1,28 @@
+{
+  "name": "mjd-price-matcher",
+  "version": "1.0.0",
+  "description": "MJD Price Matcher - AI-powered price matching system",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "npm run dev:convex & npm run dev:backend & npm run dev:frontend",
+    "dev:convex": "convex dev",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "build": "npm run build:convex && npm run build:backend && npm run build:frontend",
+    "build:convex": "convex deploy",
+    "build:backend": "cd backend && npm run build",
+    "build:frontend": "cd frontend && npm run build",
+    "install:all": "npm install && cd backend && npm install && cd ../frontend && npm install"
+  },
+  "keywords": [
+    "construction",
+    "boq",
+    "price-matching"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "convex": "^1.25.2"
+  }
+}

@@ -1,0 +1,200 @@
+import { useEffect, useRef, useState } from 'react';
+import { cn } from '@/lib/utils';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Badge } from '@/components/ui/badge';
+import { AlertCircle, CheckCircle, Info, AlertTriangle, Terminal, Clock } from 'lucide-react';
+import { format } from 'date-fns';
+
+interface JobLog {
+  jobId: string;
+  level: 'info' | 'success' | 'warning' | 'error';
+  message: string;
+  timestamp: string;
+}
+
+interface JobLogsProps {
+  logs: JobLog[];
+  className?: string;
+  title?: string;
+  jobStatus?: string;
+  startTime?: number;
+}
+
+export function JobLogs({ logs, className, title = "Processing Logs", jobStatus, startTime }: JobLogsProps) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [elapsedTime, setElapsedTime] = useState('00:00');
+
+  // Auto-scroll to bottom when new logs arrive
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [logs]);
+
+  // Timer effect
+  useEffect(() => {
+    if (!startTime) return;
+
+    const isRunning = jobStatus && !['completed', 'failed', 'cancelled'].includes(jobStatus);
+    
+    const updateTimer = () => {
+      const elapsed = Date.now() - startTime;
+      const minutes = Math.floor(elapsed / 60000);
+      const seconds = Math.floor((elapsed % 60000) / 1000);
+      setElapsedTime(`${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`);
+    };
+
+    updateTimer(); // Initial update
+
+    if (isRunning) {
+      const interval = setInterval(updateTimer, 1000);
+      return () => clearInterval(interval);
+    }
+  }, [startTime, jobStatus]);
+
+  const getLogIcon = (level: string) => {
+    switch (level) {
+      case 'info':
+        return <Info className="h-3 w-3" />;
+      case 'success':
+        return <CheckCircle className="h-3 w-3" />;
+      case 'warning':
+        return <AlertTriangle className="h-3 w-3" />;
+      case 'error':
+        return <AlertCircle className="h-3 w-3" />;
+      default:
+        return <Terminal className="h-3 w-3" />;
+    }
+  };
+
+  const getLogColor = (level: string) => {
+    switch (level) {
+      case 'info':
+        return 'text-blue-600 dark:text-blue-400';
+      case 'success':
+        return 'text-green-600 dark:text-green-400';
+      case 'warning':
+        return 'text-yellow-600 dark:text-yellow-400';
+      case 'error':
+        return 'text-red-600 dark:text-red-400';
+      default:
+        return 'text-gray-600 dark:text-gray-400';
+    }
+  };
+
+  const getBadgeVariant = (level: string): "default" | "secondary" | "destructive" | "outline" => {
+    switch (level) {
+      case 'error':
+        return 'destructive';
+      case 'warning':
+        return 'outline';
+      default:
+        return 'secondary';
+    }
+  };
+
+  if (logs.length === 0) {
+    return (
+      <Card className={className}>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <Terminal className="h-4 w-4" />
+              {title}
+            </CardTitle>
+            {startTime && (
+              <Badge variant="outline" className="text-xs flex items-center gap-1">
+                <Clock className="h-3 w-3" />
+                {elapsedTime}
+              </Badge>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="text-center py-8 text-muted-foreground text-sm">
+            {jobStatus === 'pending' ? (
+              <>
+                <div className="animate-pulse">
+                  <Terminal className="h-8 w-8 mx-auto mb-2" />
+                </div>
+                <p className="font-medium">Initializing job...</p>
+                <p className="text-xs mt-1">Your job is queued and will start processing shortly</p>
+              </>
+            ) : jobStatus === 'parsing' ? (
+              <>
+                <div className="animate-spin">
+                  <Terminal className="h-8 w-8 mx-auto mb-2" />
+                </div>
+                <p className="font-medium">Parsing file...</p>
+                <p className="text-xs mt-1">Extracting data from your Excel file</p>
+              </>
+            ) : (
+              <>
+                <Terminal className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                <p>No logs yet. Processing will begin shortly...</p>
+              </>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className={className}>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm font-medium flex items-center gap-2">
+            <Terminal className="h-4 w-4" />
+            {title}
+          </CardTitle>
+          <div className="flex items-center gap-2">
+            {startTime && (
+              <Badge variant="outline" className="text-xs flex items-center gap-1">
+                <Clock className="h-3 w-3" />
+                {elapsedTime}
+              </Badge>
+            )}
+            <Badge variant="secondary" className="text-xs">
+              {logs.length} logs
+            </Badge>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="p-0">
+        <ScrollArea className="h-[300px] w-full" ref={scrollRef}>
+          <div className="p-4 space-y-2">
+            {logs.map((log, index) => (
+              <div
+                key={`${log.timestamp}-${index}`}
+                className={cn(
+                  "flex items-start gap-2 text-xs font-mono",
+                  "p-2 rounded-lg bg-muted/50",
+                  "animate-in fade-in slide-in-from-bottom-2 duration-200"
+                )}
+              >
+                <span className={cn("flex-shrink-0 mt-0.5", getLogColor(log.level))}>
+                  {getLogIcon(log.level)}
+                </span>
+                <div className="flex-1 space-y-1">
+                  <div className="flex items-center gap-2">
+                    <Badge variant={getBadgeVariant(log.level)} className="text-xs px-1.5 py-0">
+                      {log.level.toUpperCase()}
+                    </Badge>
+                    <span className="text-muted-foreground">
+                      {format(new Date(log.timestamp), 'HH:mm:ss.SSS')}
+                    </span>
+                  </div>
+                  <p className="text-foreground/90 break-words leading-relaxed">
+                    {log.message}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </ScrollArea>
+      </CardContent>
+    </Card>
+  );
+}
