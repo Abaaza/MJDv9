@@ -298,35 +298,17 @@ export const bulkImport = mutation({
         try {
           // Skip check for existing item to avoid query limits
           // Just try to insert, and handle duplicates
-          const existing = null; // Temporarily disable existence check
+          // Temporarily disable existence check and always create new items
           
-          if (false) { // Temporarily disable update logic
-            // Check if any field has changed
-            const hasChanges = Object.keys(item).some(key => {
-              return item[key as keyof typeof item] !== existing[key as keyof typeof existing];
-            });
-            
-            if (hasChanges) {
-              // Update existing item
-              await ctx.db.patch(existing._id, {
-                ...item,
-                updatedAt: Date.now(),
-              });
-              results.updated++;
-            } else {
-              results.skipped++;
-            }
-          } else {
-            // Create new item
-            await ctx.db.insert("priceItems", {
-              ...item,
-              isActive: true,
-              createdAt: Date.now(),
-              updatedAt: Date.now(),
-              createdBy: args.userId as any,
-            });
-            results.created++;
-          }
+          // Create new item
+          await ctx.db.insert("priceItems", {
+            ...item,
+            isActive: true,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            createdBy: args.userId as any,
+          });
+          results.created++;
         } catch (error: any) {
           results.errors.push(`Item ${item.id}: ${error.message}`);
         }
