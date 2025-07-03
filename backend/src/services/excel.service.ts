@@ -480,8 +480,9 @@ export class ExcelService {
         
         // Return the buffer without any other modifications
         const buffer = await workbook.xlsx.writeBuffer();
-        console.log(`[ExcelService] Excel file created with preserved format, size: ${buffer.length} bytes`);
-        return Buffer.from(buffer);
+        const resultBuffer = Buffer.from(buffer);
+        console.log(`[ExcelService] Excel file created with preserved format, size: ${resultBuffer.length} bytes`);
+        return resultBuffer;
       }
       
       // If no worksheets exist, create a new one
@@ -551,7 +552,7 @@ export class ExcelService {
       }, {} as Record<string, any[]>);
       
       console.log(`[ExcelService] Results grouped into ${Object.keys(resultsBySheet).length} sheets:`, 
-        Object.entries(resultsBySheet).map(([sheet, results]) => `${sheet}: ${results.length} items`));
+        Object.entries(resultsBySheet).map(([sheet, results]) => `${sheet}: ${(results as any[]).length} items`));
 
       // Process each worksheet that has results
       for (const [sheetName, sheetResults] of Object.entries(resultsBySheet) as [string, any[]][]) {

@@ -93,7 +93,7 @@ export async function getSystemHealth(req: Request, res: Response): Promise<void
         api.applicationSettings.getByKey, 
         { key: 'COHERE_API_KEY' },
         { maxAttempts: 2, delayMs: 500 }
-      );
+      ) as { value?: string } | null;
       if (cohereKey?.value) {
         const start = Date.now();
         await httpClient.post('https://api.cohere.ai/v1/embed', {
@@ -124,7 +124,7 @@ export async function getSystemHealth(req: Request, res: Response): Promise<void
         api.applicationSettings.getByKey, 
         { key: 'OPENAI_API_KEY' },
         { maxAttempts: 2, delayMs: 500 }
-      );
+      ) as { value?: string } | null;
       if (openaiKey?.value) {
         const start = Date.now();
         await httpClient.get('https://api.openai.com/v1/models', {

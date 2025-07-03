@@ -79,7 +79,7 @@ export async function uploadAndProcessBOQ(req: Request, res: Response): Promise<
       projectId: req.body.projectId ? toConvexId<'projects'>(req.body.projectId) : undefined,
       originalFileId: fileId,
       headers: firstSheet.headers || [],
-      sheetName: firstSheet.name || 'Sheet1',
+      sheetName: firstSheet.sheetName || 'Sheet1',
     });
 
     // Process all items with row information
@@ -88,7 +88,7 @@ export async function uploadAndProcessBOQ(req: Request, res: Response): Promise<
       quantity: item.quantity || 0,
       unit: item.unit || '',
       rowIndex: item.rowNumber || index,
-      originalRowData: sanitizeObjectKeys(item.originalRowData || {})
+      originalRowData: sanitizeObjectKeys(item.originalData || {})
     }));
 
     // Start processing job asynchronously

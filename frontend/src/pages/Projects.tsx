@@ -1344,7 +1344,12 @@ export default function Projects() {
       {selectedJobId && (jobLogs[selectedJobId]?.length > 0 || 
         (mergedJobStatus && ['parsing', 'matching', 'queued'].includes(mergedJobStatus.status))) && (
         <JobLogs 
-          logs={jobLogs[selectedJobId] || []} 
+          logs={(jobLogs[selectedJobId] || []).map(log => ({
+            jobId: selectedJobId,
+            level: log.level,
+            message: log.message,
+            timestamp: new Date(log.timestamp).toISOString()
+          }))} 
           title={`Processing Logs - ${jobs?.find(j => j._id === selectedJobId)?.fileName || 'Job'}`}
           className="animate-in fade-in slide-in-from-bottom-3"
           jobStatus={mergedJobStatus?.status}

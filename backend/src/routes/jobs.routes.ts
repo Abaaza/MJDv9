@@ -6,12 +6,12 @@ import {
   getJobLogs, 
   cancelJob 
 } from '../controllers/jobPolling.controller.js';
-import { upload } from '../middleware/upload.js';
+import { uploadExcel } from '../middleware/upload.js';
 
 const router = Router();
 
 // Upload and process BOQ file
-router.post('/upload', authenticate, upload.single('file'), uploadAndProcessBOQ);
+router.post('/upload', authenticate, uploadExcel, uploadAndProcessBOQ);
 
 // Get job status
 router.get('/:jobId/status', authenticate, getJobStatus);

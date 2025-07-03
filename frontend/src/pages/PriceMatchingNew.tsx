@@ -544,7 +544,12 @@ export default function PriceMatchingNew() {
       {/* Job Logs */}
       {currentJobId && showLogs && jobLogs[currentJobId] && (
         <JobLogs 
-          logs={jobLogs[currentJobId]} 
+          logs={jobLogs[currentJobId].map(log => ({
+            jobId: currentJobId,
+            level: log.level,
+            message: log.message,
+            timestamp: new Date(log.timestamp).toISOString()
+          }))} 
           title="Processing Logs" 
           className="mt-4"
           jobStatus={jobStatus?.status}

@@ -1,10 +1,12 @@
 import { getConvexClient } from '../config/convex.js';
 import { api } from '../../../convex/_generated/api.js';
+import { Id } from '../../../convex/_generated/dataModel.js';
+import { toConvexId } from '../utils/convexId.js';
 import { MatchingService } from './matching.service.js';
 
 interface JobStatus {
   jobId: string;
-  status: 'pending' | 'parsing' | 'processing' | 'completed' | 'failed' | 'cancelled';
+  status: 'pending' | 'parsing' | 'matching' | 'completed' | 'failed' | 'cancelled';
   progress: number;
   progressMessage: string;
   itemCount: number;
@@ -72,9 +74,10 @@ export class JobPollingService {
               contextHeaders.push(item.description);
               
               // Save context header result
-              await this.convex.mutation(api.matchResults.create, {
-                jobId,
-                originalItem: item.description,
+              await this.convex.mutation(api.priceMatching.createMatchResult, {
+                jobId: toConvexId<'aiMatchingJobs'>(jobId),
+                rowNumber: item.rowIndex || processedCount,
+                originalDescription: item.description,
                 originalQuantity: 0,
                 originalUnit: '',
                 matchMethod: 'CONTEXT',
@@ -83,9 +86,8 @@ export class JobPollingService {
                 matchedRate: 0,
                 matchedUnit: '',
                 confidence: 1,
-                rowIndex: item.rowIndex || processedCount,
-                status: 'context_header',
-                contextHeaders: [...contextHeaders]
+                totalPrice: 0,
+                notes: 'Context header'
               });
               
               await this.addJobLog(jobId, 'info', `Context header: ${item.description}`);
@@ -98,9 +100,10 @@ export class JobPollingService {
                 contextHeaders
               );
               
-              await this.convex.mutation(api.matchResults.create, {
-                jobId,
-                originalItem: item.description,
+              await this.convex.mutation(api.priceMatching.createMatchResult, {
+                jobId: toConvexId<'aiMatchingJobs'>(jobId),
+                rowNumber: item.rowIndex || processedCount,
+                originalDescription: item.description,
                 originalQuantity: item.quantity,
                 originalUnit: item.unit || '',
                 matchMethod: method,
@@ -109,9 +112,7 @@ export class JobPollingService {
                 matchedRate: result.matchedRate,
                 matchedUnit: result.matchedUnit,
                 confidence: result.confidence,
-                rowIndex: item.rowIndex || processedCount,
-                status: 'matched',
-                contextHeaders: [...contextHeaders]
+                totalPrice: (item.quantity || 0) * result.matchedRate
               });
               
               await this.addJobLog(jobId, 'info', 
@@ -161,7 +162,9 @@ export class JobPollingService {
   }
   
   async getJobStatus(jobId: string): Promise<JobStatus | null> {
-    const job = await this.convex.query(api.aiMatchingJobs.getJob, { jobId });
+    const job = await this.convex.query(api.priceMatching.getJob, { 
+      jobId: toConvexId<'aiMatchingJobs'>(jobId) 
+    });
     if (!job) return null;
     
     // Get logs
@@ -174,9 +177,9 @@ export class JobPollingService {
       progressMessage: job.progressMessage || '',
       itemCount: job.itemCount,
       matchedCount: job.matchedCount || 0,
-      startTime: job._creationTime,
+      startTime: job.startedAt,
       lastUpdate: Date.now(),
-      errors: job.errors || [],
+      errors: job.error ? [job.error] : [],
       logs: logs.map(log => ({
         timestamp: log._creationTime,
         level: log.level as 'info' | 'error' | 'warning',
