@@ -36,7 +36,7 @@ export function JobLogs({ logs, className, title = "Processing Logs", jobStatus,
   useEffect(() => {
     if (!startTime) return;
 
-    const isRunning = jobStatus && !['completed', 'failed', 'cancelled'].includes(jobStatus);
+    const isRunning = jobStatus && !['completed', 'failed', 'cancelled', 'stopped'].includes(jobStatus);
     
     const updateTimer = () => {
       const elapsed = Date.now() - startTime;
@@ -103,12 +103,20 @@ export function JobLogs({ logs, className, title = "Processing Logs", jobStatus,
               <Terminal className="h-4 w-4" />
               {title}
             </CardTitle>
-            {startTime && (
-              <Badge variant="outline" className="text-xs flex items-center gap-1">
-                <Clock className="h-3 w-3" />
-                {elapsedTime}
-              </Badge>
-            )}
+            <div className="flex items-center gap-2">
+              {startTime && (
+                <>
+                  <span className="text-xs text-muted-foreground">Elapsed:</span>
+                  <Badge 
+                    variant="outline" 
+                    className="text-sm flex items-center gap-1 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800 font-mono animate-pulse px-3 py-1"
+                  >
+                    <Clock className="h-4 w-4" />
+                    <span className="font-bold">{elapsedTime}</span>
+                  </Badge>
+                </>
+              )}
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -151,10 +159,16 @@ export function JobLogs({ logs, className, title = "Processing Logs", jobStatus,
           </CardTitle>
           <div className="flex items-center gap-2">
             {startTime && (
-              <Badge variant="outline" className="text-xs flex items-center gap-1">
-                <Clock className="h-3 w-3" />
-                {elapsedTime}
-              </Badge>
+              <>
+                <span className="text-xs text-muted-foreground">Elapsed:</span>
+                <Badge 
+                  variant="outline" 
+                  className="text-sm flex items-center gap-1 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800 font-mono animate-pulse px-3 py-1"
+                >
+                  <Clock className="h-4 w-4" />
+                  <span className="font-bold">{elapsedTime}</span>
+                </Badge>
+              </>
             )}
             <Badge variant="secondary" className="text-xs">
               {logs.length} logs

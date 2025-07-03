@@ -35,6 +35,7 @@ interface JobStatus {
   itemCount: number;
   matchedCount: number;
   error?: string;
+  startedAt?: number;
 }
 
 type MatchingMethod = 'LOCAL' | 'COHERE' | 'OPENAI' | 'HYBRID' | 'ADVANCED' | 'LOCAL_UNIT' | 'HYBRID_CATEGORY';
@@ -150,8 +151,8 @@ export default function PriceMatchingNew() {
     },
     onSuccess: (data) => {
       setCurrentJobId(data.jobId);
-      setShowLogs(true);
-      toast.success('Matching job started');
+      setShowLogs(true); // Automatically show logs when job starts
+      toast.success('Matching job started - Timer started at 00:00');
       
       // Create project in Convex
       // TODO: Fix this - convex.mutation is not working

@@ -67,6 +67,7 @@ export class JobProcessorService extends EventEmitter {
     
     // Emit event for real-time updates
     this.emit('job:queued', { jobId, userId, itemCount: itemsWithQuantities });
+    this.emitLog(jobId, 'info', `Timer started at 00:00`);
     this.emitLog(jobId, 'info', `Job queued with ${itemsWithQuantities} items to match (${contextHeaders} context headers) using ${method} matching method`);
     
     // Update Convex with initial status
@@ -500,14 +501,24 @@ export class JobProcessorService extends EventEmitter {
         status: 'matching' as any,
         progress: job.progress,
         progressMessage: job.progressMessage,
-        // matchedCount: job.matchedCount, // TODO: Add this field to updateJobStatus mutation
+      });
+      
+      // Update matched count separately
+      await this.convex.mutation(api.priceMatching.updateMatchedCount, {
+        jobId: jobId as any,
+        matchedCount: job.matchedCount,
       });
 
-      // Batch create match results
+      // Batch create match results (including context headers for display)
       let savedCount = 0;
       for (const result of results) {
         try {
-          console.log(`[JobProcessor] Saving result for row ${result.rowNumber}: ${result.matchedDescription ? 'MATCHED' : 'NO MATCH'}`);
+          if (result.matchMethod === 'CONTEXT') {
+            console.log(`[JobProcessor] Saving context header for row ${result.rowNumber}`);
+          } else {
+            console.log(`[JobProcessor] Saving result for row ${result.rowNumber}: ${result.matchedDescription ? 'MATCHED' : 'NO MATCH'}`);
+          }
+          
           await this.convex.mutation(api.priceMatching.createMatchResult, result);
           savedCount++;
           // Small delay between mutations
@@ -561,8 +572,12 @@ export class JobProcessorService extends EventEmitter {
         status: 'completed' as any,
         progress: 100,
         progressMessage: 'Matching completed',
-        // matchedCount: job.matchedCount, // TODO: Add this field to updateJobStatus mutation
-        // completedAt: Date.now(), // TODO: Add this field to updateJobStatus mutation
+      });
+      
+      // Update final matched count
+      await this.convex.mutation(api.priceMatching.updateMatchedCount, {
+        jobId: jobId as any,
+        matchedCount: job.matchedCount,
       });
 
       // Log completion

@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import { getConvexClient } from '../config/convex.js';
 import { api } from '../../../convex/_generated/api.js';
+import { logActivity } from '../utils/activityLogger.js';
+import { toConvexId } from '../utils/convexId.js';
 
 const convex = getConvexClient();
 
@@ -49,6 +51,9 @@ export async function createClient(req: Request, res: Response): Promise<void> {
       isActive: true, // Keep for backward compatibility
       userId: req.user.id as any,
     });
+
+    // Log activity
+    await logActivity(req, 'created_client', 'clients', clientId, `Created client: ${name}`);
 
     const client = await convex.query(api.clients.getById, { _id: clientId });
     res.status(201).json(client);

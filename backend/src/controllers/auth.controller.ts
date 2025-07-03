@@ -79,6 +79,17 @@ export async function login(req: Request<{}, {}, LoginRequest>, res: Response): 
       refreshToken: tokens.refreshToken,
     });
 
+    // Log login activity
+    await convex.mutation(api.activityLogs.create, {
+      userId: user._id,
+      action: 'user_login',
+      entityType: 'users',
+      entityId: user._id,
+      details: 'User logged in',
+      ipAddress: req.ip || req.socket.remoteAddress,
+      userAgent: req.get('user-agent'),
+    });
+
     // Set refresh token as httpOnly cookie
     res.cookie('refreshToken', tokens.refreshToken, {
       httpOnly: true,
@@ -209,10 +220,10 @@ export async function getMe(req: Request, res: Response): Promise<void> {
 
     res.json({
       user: {
-        id: user._id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
+        id: (user as any)._id,
+        email: (user as any).email,
+        name: (user as any).name,
+        role: (user as any).role,
       },
     });
   } catch (error) {

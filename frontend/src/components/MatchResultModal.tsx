@@ -66,13 +66,23 @@ export default function MatchResultModal({
   const [selectedItem, setSelectedItem] = useState<PriceItem | null>(null);
   const [customRate, setCustomRate] = useState<string>('');
   const [notes, setNotes] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
 
   useEffect(() => {
     if (result) {
       setNotes(result.notes || '');
       setCustomRate(result.matchedRate?.toString() || '');
+      // Reset selected item when result changes
+      setSelectedItem(null);
     }
   }, [result]);
+
+  // Update active tab when AI disabled state changes
+  useEffect(() => {
+    if (isAIDisabled && activeTab === 'ai') {
+      setActiveTab('local');
+    }
+  }, [isAIDisabled, activeTab]);
 
   const filteredPriceItems = priceItems.filter(item =>
     item.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -210,13 +220,27 @@ export default function MatchResultModal({
           </div>
 
           {/* Tab Content */}
-          {activeTab === 'ai' && (
+          {activeTab === 'ai' && !isAIDisabled && (
             <div className="space-y-4">
               <p className="text-sm text-gray-600">
                 Run AI-powered matching using advanced embeddings to find the best match.
               </p>
-              <Button onClick={onRunAIMatch} className="w-full">
-                Run AI Match
+              <Button 
+                onClick={async () => {
+                  if (isProcessing || !onRunAIMatch) return;
+                  setIsProcessing(true);
+                  try {
+                    await onRunAIMatch();
+                  } catch (error) {
+                    console.error('AI match error:', error);
+                  } finally {
+                    setIsProcessing(false);
+                  }
+                }}
+                disabled={isProcessing}
+                className="w-full"
+              >
+                {isProcessing ? 'Processing...' : 'Run AI Match'}
               </Button>
             </div>
           )}
@@ -226,8 +250,22 @@ export default function MatchResultModal({
               <p className="text-sm text-gray-600">
                 Run local fuzzy string matching for quick results.
               </p>
-              <Button onClick={onRunLocalMatch} className="w-full">
-                Run Local Match
+              <Button 
+                onClick={async () => {
+                  if (isProcessing || !onRunLocalMatch) return;
+                  setIsProcessing(true);
+                  try {
+                    await onRunLocalMatch();
+                  } catch (error) {
+                    console.error('Local match error:', error);
+                  } finally {
+                    setIsProcessing(false);
+                  }
+                }}
+                disabled={isProcessing}
+                className="w-full"
+              >
+                {isProcessing ? 'Processing...' : 'Run Local Match'}
               </Button>
             </div>
           )}
@@ -330,11 +368,11 @@ export default function MatchResultModal({
 
         {/* Footer */}
         <div className="px-6 py-4 border-t flex justify-end gap-3">
-          <Button variant="outline" onClick={onClose}>
+          <Button variant="outline" onClick={onClose} disabled={isProcessing}>
             Cancel
           </Button>
-          <Button onClick={handleSave}>
-            Save Changes
+          <Button onClick={handleSave} disabled={isProcessing}>
+            {isProcessing ? 'Processing...' : 'Save Changes'}
           </Button>
         </div>
       </div>

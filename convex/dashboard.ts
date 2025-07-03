@@ -10,22 +10,22 @@ export const getStats = query({
       .withIndex("by_user", (q) => q.eq("userId", args.userId))
       .collect();
 
-    // Get completed projects today
+    // Get start of today (midnight in local time)
+    const now = Date.now();
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const todayTimestamp = today.getTime();
+    const todayMidnight = today.getTime();
 
     const completedToday = totalProjects.filter(
       (job) =>
         job.status === "completed" &&
         job.completedAt &&
-        job.completedAt >= todayTimestamp
+        job.completedAt >= todayMidnight
     );
 
-    // Get total price items
+    // Get total price items (all items, not just active)
     const priceItems = await ctx.db
       .query("priceItems")
-      .withIndex("by_active", (q) => q.eq("isActive", true))
       .collect();
 
     // Get total clients
@@ -39,6 +39,28 @@ export const getStats = query({
       0
     );
 
+    // Get activity count for today
+    const allActivities = await ctx.db
+      .query("activityLogs")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .collect();
+
+    // Count activities from today (midnight onwards)
+    const activitiesToday = allActivities.filter(
+      (activity) => activity.timestamp >= todayMidnight
+    ).length;
+    
+    // Debug logging
+    console.log(`[Dashboard Stats] User ${args.userId}:`);
+    console.log(`- Total activities: ${allActivities.length}`);
+    console.log(`- Activities today: ${activitiesToday}`);
+    console.log(`- Current time: ${new Date(now).toISOString()}`);
+    console.log(`- Today midnight: ${new Date(todayMidnight).toISOString()}`);
+    if (allActivities.length > 0) {
+      console.log(`- Latest activity: ${new Date(allActivities[0].timestamp).toISOString()}`);
+      console.log(`- Oldest activity: ${new Date(allActivities[allActivities.length - 1].timestamp).toISOString()}`);
+    }
+
     return {
       totalProjects: totalProjects.length,
       activeProjects: totalProjects.filter((j) => j.status !== "completed" && j.status !== "failed").length,
@@ -46,6 +68,7 @@ export const getStats = query({
       clients: clients.length,
       matchesToday,
       completedToday: completedToday.length,
+      activitiesToday,
     };
   },
 });

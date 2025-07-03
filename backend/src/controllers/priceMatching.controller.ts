@@ -7,6 +7,7 @@ import { jobProcessor } from '../services/jobProcessor.service.js';
 import { toConvexId } from '../utils/convexId.js';
 import { v4 as uuidv4 } from 'uuid';
 import { fileStorage } from '../services/fileStorage.service.js';
+import { logActivity } from '../utils/activityLogger.js';
 
 const convex = getConvexClient();
 const excelService = new ExcelService();
@@ -114,17 +115,140 @@ export async function uploadBOQ(req: Request, res: Response): Promise<void> {
       details: `Uploaded ${req.file.originalname} with ${itemsWithQuantities.length} items (${allItems.length - itemsWithQuantities.length} context headers) across ${parseResult.sheets.length} sheets`,
     });
 
-    res.json({
+    // Get more items to ensure we capture both headers and actual BOQ items
+    // Get ALL items from the first sheet to ensure we find 10 BOQ items
+    const allSheetItems = parseResult.sheets[0]?.items || [];
+    
+    console.log(`[Upload] Total items in first sheet: ${allSheetItems.length}`);
+    console.log(`[Upload] Items with quantities: ${allSheetItems.filter(item => item.quantity && item.quantity > 0).length}`);
+    console.log(`[Upload] Context headers: ${allSheetItems.filter(item => !item.quantity || item.quantity === 0).length}`);
+    
+    // Debug: show ALL items with quantities
+    console.log(`[Upload] ALL items with quantities:`, allSheetItems
+      .filter(item => item.quantity && item.quantity > 0)
+      .map(item => ({
+        row: item.rowNumber,
+        desc: item.description.substring(0, 50) + '...',
+        qty: item.quantity,
+        unit: item.unit
+      }))
+    );
+    
+    // Debug: show first few items
+    console.log(`[Upload] First 10 items in order:`, allSheetItems.slice(0, 10).map(item => ({
+      row: item.rowNumber,
+      desc: item.description.substring(0, 40) + '...',
+      qty: item.quantity,
+      unit: item.unit,
+      hasContext: !!item.contextHeaders
+    })));
+    
+    // Separate context headers and BOQ items
+    const boqItems = allSheetItems.filter(item => item.quantity && item.quantity > 0);
+    
+    // Take more items to show the Excel structure properly
+    // We want to show up to 10 BOQ items plus their context headers
+    const itemsToShow = [];
+    let boqItemCount = 0;
+    
+    for (const item of allSheetItems) {
+      itemsToShow.push(item);
+      
+      // Count actual BOQ items (with quantities)
+      if (item.quantity && item.quantity > 0) {
+        boqItemCount++;
+      }
+      
+      // Stop when we have shown 10 BOQ items (plus all their context headers)
+      if (boqItemCount >= 10) break;
+    }
+    
+    // If we have less than 10 BOQ items, just show what we have
+    if (itemsToShow.length === 0) {
+      itemsToShow.push(...allSheetItems.slice(0, 20)); // Show first 20 rows as fallback
+    }
+    
+    console.log(`[Upload] Items to show: ${itemsToShow.length} (${itemsToShow.filter(i => i.quantity && i.quantity > 0).length} BOQ items)`);
+    console.log(`[Upload] Sample items to show:`, itemsToShow.slice(0, 3).map(item => ({
+      row: item.rowNumber,
+      desc: item.description.substring(0, 40) + '...',
+      qty: item.quantity,
+      isHeader: !item.quantity
+    })));
+    
+    const formattedItems = itemsToShow.map((item, index) => {
+      // For context headers, just show the description
+      // For BOQ items, show description with quantity/unit
+      let fullText = item.description;
+      
+      // Add quantity and unit if available (for BOQ items)
+      if (item.quantity && item.unit) {
+        fullText += ` - ${item.quantity} ${item.unit}`;
+      }
+      
+      // Determine the type of item
+      let itemType = 'item'; // default
+      if (!item.quantity || item.quantity === 0) {
+        // Check what kind of header this is
+        if (item.description.match(/^(BILL|SUB-BILL)/i)) {
+          itemType = 'major-header';
+        } else if (item.description.match(/^[A-Z]\d+\s/i)) {
+          itemType = 'section-header';
+        } else if (item.description.match(/^(NOTE|Extra over|Earthwork|Disposal|Excavated|Filling)/i)) {
+          itemType = 'sub-header';
+        } else {
+          itemType = 'context-header';
+        }
+      }
+      
+      return {
+        index: index + 1,
+        rowNumber: item.rowNumber,
+        fullText: fullText,
+        description: item.description,
+        quantity: item.quantity,
+        unit: item.unit,
+        contextHeaders: item.contextHeaders,
+        hasQuantity: !!(item.quantity && item.quantity > 0),
+        isContextHeader: !item.quantity || item.quantity === 0,
+        itemType: itemType,
+        originalData: item.originalData,
+        // Add indentation level based on context hierarchy
+        indentLevel: item.contextHeaders ? item.contextHeaders.length : 0
+      };
+    });
+
+    const response = {
       jobId,
       fileName: req.file.originalname,
       itemCount: itemsWithQuantities.length,
+      contextHeaderCount: allItems.length - itemsWithQuantities.length,
+      totalRowsCount: allItems.length,
       sheets: parseResult.sheets.map(sheet => ({
         name: sheet.sheetName,
         itemCount: sheet.items.length,
+        boqItemCount: sheet.items.filter(item => item.quantity && item.quantity > 0).length,
         headers: sheet.headers,
       })),
-      items: parseResult.sheets[0]?.items.slice(0, 10) || [], // Preview first 10 items
-    });
+      items: formattedItems, // All items in Excel order (headers + BOQ items)
+      previewInfo: {
+        totalItemsShown: formattedItems.length,
+        boqItemsShown: formattedItems.filter(item => item.hasQuantity).length,
+        contextHeadersShown: formattedItems.filter(item => item.isContextHeader).length,
+      }
+    };
+    
+    console.log(`[Upload] Response preview - Total items to show: ${response.previewInfo.totalItemsShown}`);
+    console.log(`[Upload] Response preview - BOQ items: ${response.previewInfo.boqItemsShown}`);
+    console.log(`[Upload] Response preview - Context headers: ${response.previewInfo.contextHeadersShown}`);
+    console.log(`[Upload] First 3 formatted items:`, formattedItems.slice(0, 3).map(item => ({
+      row: item.rowNumber,
+      desc: item.description.substring(0, 30) + '...',
+      qty: item.quantity,
+      fullTextPreview: item.fullText.substring(0, 100) + '...'
+    })));
+    
+    res.json(response);
   } catch (error) {
     console.error('Upload BOQ error:', error);
     res.status(500).json({ error: 'Failed to upload BOQ file' });

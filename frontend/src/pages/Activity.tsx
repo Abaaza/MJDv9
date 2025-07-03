@@ -227,7 +227,7 @@ export default function Activity() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{stats.todayActivities}</div>
-              <p className="text-xs text-muted-foreground">Last 24 hours</p>
+              <p className="text-xs text-muted-foreground">Since midnight</p>
             </CardContent>
           </Card>
           <Card>

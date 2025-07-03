@@ -78,6 +78,7 @@ export function EnhancedMatchModal({
 }: EnhancedMatchModalProps) {
   const { formatPrice, symbol } = useCurrency();
   const [matchingMethod, setMatchingMethod] = useState<MatchingMethod>('AI');
+  const [selectedAIMethod, setSelectedAIMethod] = useState('HYBRID');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -152,7 +153,10 @@ export function EnhancedMatchModal({
   // Run AI match mutation
   const runMatchMutation = useMutation({
     mutationFn: async (method: string) => {
-      const response = await api.post(`/price-matching/results/${result._id}/match`, { method });
+      const response = await api.post(`/price-matching/results/${result._id}/match`, { 
+        method,
+        jobId: job._id 
+      });
       return response.data;
     },
     onSuccess: (data) => {
@@ -163,11 +167,13 @@ export function EnhancedMatchModal({
         matchedRate: data.matchedRate || 0,
         notes: formData.notes,
       });
-      toast.success('AI matching completed');
+      toast.success('Matching completed');
       setHasUnsavedChanges(true);
     },
-    onError: () => {
-      toast.error('AI matching failed');
+    onError: (error: any) => {
+      const message = error?.response?.data?.error || 'Matching failed';
+      toast.error(message);
+      console.error('Match error:', error);
     },
   });
 
@@ -350,27 +356,28 @@ export function EnhancedMatchModal({
           </div>
 
           {/* Method-specific UI */}
-          {matchingMethod === 'AI' && (
+          {matchingMethod === 'AI' && !isAIDisabled && (
             <div className="space-y-3">
               <div className="flex gap-2">
-                <Select defaultValue="ADVANCED">
+                <Select defaultValue="HYBRID" onValueChange={(value) => setSelectedAIMethod(value)}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="HYBRID">Hybrid (Recommended)</SelectItem>
                     <SelectItem value="ADVANCED">Advanced</SelectItem>
-                    <SelectItem value="HYBRID">Hybrid</SelectItem>
                     <SelectItem value="COHERE">Cohere</SelectItem>
                     <SelectItem value="OPENAI">OpenAI</SelectItem>
+                    <SelectItem value="HYBRID_CATEGORY">Hybrid Category</SelectItem>
                   </SelectContent>
                 </Select>
                 <Button
-                  onClick={() => runMatchMutation.mutate('ADVANCED')}
+                  onClick={() => runMatchMutation.mutate(selectedAIMethod)}
                   disabled={runMatchMutation.isPending}
                   className="flex-1"
                 >
                   <Zap className="h-4 w-4 mr-2" />
-                  Run AI Match
+                  {runMatchMutation.isPending ? 'Running...' : 'Run AI Match'}
                 </Button>
               </div>
               {result.confidence > 0 && (
@@ -386,6 +393,20 @@ export function EnhancedMatchModal({
 
           {matchingMethod === 'LOCAL' && (
             <div className="space-y-3">
+              <div className="space-y-2">
+                <Button
+                  onClick={() => runMatchMutation.mutate('LOCAL')}
+                  disabled={runMatchMutation.isPending}
+                  className="w-full"
+                  variant="secondary"
+                >
+                  <Cpu className="h-4 w-4 mr-2" />
+                  {runMatchMutation.isPending ? 'Running...' : 'Run Local Match'}
+                </Button>
+                <p className="text-xs text-muted-foreground">
+                  Or search manually below:
+                </p>
+              </div>
               <div className="flex gap-2">
                 <Input
                   placeholder="Search price list..."

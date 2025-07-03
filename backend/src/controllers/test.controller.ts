@@ -2,14 +2,26 @@ import { Request, Response } from 'express';
 import { MatchingService } from '../services/matching.service.js';
 import { getConvexClient } from '../config/convex.js';
 import { api } from '../../../convex/_generated/api.js';
+import { ExcelService } from '../services/excel.service.js';
+import fs from 'fs/promises';
+import path from 'path';
 
 const matchingService = MatchingService.getInstance();
 const convex = getConvexClient();
+const excelService = new ExcelService();
 
 export async function testMatchingMethods(req: Request, res: Response): Promise<void> {
   try {
     const testDescription = req.query.description as string || "Excavation in soil not exceeding 2m deep";
-    const methods: Array<'LOCAL' | 'COHERE' | 'OPENAI' | 'HYBRID' | 'ADVANCED'> = ['LOCAL', 'COHERE', 'OPENAI', 'HYBRID', 'ADVANCED'];
+    const methods: Array<'LOCAL' | 'LOCAL_UNIT' | 'COHERE' | 'OPENAI' | 'HYBRID' | 'HYBRID_CATEGORY' | 'ADVANCED'> = [
+      'LOCAL', 
+      'LOCAL_UNIT', 
+      'COHERE', 
+      'OPENAI', 
+      'HYBRID', 
+      'HYBRID_CATEGORY', 
+      'ADVANCED'
+    ];
     
     console.log(`\n=== TESTING ALL MATCHING METHODS ===`);
     console.log(`Test description: "${testDescription}"`);

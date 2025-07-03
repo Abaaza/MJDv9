@@ -38,6 +38,15 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
+    // Skip refresh for login and refresh endpoints
+    if (
+      originalRequest.url?.includes('/auth/login') ||
+      originalRequest.url?.includes('/auth/refresh') ||
+      originalRequest.url?.includes('/auth/register')
+    ) {
+      return Promise.reject(error);
+    }
+
     if (error.response?.status === 401 && !originalRequest._retry) {
       if (isRefreshing) {
         return new Promise((resolve) => {
@@ -52,17 +61,23 @@ api.interceptors.response.use(
       isRefreshing = true;
 
       try {
+        console.log('[API] Token expired, attempting refresh...');
         const response = await api.post('/auth/refresh');
         const { accessToken } = response.data;
         localStorage.setItem('accessToken', accessToken);
+        console.log('[API] Token refresh successful');
         onRefreshed(accessToken);
         isRefreshing = false;
         originalRequest.headers.Authorization = `Bearer ${accessToken}`;
         return api(originalRequest);
       } catch (refreshError) {
+        console.error('[API] Token refresh failed:', refreshError);
         isRefreshing = false;
         localStorage.removeItem('accessToken');
-        window.location.href = '/login';
+        // Only redirect to login if we're not already there
+        if (window.location.pathname !== '/login') {
+          window.location.href = '/login';
+        }
         return Promise.reject(refreshError);
       }
     }

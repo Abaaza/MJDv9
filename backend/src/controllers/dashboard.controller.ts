@@ -18,6 +18,12 @@ export async function getStats(req: Request, res: Response): Promise<void> {
       userId: toConvexId<'users'>(req.user.id),
     });
 
+    console.log('[Dashboard] Stats for user', req.user.email, ':', {
+      activitiesToday: stats.activitiesToday,
+      totalProjects: stats.totalProjects,
+      matchesToday: stats.matchesToday
+    });
+
     res.json(stats);
   } catch (error) {
     console.error('Get stats error:', error);
@@ -215,7 +221,9 @@ export async function getActivityStats(req: Request, res: Response): Promise<voi
     }
 
     const now = Date.now();
-    const oneDayAgo = now - 24 * 60 * 60 * 1000;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayMidnight = today.getTime();
     const oneWeekAgo = now - 7 * 24 * 60 * 60 * 1000;
     const oneMonthAgo = now - 30 * 24 * 60 * 60 * 1000;
 
@@ -227,7 +235,7 @@ export async function getActivityStats(req: Request, res: Response): Promise<voi
 
     // Calculate stats
     const totalActivities = allActivities.length;
-    const todayActivities = allActivities.filter(a => a.timestamp >= oneDayAgo).length;
+    const todayActivities = allActivities.filter(a => a.timestamp >= todayMidnight).length;
     const weekActivities = allActivities.filter(a => a.timestamp >= oneWeekAgo).length;
     const monthActivities = allActivities.filter(a => a.timestamp >= oneMonthAgo).length;
 

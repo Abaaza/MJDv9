@@ -43,6 +43,7 @@ interface DashboardStats {
   clients: number;
   matchesToday: number;
   completedToday: number;
+  activitiesToday?: number;
 }
 
 interface RecentJob {
@@ -96,9 +97,11 @@ export default function Dashboard() {
     queryKey: ['dashboard-stats', refreshKey],
     queryFn: async () => {
       const response = await api.get('/dashboard/stats');
+      console.log('[Dashboard] Stats received:', response.data);
       return response.data;
     },
     refetchInterval: 30000, // Refetch every 30 seconds
+    staleTime: 0, // Always fetch fresh data
   });
 
   // Fetch recent jobs
@@ -141,6 +144,17 @@ export default function Dashboard() {
   const handleRefresh = () => {
     setRefreshKey(prev => prev + 1);
   };
+
+  // Log when stats change
+  useEffect(() => {
+    if (stats) {
+      console.log('[Dashboard] Stats updated:', {
+        activitiesToday: stats.activitiesToday,
+        totalProjects: stats.totalProjects,
+        matchesToday: stats.matchesToday
+      });
+    }
+  }, [stats]);
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -260,7 +274,7 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {statsLoading ? <Loader2 className="h-6 w-6 animate-spin" /> : stats?.matchesToday || 0}
+              {statsLoading ? <Loader2 className="h-6 w-6 animate-spin" /> : stats?.activitiesToday || 0}
             </div>
             <p className="text-xs text-muted-foreground">
               {stats?.completedToday || 0} BOQs completed

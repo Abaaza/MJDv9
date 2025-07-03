@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
 import { 
@@ -481,11 +481,53 @@ export default function Projects() {
     return 'text-red-600 bg-red-50';
   };
 
-  const filteredResults = results?.filter(result => 
+  // Separate context headers and actual items
+  const contextHeaders = results?.filter(result => 
+    result.matchMethod === 'CONTEXT' || !result.originalQuantity || result.originalQuantity === 0
+  ) || [];
+  
+  const actualItems = results?.filter(result => 
+    result.matchMethod !== 'CONTEXT' && result.originalQuantity && result.originalQuantity > 0
+  ) || [];
+  
+  const filteredResults = actualItems.filter(result => 
     result.originalDescription.toLowerCase().includes(searchTerm.toLowerCase()) ||
     result.matchedDescription?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     result.matchedCode?.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  // Group results by sections based on row numbers
+  const groupResultsBySection = () => {
+    if (!results || results.length === 0) return [];
+    
+    const allResultsSorted = [...results].sort((a, b) => a.rowNumber - b.rowNumber);
+    const groups: Array<{ header?: typeof results[0], items: typeof results }> = [];
+    let currentGroup: typeof groups[0] = { items: [] };
+    
+    allResultsSorted.forEach((result) => {
+      // Check if this is a header/context row
+      if (result.matchMethod === 'CONTEXT' || !result.originalQuantity || result.originalQuantity === 0) {
+        // If we have items in the current group, push it
+        if (currentGroup.items.length > 0) {
+          groups.push(currentGroup);
+        }
+        // Start a new group with this header
+        currentGroup = { header: result, items: [] };
+      } else {
+        // This is a regular item
+        currentGroup.items.push(result);
+      }
+    });
+    
+    // Don't forget the last group
+    if (currentGroup.items.length > 0 || currentGroup.header) {
+      groups.push(currentGroup);
+    }
+    
+    return groups;
+  };
+  
+  const groupedResults = groupResultsBySection();
 
   // Pagination calculations
   const totalPages = Math.ceil((jobs?.length || 0) / jobsPerPage);
@@ -705,10 +747,23 @@ export default function Projects() {
           <CardContent>
             {resultsLoading ? (
               <p className="text-muted-foreground">Loading results...</p>
-            ) : filteredResults && filteredResults.length > 0 ? (
+            ) : (results && results.length > 0) ? (
               <>
-                {/* Desktop Table */}
-                <div className="hidden lg:block overflow-x-auto">
+                {/* Match Results Summary */}
+                <div className="mb-4 flex items-center justify-between">
+                  <h4 className="font-medium text-sm text-gray-700 dark:text-gray-300">
+                    Match Results ({actualItems.length} items, {contextHeaders.length} sections)
+                  </h4>
+                  <div className="text-sm text-gray-500">
+                    Total Sections: {groupedResults.length}
+                  </div>
+                </div>
+                
+                {/* Match Results Section */}
+                {groupedResults.length > 0 ? (
+                  <>
+                    {/* Desktop Table */}
+                    <div className="hidden lg:block overflow-x-auto">
                   <table className="w-full border-collapse">
                   <thead>
                     <tr className="border-b">
@@ -725,16 +780,37 @@ export default function Projects() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredResults.map((result) => (
+                    {groupedResults.map((group, groupIndex) => (
+                      <React.Fragment key={`group-${groupIndex}`}>
+                        {/* Section Header Row */}
+                        {group.header && (
+                          <tr className="bg-gray-100 dark:bg-gray-800 border-t-2 border-gray-300 dark:border-gray-600">
+                            <td className="p-3 text-sm font-medium text-gray-600 dark:text-gray-300">
+                              {group.header.rowNumber}
+                            </td>
+                            <td colSpan={9} className="p-3">
+                              <div className="flex items-center gap-2">
+                                <div className="h-0.5 w-8 bg-gray-300 dark:bg-gray-600"></div>
+                                <span className="text-sm font-semibold text-gray-700 dark:text-gray-200 uppercase tracking-wide">
+                                  {group.header.originalDescription}
+                                </span>
+                                <div className="flex-1 h-0.5 bg-gray-300 dark:bg-gray-600"></div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                        {/* Item Rows */}
+                        {group.items.filter(item => 
+                          searchTerm === '' || 
+                          item.originalDescription.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          item.matchedDescription?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          item.matchedCode?.toLowerCase().includes(searchTerm.toLowerCase())
+                        ).map((result) => (
                       <tr key={result._id} className="border-b hover:bg-gray-50">
                         <td className="p-2 text-sm">{result.rowNumber}</td>
                         <td className="p-2 text-sm">
                           <div className="whitespace-normal break-words max-w-md">
-                            {result.contextHeaders && result.contextHeaders.length > 0 && (
-                              <div className="mb-1 px-2 py-1 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-700">
-                                <span className="font-medium">Section:</span> {result.contextHeaders.join(' > ')}
-                              </div>
-                            )}
+                            {/* Context headers removed - now shown as section dividers */}
                             {result.originalDescription}
                           </div>
                         </td>
@@ -1005,14 +1081,35 @@ export default function Projects() {
                           </div>
                         </td>
                       </tr>
+                        ))}
+                      </React.Fragment>
                     ))}
                   </tbody>
                   </table>
                 </div>
 
                 {/* Mobile Cards */}
-                <div className="lg:hidden space-y-4">
-                  {filteredResults.map((result) => (
+                <div className="lg:hidden space-y-6">
+                  {groupedResults.map((group, groupIndex) => (
+                    <div key={`mobile-group-${groupIndex}`} className="space-y-4">
+                      {/* Section Header */}
+                      {group.header && (
+                        <div className="bg-gray-100 dark:bg-gray-800 p-3 rounded-lg border-l-4 border-gray-400 dark:border-gray-600">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Row {group.header.rowNumber}</span>
+                            <span className="text-sm font-semibold text-gray-700 dark:text-gray-200 uppercase">
+                              {group.header.originalDescription}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                      {/* Item Cards */}
+                      {group.items.filter(item => 
+                        searchTerm === '' || 
+                        item.originalDescription.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                        item.matchedDescription?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                        item.matchedCode?.toLowerCase().includes(searchTerm.toLowerCase())
+                      ).map((result) => (
                     <div key={result._id} className="border rounded-lg p-4 space-y-3">
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
@@ -1026,11 +1123,7 @@ export default function Projects() {
                             </span>
                           </div>
                           <div>
-                            {result.contextHeaders && result.contextHeaders.length > 0 && (
-                              <div className="mb-1 px-2 py-1 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-700">
-                                <span className="font-medium">Section:</span> {result.contextHeaders.join(' > ')}
-                              </div>
-                            )}
+                            {/* Context headers removed - now shown as section dividers */}
                             <p className="text-sm font-medium">{result.originalDescription}</p>
                           </div>
                         </div>
@@ -1214,18 +1307,27 @@ export default function Projects() {
                         )}
                       </div>
                     </div>
+                      ))}
+                    </div>
                   ))}
                 </div>
                 
                 {/* Total Quotation Sum */}
-                {filteredResults.length > 0 && (
+                {actualItems.length > 0 && (
                   <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
                     <div className="flex justify-between items-center">
                       <span className="text-lg font-semibold">Total Quotation:</span>
                       <span className="text-xl font-bold text-green-600 dark:text-green-400">
-                        {formatPrice(filteredResults.reduce((sum, result) => sum + (result.totalPrice || 0), 0))}
+                        {formatPrice(actualItems.reduce((sum, result) => sum + (result.totalPrice || 0), 0))}
                       </span>
                     </div>
+                  </div>
+                )}
+                  </>
+                ) : (
+                  <div className="text-center py-8">
+                    <p className="text-muted-foreground">No items with quantities found</p>
+                    <p className="text-sm text-muted-foreground mt-2">Only header sections were found in this document</p>
                   </div>
                 )}
               </>

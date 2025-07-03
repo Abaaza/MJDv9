@@ -19,6 +19,7 @@ import UserSettings from './pages/UserSettings';
 import Activity from './pages/Activity';
 import TestMatching from './pages/TestMatching';
 import { queryClient } from './lib/query-config';
+import { useTokenRefresh } from './hooks/useTokenRefresh';
 import './styles/animations.css';
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
@@ -50,6 +51,7 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
 
 function App() {
   const checkAuth = useAuthStore((state) => state.checkAuth);
+  useTokenRefresh();
 
   useEffect(() => {
     checkAuth();

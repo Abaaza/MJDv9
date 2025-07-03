@@ -7,6 +7,7 @@ import * as XLSX from 'xlsx';
 import path from 'path';
 import { Id } from '../../../convex/_generated/dataModel.js';
 import { toConvexId } from '../utils/convexId.js';
+import { logActivity } from '../utils/activityLogger.js';
 
 const convex = getConvexClient();
 

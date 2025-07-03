@@ -204,11 +204,23 @@ export class ExcelService {
 
     // Parse data rows
     let totalRows = 0;
-    let currentContext: string[] = [];
+    let contextHierarchy: string[] = []; // Store full hierarchy of context headers
     
     worksheet.eachRow((row, rowNumber) => {
       // Skip rows before and including header
       if (rowNumber <= headerRowNumber) return;
+      
+      // Debug log for every row
+      if (rowNumber <= headerRowNumber + 20) { // Log first 20 rows after header
+        const descCell = descriptionColIndex >= 0 ? row.getCell(descriptionColIndex + 1) : null;
+        const qtyCell = quantityColIndex >= 0 ? row.getCell(quantityColIndex + 1) : null;
+        const unitCell = unitColIndex >= 0 ? row.getCell(unitColIndex + 1) : null;
+        
+        console.log(`[ExcelService]   [Sheet: ${worksheet.name}] Row ${rowNumber} analysis:`);
+        console.log(`    Description (Col ${descriptionColIndex + 1}): "${descCell?.value || 'EMPTY'}"`);
+        console.log(`    Quantity (Col ${quantityColIndex + 1}): "${qtyCell?.value || 'EMPTY'}" (type: ${typeof qtyCell?.value})`);
+        console.log(`    Unit (Col ${unitColIndex + 1}): "${unitCell?.value || 'EMPTY'}"`);
+      }
       
       // Check if this is a context/category row
       // Convert row.values to a proper array - it could be an array, sparse array, or object
@@ -216,13 +228,83 @@ export class ExcelService {
         ? row.values 
         : Object.values(row.values || {});
       const filledCells = rowValues.filter(v => v !== null && v !== undefined && v !== '').length;
-      if (filledCells === 1 || (filledCells === 2 && !row.getCell(descriptionColIndex + 1).value)) {
-        // This might be a category header
-        currentContext = [];
-        row.eachCell((cell) => {
-          const value = cell.value?.toString();
-          if (value) currentContext.push(value);
+      
+      // Get description value
+      const descValue = descriptionColIndex >= 0 ? row.getCell(descriptionColIndex + 1).value?.toString() || '' : '';
+      
+      // Parse quantity first to check if this row has a quantity
+      const quantity = quantityColIndex >= 0 ? this.parseNumber(row.getCell(quantityColIndex + 1).value) : undefined;
+      const unit = unitColIndex >= 0 ? row.getCell(unitColIndex + 1).value?.toString()?.trim() : undefined;
+      
+      // Check if this row is a context header (no quantity/unit or matches header patterns)
+      const hasQuantity = quantity !== undefined && quantity > 0;
+      const hasUnit = unit && unit.length > 0;
+      const looksLikeHeader = this.isLikelyHeader(descValue);
+      
+      // IMPORTANT: If a row has a quantity, it's NOT a context header, regardless of description
+      if (!hasQuantity && ((filledCells === 1 || filledCells <= 3) && descValue || looksLikeHeader)) {
+        // This is a context header
+        const headerText = descValue.trim();
+        
+        // Build originalData for this header row
+        const headerOriginalData: Record<string, any> = {};
+        const headerFormatting: Record<string, any> = {};
+        
+        headers.forEach((header, index) => {
+          if (!header) return;
+          const cell = row.getCell(index + 1);
+          headerOriginalData[header] = cell.value;
+          
+          // Store cell formatting
+          if (cell.style) {
+            headerFormatting[header] = {
+              font: cell.font,
+              fill: cell.fill,
+              border: cell.border,
+              alignment: cell.alignment,
+              numFmt: cell.numFmt,
+            };
+          }
         });
+        
+        // Determine the level of this header based on various clues
+        const isMajorHeader = headerText.match(/^(BILL|SUB-BILL|SECTION|PART|DIVISION)/i) !== null;
+        const isSubHeader = headerText.match(/^[A-Z]\d+\s/i) !== null; // Like "D20 Excavating"
+        const isMinorHeader = headerText.match(/^(NOTE|Excavating|Filling|Disposal)/i) !== null;
+        
+        if (isMajorHeader) {
+          // Major header - reset hierarchy
+          contextHierarchy = [headerText];
+        } else if (isSubHeader) {
+          // Sub header - keep major headers, replace sub-level
+          contextHierarchy = contextHierarchy.filter(h => h.match(/^(BILL|SUB-BILL|SECTION|PART|DIVISION)/i));
+          contextHierarchy.push(headerText);
+        } else if (isMinorHeader || looksLikeHeader) {
+          // Minor header - add to existing hierarchy
+          // Remove any previous minor headers at the same level
+          contextHierarchy = contextHierarchy.filter(h => 
+            h.match(/^(BILL|SUB-BILL|SECTION|PART|DIVISION)/i) || 
+            h.match(/^[A-Z]\d+\s/i)
+          );
+          contextHierarchy.push(headerText);
+        } else {
+          // Generic header - just add it
+          contextHierarchy.push(headerText);
+        }
+        
+        // Also add this header as an item with its context
+        items.push({
+          rowNumber: rowNumber,
+          description: headerText,
+          quantity: quantity, // Preserve quantity if it exists (should be undefined for true headers)
+          unit: unit, // Preserve unit if it exists
+          originalData: headerOriginalData,
+          contextHeaders: contextHierarchy.length > 1 ? contextHierarchy.slice(0, -1) : undefined, // Don't include itself
+          sheetName: worksheet.name,
+          rowHeight: row.height,
+          formatting: headerFormatting,
+        });
+        
         return;
       }
       
@@ -252,17 +334,27 @@ export class ExcelService {
         }
       });
 
-      const description = descriptionColIndex >= 0 ? (row.getCell(descriptionColIndex + 1).value?.toString() || '') : '';
+      // Description already parsed as descValue above
+      const description = descValue;
+      
+      // Quantity and unit already parsed above
       
       // Only add items with valid descriptions
       if (description.trim()) {
+        if (!hasQuantity && !hasUnit) {
+          // This is likely a context header
+          console.log(`[ExcelService]   [Sheet: ${worksheet.name}] Row ${rowNumber} identified as context header: "${description.substring(0, 50)}..."`);
+        } else if (hasQuantity) {
+          console.log(`[ExcelService]   [Sheet: ${worksheet.name}] Row ${rowNumber} has quantity ${quantity} ${unit || 'NO_UNIT'}: "${description.substring(0, 50)}..."`);
+        }
+        
         items.push({
           rowNumber: rowNumber,
           description: description.trim(),
-          quantity: quantityColIndex >= 0 ? this.parseNumber(row.getCell(quantityColIndex + 1).value) : undefined,
-          unit: unitColIndex >= 0 ? row.getCell(unitColIndex + 1).value?.toString() : undefined,
+          quantity: quantity, // Always preserve the parsed quantity
+          unit: unit, // Always preserve the parsed unit
           originalData,
-          contextHeaders: currentContext.length > 0 ? [...currentContext] : undefined,
+          contextHeaders: contextHierarchy.length > 0 ? [...contextHierarchy] : undefined,
           sheetName: worksheet.name,
           rowHeight: row.height,
           formatting,
@@ -352,6 +444,16 @@ export class ExcelService {
           worksheet.eachRow((row, rowNumber) => {
             const result = resultsByRow.get(rowNumber);
             if (result && result.matchedRate !== undefined) {
+              // Check if this is a context header (no quantity)
+              const isContextHeader = result.matchMethod === 'CONTEXT' || 
+                                    (!result.originalQuantity || result.originalQuantity === 0);
+              
+              // Skip context headers - don't update their rate cells
+              if (isContextHeader) {
+                console.log(`[ExcelService] Skipping rate update for context header at row ${rowNumber}`);
+                return;
+              }
+              
               const rateCell = row.getCell(rateColumnIndex);
               
               // Preserve the original cell formatting
@@ -519,36 +621,45 @@ export class ExcelService {
             row.height = result.rowHeight;
           }
           
-          row.getCell(lastCol).value = result.matchedCode || '';
-          row.getCell(lastCol + 1).value = result.matchedDescription || '';
-          row.getCell(lastCol + 2).value = result.matchedRate || 0;
-          row.getCell(lastCol + 3).value = result.totalPrice || 0;
-          row.getCell(lastCol + 4).value = result.confidence ? Math.round(result.confidence * 100) : 0;
-          row.getCell(lastCol + 5).value = result.notes || '';
-
-          // Apply conditional formatting based on confidence
-          const confidenceCell = row.getCell(lastCol + 4);
-          const confidence = result.confidence || 0;
+          // Check if this is a context header (no quantity)
+          const isContextHeader = result.matchMethod === 'CONTEXT' || 
+                                (!result.originalQuantity || result.originalQuantity === 0);
           
-          if (confidence >= 0.8) {
-            confidenceCell.fill = {
-              type: 'pattern',
-              pattern: 'solid',
-              fgColor: { argb: 'FF90EE90' }, // Light green
-            };
-          } else if (confidence >= 0.6) {
-            confidenceCell.fill = {
-              type: 'pattern',
-              pattern: 'solid',
-              fgColor: { argb: 'FFFFFFE0' }, // Light yellow
-            };
-          } else {
-            confidenceCell.fill = {
-              type: 'pattern',
-              pattern: 'solid',
-              fgColor: { argb: 'FFFFB6C1' }, // Light red
-            };
+          if (!isContextHeader) {
+            // Only add match results for actual items with quantities
+            row.getCell(lastCol).value = result.matchedCode || '';
+            row.getCell(lastCol + 1).value = result.matchedDescription || '';
+            row.getCell(lastCol + 2).value = result.matchedRate || 0;
+            row.getCell(lastCol + 3).value = result.totalPrice || 0;
+            row.getCell(lastCol + 4).value = result.confidence ? Math.round(result.confidence * 100) : 0;
+            row.getCell(lastCol + 5).value = result.notes || '';
+            
+            // Apply conditional formatting based on confidence
+            const confidenceCell = row.getCell(lastCol + 4);
+            const confidence = result.confidence || 0;
+            
+            if (confidence >= 0.8) {
+              confidenceCell.fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'FF90EE90' }, // Light green
+              };
+            } else if (confidence >= 0.6) {
+              confidenceCell.fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'FFFFFFE0' }, // Light yellow
+              };
+            } else {
+              confidenceCell.fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'FFFFB6C1' }, // Light red
+              };
+            }
           }
+          // For context headers, we don't add any match data - the row remains as-is
+          // This preserves the original formatting and doesn't add misleading data
         });
 
         // Auto-fit columns
@@ -619,12 +730,55 @@ export class ExcelService {
   }
 
   private parseNumber(value: any): number | undefined {
-    if (typeof value === 'number') return value;
-    if (typeof value === 'string') {
-      const parsed = parseFloat(value.replace(/,/g, ''));
-      return isNaN(parsed) ? undefined : parsed;
+    const originalValue = value;
+    
+    if (value === null || value === undefined || value === '') {
+      console.log(`[parseNumber] Rejected null/undefined/empty value: ${value}`);
+      return undefined;
     }
+    
+    if (typeof value === 'number') {
+      const result = value > 0 ? value : undefined;
+      if (!result) {
+        console.log(`[parseNumber] Rejected non-positive number: ${value}`);
+      }
+      return result;
+    }
+    
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (trimmed === '' || trimmed === '-' || trimmed.toLowerCase() === 'n/a') {
+        console.log(`[parseNumber] Rejected string value: "${originalValue}"`);
+        return undefined;
+      }
+      
+      const parsed = parseFloat(trimmed.replace(/,/g, ''));
+      if (isNaN(parsed)) {
+        console.log(`[parseNumber] Failed to parse string as number: "${originalValue}"`);
+        return undefined;
+      }
+      if (parsed <= 0) {
+        console.log(`[parseNumber] Rejected non-positive parsed value: ${parsed} from "${originalValue}"`);
+        return undefined;
+      }
+      return parsed;
+    }
+    
+    console.log(`[parseNumber] Rejected unknown type: ${typeof value}, value: ${value}`);
     return undefined;
+  }
+  
+  private isLikelyHeader(description: string): boolean {
+    const headerPatterns = [
+      /^(section|chapter|part|bill|sub-bill|category|group|division|note|description)[\s:]/i,
+      /^[A-Z][0-9]+\s/,  // Like "D20 Excavating"
+      /^[0-9]+\.[0-9]+\s+[A-Z]/,  // Like "2.1 GENERAL"
+      /^(excavat|fill|disposal|earthwork|groundwork|substructure|superstructure|roof|external|internal|finish|service|prelim)/i,
+      /(note|not measured|pricing point|risk item|provisional|refer to|see also|include|exclude)/i,
+      /^(the following|all prices|rates shall|contractor shall|work includes)/i
+    ];
+    
+    return headerPatterns.some(pattern => pattern.test(description));
   }
 }
 

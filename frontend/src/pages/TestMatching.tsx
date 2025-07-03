@@ -5,7 +5,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { api } from '../lib/api';
 import { toast } from 'react-hot-toast';
-import { Loader2, CheckCircle, XCircle, Zap, Globe, Brain, Shuffle, Cpu } from 'lucide-react';
+import { Loader2, CheckCircle, XCircle, Zap, Globe, Brain, Shuffle, Cpu, Ruler, Layers } from 'lucide-react';
 
 interface MethodResult {
   success: boolean;
@@ -26,17 +26,21 @@ interface TestResults {
 
 const methodIcons = {
   LOCAL: <Zap className="h-4 w-4" />,
+  LOCAL_UNIT: <Ruler className="h-4 w-4" />,
   COHERE: <Globe className="h-4 w-4" />,
   OPENAI: <Brain className="h-4 w-4" />,
   HYBRID: <Shuffle className="h-4 w-4" />,
+  HYBRID_CATEGORY: <Layers className="h-4 w-4" />,
   ADVANCED: <Cpu className="h-4 w-4" />
 };
 
 const methodDescriptions = {
   LOCAL: "Fast fuzzy matching using local algorithms",
+  LOCAL_UNIT: "Local matching with unit compatibility priority",
   COHERE: "AI-powered semantic matching using Cohere embeddings",
   OPENAI: "AI-powered semantic matching using OpenAI embeddings",
   HYBRID: "Combines all methods and returns best match",
+  HYBRID_CATEGORY: "Hybrid matching with category emphasis",
   ADVANCED: "Multi-stage matching with enhanced algorithms"
 };
 
@@ -151,7 +155,7 @@ export default function TestMatching() {
       </Card>
 
       {results && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {Object.entries(results).map(([method, result]) => (
             <Card key={method} className={result.success ? '' : 'border-red-500'}>
               <CardHeader className="pb-3">
