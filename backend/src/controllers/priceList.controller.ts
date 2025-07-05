@@ -283,7 +283,7 @@ export async function deactivatePriceItem(req: Request, res: Response): Promise<
 
     const { id } = req.params;
     
-    await convex.mutation(api.priceItems.deleteItem, { _id: toConvexId<'priceItems'>(id) });
+    await convex.mutation(api.priceItems.deleteItem, { id: toConvexId<'priceItems'>(id) });
     
     // Create activity log
     await convex.mutation(api.activityLogs.create, {
@@ -308,7 +308,7 @@ export async function searchPriceItems(req: Request, res: Response): Promise<voi
       return;
     }
 
-    const { query, limit = 10 } = req.body;
+    const { query, limit = 20 } = req.body;
     
     if (!query || query.trim().length < 2) {
       res.status(400).json({ error: 'Search query must be at least 2 characters' });
@@ -316,46 +316,66 @@ export async function searchPriceItems(req: Request, res: Response): Promise<voi
     }
 
     // Get all price items and perform search
-    const allItems = await convex.query(api.priceItems.getAll);
+    const allItems = await convex.query(api.priceItems.getActive);
+    
+    if (!allItems || allItems.length === 0) {
+      res.json([]);
+      return;
+    }
     
     // Search in description, code, category, etc.
     const searchTerm = query.toLowerCase();
-    const filtered = allItems.filter(item => {
-      const searchableText = [
-        item.description,
-        item.code,
-        item.category,
-        item.subcategory,
-        item.material_type,
-        item.brand,
-        item.supplier,
-      ].filter(Boolean).join(' ').toLowerCase();
+    const scoredItems = allItems.map((item: any) => {
+      let score = 0;
+      const description = (item.description || '').toLowerCase();
+      const code = (item.code || '').toLowerCase();
+      const category = (item.category || '').toLowerCase();
       
-      return searchableText.includes(searchTerm);
+      // Exact matches get highest score
+      if (description === searchTerm || code === searchTerm) {
+        score = 100;
+      }
+      // Starts with gets high score
+      else if (description.startsWith(searchTerm) || code.startsWith(searchTerm)) {
+        score = 80;
+      }
+      // Word boundary matches
+      else if (description.includes(' ' + searchTerm) || description.includes(searchTerm + ' ')) {
+        score = 60;
+      }
+      // Contains match
+      else if (description.includes(searchTerm) || code.includes(searchTerm)) {
+        score = 40;
+      }
+      // Category match
+      else if (category.includes(searchTerm)) {
+        score = 30;
+      }
+      // Check other fields
+      else {
+        const otherFields = [
+          item.subcategory,
+          item.material_type,
+          item.brand,
+          item.supplier,
+        ].filter(Boolean).join(' ').toLowerCase();
+        
+        if (otherFields.includes(searchTerm)) {
+          score = 20;
+        }
+      }
+      
+      return { item, score };
     });
 
-    // Sort by relevance (items starting with search term first)
-    const sorted = filtered.sort((a, b) => {
-      const aDesc = (a.description || '').toLowerCase();
-      const bDesc = (b.description || '').toLowerCase();
-      const aCode = (a.code || '').toLowerCase();
-      const bCode = (b.code || '').toLowerCase();
-      
-      // Prioritize exact matches
-      if (aDesc === searchTerm || aCode === searchTerm) return -1;
-      if (bDesc === searchTerm || bCode === searchTerm) return 1;
-      
-      // Then prioritize starts with
-      if (aDesc.startsWith(searchTerm) || aCode.startsWith(searchTerm)) return -1;
-      if (bDesc.startsWith(searchTerm) || bCode.startsWith(searchTerm)) return 1;
-      
-      return 0;
-    });
+    // Filter out non-matches and sort by score
+    const matches = scoredItems
+      .filter(({ score }: any) => score > 0)
+      .sort((a: any, b: any) => b.score - a.score)
+      .slice(0, limit)
+      .map(({ item }: any) => item);
 
-    // Limit results
-    const results = sorted.slice(0, limit);
-
-    res.json(results);
+    res.json(matches);
   } catch (error) {
     console.error('Search price items error:', error);
     res.status(500).json({ error: 'Failed to search price items' });
@@ -424,7 +444,7 @@ async function processDeleteAllAsync(
       // Delete items in parallel within batch
       const deletePromises = batch.map(async (item) => {
         try {
-          await convex.mutation(api.priceItems.deleteItem, { _id: item._id });
+          await convex.mutation(api.priceItems.deleteItem, { id: item._id });
           return { success: true };
         } catch (err: any) {
           console.error(`Failed to delete item ${item._id}:`, err);
@@ -517,16 +537,21 @@ async function processImportAsync(
       const batch = items.slice(i, i + batchSize);
       
       try {
-        const batchResults = await convex.mutation(api.priceItems.bulkImport, {
-          items: batch,
-          userId: toConvexId<'users'>(userId),
-        });
-
-        results.created += batchResults.created || 0;
-        results.updated += batchResults.updated || 0;
-        results.skipped += batchResults.skipped || 0;
-        if (batchResults.errors) {
-          results.errors.push(...batchResults.errors);
+        // Process items individually since bulkImport doesn't exist
+        for (const item of batch) {
+          try {
+            await convex.mutation(api.priceItems.create, {
+              ...item,
+              userId: toConvexId<'users'>(userId),
+            });
+            results.created++;
+          } catch (err: any) {
+            if (err.message?.includes('duplicate')) {
+              results.skipped++;
+            } else {
+              results.errors.push(`Item ${item.id}: ${err.message}`);
+            }
+          }
         }
 
         // Update progress

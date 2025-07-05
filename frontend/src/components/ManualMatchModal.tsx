@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
-import { Search, X, Loader2 } from 'lucide-react';
+import { Search, Loader2 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
@@ -34,7 +34,7 @@ interface PriceItem {
 interface ManualMatchModalProps {
   isOpen: boolean;
   onClose: () => void;
-  result: MatchResult;
+  result: MatchResult | null;
   onSave: (updates: {
     matchedItemId: string;
     matchedDescription: string;
@@ -56,6 +56,11 @@ export function ManualMatchModal({
   const [selectedItem, setSelectedItem] = useState<PriceItem | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+
+  // Guard against undefined result
+  if (!result) {
+    return null;
+  }
 
   // Reset state when modal opens/closes
   useEffect(() => {
@@ -79,7 +84,9 @@ export function ManualMatchModal({
       setSearchResults(data);
       setIsSearching(false);
     },
-    onError: () => {
+    onError: (error) => {
+      console.error('Search error:', error);
+      toast.error('Failed to search price items');
       setIsSearching(false);
     },
   });
@@ -94,7 +101,7 @@ export function ManualMatchModal({
         setSearchResults([]);
       }
     },
-    300 // 300ms delay
+    150 // Reduced to 150ms for faster response
   );
 
   // Handle search input change
@@ -136,9 +143,10 @@ export function ManualMatchModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-3xl max-h-[80vh] overflow-hidden flex flex-col">
+      <DialogContent className="w-full max-w-3xl max-h-[95vh] sm:max-h-[80vh] overflow-hidden flex flex-col p-4 sm:p-6" aria-describedby="manual-match-description">
         <DialogHeader>
           <DialogTitle>Manual Price List Search - Row {result.rowNumber}</DialogTitle>
+          <p id="manual-match-description" className="sr-only">Search and select a price item to match with the BOQ item</p>
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto space-y-4">
@@ -151,7 +159,7 @@ export function ManualMatchModal({
               </div>
             )}
             <p className="text-sm">{result.originalDescription}</p>
-            <div className="grid grid-cols-2 gap-4 mt-2 text-sm">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-4 mt-2 text-sm">
               <div>
                 <span className="text-muted-foreground">Quantity:</span>{' '}
                 <span className="font-medium">{result.originalQuantity || '-'}</span>
@@ -207,7 +215,7 @@ export function ManualMatchModal({
                         {item.code && <span className="text-muted-foreground">{item.code} - </span>}
                         {item.description}
                       </div>
-                      <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                      <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-xs text-muted-foreground">
                         <span>Rate: {formatPrice(item.rate || 0)}</span>
                         <span>Unit: {item.unit || '-'}</span>
                         {item.category && <span>Category: {item.category}</span>}
@@ -242,7 +250,7 @@ export function ManualMatchModal({
                     <span className="font-medium">{selectedItem.code}</span>
                   </p>
                 )}
-                <div className="grid grid-cols-3 gap-4 mt-2">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4 mt-2">
                   <div>
                     <span className="text-muted-foreground">Unit:</span>{' '}
                     <span className="font-medium">{selectedItem.unit || '-'}</span>
@@ -261,13 +269,14 @@ export function ManualMatchModal({
           )}
         </div>
 
-        <div className="flex justify-between items-center pt-4 border-t">
-          <Button variant="outline" onClick={onClose}>
+        <div className="flex flex-col-reverse sm:flex-row justify-between items-stretch sm:items-center gap-2 pt-4 border-t">
+          <Button variant="outline" onClick={onClose} className="w-full sm:w-auto">
             Cancel
           </Button>
           <Button
             onClick={handleSave}
             disabled={isSaving || !selectedItem}
+            className="w-full sm:w-auto"
           >
             Apply Selection
           </Button>

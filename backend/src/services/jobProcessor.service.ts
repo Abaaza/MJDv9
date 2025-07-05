@@ -2,11 +2,12 @@ import { EventEmitter } from 'events';
 import { getConvexClient } from '../config/convex.js';
 import { api } from '../../../convex/_generated/api.js';
 import { MatchingService } from './matching.service.js';
+import { logStorage } from './logStorage.service.js';
 
 interface ProcessingJob {
   jobId: string;
   userId: string;
-  status: 'pending' | 'parsing' | 'processing' | 'completed' | 'failed' | 'cancelled';
+  status: 'pending' | 'parsing' | 'matching' | 'processing' | 'completed' | 'failed' | 'cancelled';
   progress: number;
   progressMessage: string;
   itemCount: number;
@@ -41,6 +42,13 @@ export class JobProcessorService extends EventEmitter {
   }
 
   async addJob(jobId: string, userId: string, items: any[], method: string): Promise<void> {
+    console.log(`[JobProcessor] Adding job ${jobId} to queue:`, {
+      userId,
+      itemCount: items.length,
+      method,
+      currentQueueLength: this.processingQueue.length
+    });
+    
     const job: ProcessingJob = {
       jobId,
       userId,
@@ -58,6 +66,7 @@ export class JobProcessorService extends EventEmitter {
 
     this.jobs.set(jobId, job);
     this.processingQueue.push(jobId);
+    console.log(`[JobProcessor] Job ${jobId} added to queue. Queue length: ${this.processingQueue.length}`);
     
     // Count items with quantities vs context headers
     const itemsWithQuantities = items.filter(item => 
@@ -89,33 +98,62 @@ export class JobProcessorService extends EventEmitter {
     const job = this.jobs.get(jobId);
     if (!job) return false;
 
-    if (job.status === 'processing') {
-      job.status = 'cancelled';
-      this.emit('job:cancelled', { jobId });
-      
-      await this.updateConvexStatus(jobId, {
-        status: 'failed' as any,
-        error: 'Job cancelled by user',
-      });
-      
-      return true;
-    }
+    // Check if job is currently running before marking as cancelled
+    const wasRunning = job.status === 'processing' || job.status === 'parsing' || job.status === 'matching';
+    
+    // Mark job as cancelled regardless of current status
+    job.status = 'cancelled';
+    this.emit('job:cancelled', { jobId });
+    
+    this.emitLog(jobId, 'warning', 'Job cancelled by user');
+    
+    // Update Convex status
+    await this.updateConvexStatus(jobId, {
+      status: 'failed' as any,
+      error: 'Job cancelled by user',
+    });
 
-    // Remove from queue if not yet processing
+    // Remove from queue if still pending
     const queueIndex = this.processingQueue.indexOf(jobId);
     if (queueIndex > -1) {
       this.processingQueue.splice(queueIndex, 1);
-      this.jobs.delete(jobId);
-      
-      await this.updateConvexStatus(jobId, {
-        status: 'failed' as any,
-        error: 'Job cancelled before processing',
-      });
-      
-      return true;
     }
+    
+    // If was currently processing, it will be stopped in the next iteration
+    if (wasRunning) {
+      this.emitLog(jobId, 'info', 'Stopping running job...');
+    }
+    
+    return true;
+  }
 
-    return false;
+  async cancelAllJobs(): Promise<number> {
+    let cancelledCount = 0;
+    
+    // Cancel all jobs in queue
+    const queuedJobs = [...this.processingQueue];
+    for (const jobId of queuedJobs) {
+      if (await this.cancelJob(jobId)) {
+        cancelledCount++;
+      }
+    }
+    
+    // Cancel all active jobs
+    for (const [jobId, job] of this.jobs.entries()) {
+      if (job.status !== 'completed' && job.status !== 'failed' && job.status !== 'cancelled') {
+        if (await this.cancelJob(jobId)) {
+          cancelledCount++;
+        }
+      }
+    }
+    
+    // Clear the processing queue
+    this.processingQueue = [];
+    
+    // Reset processing flag to allow new jobs
+    this.isProcessing = false;
+    
+    return cancelledCount;
   }
 
   getJobStatus(jobId: string): ProcessingJob | undefined {
@@ -123,6 +161,18 @@ export class JobProcessorService extends EventEmitter {
   }
 
   private emitProgress(job: ProcessingJob) {
+    // Update in-memory storage
+    logStorage.updateProgress(job.jobId, {
+      jobId: job.jobId,
+      status: job.status,
+      progress: job.progress,
+      progressMessage: job.progressMessage,
+      matchedCount: job.matchedCount,
+      itemCount: job.itemCount,
+      startTime: job.startTime || Date.now()
+    });
+    
+    // Emit for any WebSocket listeners (optional)
     this.emit('job:progress', {
       jobId: job.jobId,
       progress: job.progress,
@@ -134,31 +184,16 @@ export class JobProcessorService extends EventEmitter {
   }
 
   private emitLog(jobId: string, level: 'info' | 'success' | 'warning' | 'error', message: string) {
-    const logEntry = {
+    // Store in memory for fast access
+    logStorage.addLog(jobId, level, message);
+    
+    // Emit for any WebSocket listeners (optional)
+    this.emit('job:log', {
       jobId,
       level,
       message,
       timestamp: new Date().toISOString(),
-    };
-    
-    this.emit('job:log', logEntry);
-    
-    // Also log to console for debugging
-    const prefix = `[Job ${jobId}]`;
-    switch (level) {
-      case 'info':
-        console.log(`${prefix} ℹ️  ${message}`);
-        break;
-      case 'success':
-        console.log(`${prefix} ✅ ${message}`);
-        break;
-      case 'warning':
-        console.warn(`${prefix} ⚠️  ${message}`);
-        break;
-      case 'error':
-        console.error(`${prefix} ❌ ${message}`);
-        break;
-    }
+    });
   }
 
   private async startProcessor() {
@@ -171,10 +206,18 @@ export class JobProcessorService extends EventEmitter {
 
   private async processNextJob() {
     const jobId = this.processingQueue.shift();
-    if (!jobId) return;
+    if (!jobId) {
+      console.log('[JobProcessor] No jobs in queue');
+      return;
+    }
 
     const job = this.jobs.get(jobId);
-    if (!job) return;
+    if (!job) {
+      console.log(`[JobProcessor] Job ${jobId} not found in memory`);
+      return;
+    }
+    
+    console.log(`[JobProcessor] Starting to process job ${jobId}`);
 
     this.isProcessing = true;
     job.status = 'parsing';
@@ -199,12 +242,14 @@ export class JobProcessorService extends EventEmitter {
 
     try {
       // Step 1: Load price database (0-5%)
+      console.log(`[JobProcessor] ${jobId}: Loading price database...`);
       job.progress = 1;
       job.progressMessage = 'Loading price database...';
       this.emitProgress(job);
       this.emitLog(jobId, 'info', 'Fetching price items from database');
       
       const priceItems = await this.convex.query(api.priceItems.getActive);
+      console.log(`[JobProcessor] ${jobId}: Loaded ${priceItems?.length || 0} price items`);
       
       job.progress = 5;
       job.progressMessage = `Loaded ${priceItems.length} price items`;
@@ -212,25 +257,41 @@ export class JobProcessorService extends EventEmitter {
       this.emitLog(jobId, 'success', `Successfully loaded ${priceItems.length} price items`);
       
       // Step 2: Prepare batches (5-10%)
-      job.progress = 7;
-      job.progressMessage = 'Preparing item batches...';
-      this.emitProgress(job);
-      
+      const isAIMethod = ['COHERE', 'OPENAI'].includes(job.method);
       const totalBatches = Math.ceil(job.items.length / this.BATCH_SIZE);
-      this.emitLog(jobId, 'info', `Created ${totalBatches} batches of ${this.BATCH_SIZE} items each`);
       
-      // Update status to show we're starting to process
-      job.progress = 10;
-      job.progressMessage = `Starting to process ${job.items.length} items in ${totalBatches} batches...`;
-      this.emitProgress(job);
+      if (isAIMethod) {
+        job.progress = 7;
+        job.progressMessage = 'Preparing batches for AI processing...';
+        this.emitProgress(job);
+        
+        this.emitLog(jobId, 'info', `🤖 AI Method (${job.method}): Created ${totalBatches} batches of ${this.BATCH_SIZE} items each for optimal API performance`);
+        
+        job.progress = 10;
+        job.progressMessage = `Starting AI processing of ${job.items.length} items in ${totalBatches} batches...`;
+        this.emitProgress(job);
+      } else {
+        job.progress = 10;
+        job.progressMessage = 'Starting LOCAL processing...';
+        this.emitProgress(job);
+        
+        this.emitLog(jobId, 'info', `⚡ LOCAL Method: Processing ${job.items.length} items efficiently (no API rate limits)`);
+        
+        job.progressMessage = `Processing ${job.items.length} items with LOCAL matching...`;
+        this.emitProgress(job);
+      }
       
-      // Update Convex to show progress
+      // Update Convex to show progress and transition to matching status
+      console.log(`[JobProcessor] ${jobId}: Transitioning to matching status`);
+      job.status = 'matching';
       await this.convex.mutation(api.priceMatching.updateJobStatus, {
         jobId: jobId as any,
         status: 'matching' as any,
         progress: 10,
         progressMessage: job.progressMessage,
       });
+      this.emitProgress(job);
+      console.log(`[JobProcessor] ${jobId}: Status updated to matching`);
       
       // Process items in batches
       const results: any[] = [];
@@ -244,6 +305,7 @@ export class JobProcessorService extends EventEmitter {
         // Check if job was cancelled (need to re-fetch from map in case it was updated)
         const currentJob = this.jobs.get(jobId);
         if (currentJob && currentJob.status === 'cancelled') {
+          console.log(`[JobProcessor] ${jobId}: Job cancelled, stopping processing`);
           this.emitLog(jobId, 'warning', 'Job cancelled by user');
           break;
         }
@@ -259,7 +321,12 @@ export class JobProcessorService extends EventEmitter {
         job.progressMessage = `Processing batch ${batchNumber}/${totalBatches} (${itemsToMatchSoFar}/${job.itemCount} items)`;
         
         this.emitProgress(job);
-        this.emitLog(jobId, 'info', `Starting batch ${batchNumber} with ${batch.length} items`);
+        
+        if (isAIMethod) {
+          this.emitLog(jobId, 'info', `🤖 Starting AI batch ${batchNumber}/${totalBatches} with ${batch.length} items`);
+        } else {
+          this.emitLog(jobId, 'info', `⚡ Processing items ${startIdx + 1}-${startIdx + batch.length}`);
+        }
         
         const batchStartTime = Date.now();
         const batchResults = await this.processBatch(job, batch, priceItems, startIdx);
@@ -280,15 +347,21 @@ export class JobProcessorService extends EventEmitter {
         const itemsWithQuantities = processedCount - contextHeaderCount;
         job.progressMessage = `Processed ${itemsWithQuantities}/${job.itemCount} items (${successCount} matched, ${failureCount} failed)`;
         
-        this.emitLog(jobId, 'success', 
-          `Batch ${batchNumber} completed in ${batchDuration}ms - ${batchSuccesses} matches, ${batchFailures} failures`
-        );
+        if (isAIMethod) {
+          this.emitLog(jobId, 'success', 
+            `🤖 AI Batch ${batchNumber}/${totalBatches} completed in ${(batchDuration/1000).toFixed(1)}s - ${batchSuccesses} matches, ${batchFailures} failures`
+          );
+        } else {
+          this.emitLog(jobId, 'success', 
+            `⚡ Processed ${batch.length} items in ${(batchDuration/1000).toFixed(1)}s - ${batchSuccesses} matches, ${batchFailures} failures`
+          );
+        }
         
         // Update local state frequently
         this.emit('job:progress', {
           jobId,
           progress: job.progress,
-          // matchedCount: job.matchedCount, // TODO: Add this field to updateJobStatus mutation
+          matchedCount: job.matchedCount,
           progressMessage: job.progressMessage,
           itemCount: job.itemCount,
           status: job.status,
@@ -323,10 +396,25 @@ export class JobProcessorService extends EventEmitter {
       job.progress = 100;
       job.progressMessage = `Completed: ${successCount} matches out of ${itemsToMatch} items (${matchRate}% success rate)`;
       
+      // Emit final progress update before finalizing
+      this.emitProgress(job);
+      this.emitLog(jobId, 'success', '✅ Job completed successfully!');
+      
+      
+      // Update Convex with final progress before finalization
+      await this.convex.mutation(api.priceMatching.updateJobStatus, {
+        jobId: jobId as any,
+        status: 'completed' as any,
+        progress: 100,
+        progressMessage: job.progressMessage,
+        matchedCount: job.matchedCount,
+      });
+      
       await this.finalizeJob(jobId, job, results);
       
     } catch (error: any) {
-      console.error('Job processing error:', error);
+      console.error(`[JobProcessor] ${jobId}: Processing error:`, error);
+      console.error(`[JobProcessor] ${jobId}: Error stack:`, error.stack);
       job.status = 'failed';
       job.errors.push(error.message);
       
@@ -340,9 +428,11 @@ export class JobProcessorService extends EventEmitter {
       this.emit('job:failed', { jobId, error: error.message });
     } finally {
       this.isProcessing = false;
+      console.log(`[JobProcessor] ${jobId}: Processing complete. Queue length: ${this.processingQueue.length}`);
       
       // Clean up completed/failed jobs after 5 minutes
-      setTimeout(() => {
+      setTimeout(async () => {
+        console.log(`[JobProcessor] ${jobId}: Cleaning up job from memory`);
         this.emitLog(jobId, 'info', 'Cleaning up job from memory');
         this.jobs.delete(jobId);
       }, 5 * 60 * 1000);
@@ -357,6 +447,32 @@ export class JobProcessorService extends EventEmitter {
   ): Promise<any[]> {
     const results = [];
     const batchNumber = Math.floor(startIndex / this.BATCH_SIZE) + 1;
+    
+    // For AI methods, pre-generate embeddings for all items in the batch
+    let batchEmbeddings: Map<string, number[]> | null = null;
+    if (['COHERE', 'OPENAI'].includes(job.method)) {
+      const itemsWithQuantity = batch.filter(item => 
+        item.quantity !== undefined && item.quantity !== null && item.quantity !== 0
+      );
+      
+      if (itemsWithQuantity.length > 0) {
+        this.emitLog(job.jobId, 'info', `Generating ${job.method} embeddings for ${itemsWithQuantity.length} items in batch ${batchNumber}`);
+        
+        try {
+          batchEmbeddings = await this.matchingService.generateBOQEmbeddings(
+            itemsWithQuantity.map(item => ({
+              description: item.description,
+              contextHeaders: item.contextHeaders
+            })),
+            job.method.toLowerCase() as 'cohere' | 'openai'
+          );
+          
+          this.emitLog(job.jobId, 'success', `Generated embeddings for ${batchEmbeddings.size} items`);
+        } catch (error: any) {
+          this.emitLog(job.jobId, 'warning', `Failed to generate batch embeddings: ${error.message}. Falling back to individual processing.`);
+        }
+      }
+    }
 
     for (let i = 0; i < batch.length; i++) {
       // Check if job was cancelled before processing each item
@@ -408,12 +524,28 @@ export class JobProcessorService extends EventEmitter {
         }
         
         const matchStartTime = Date.now();
-        const matchResult = await this.matchingService.matchItem(
-          item.description,
-          job.method as any,
-          priceItems,
-          item.contextHeaders
-        );
+        let matchResult;
+        
+        // Use pre-generated embeddings for AI methods if available
+        if (batchEmbeddings && batchEmbeddings.has(item.description) && ['COHERE', 'OPENAI'].includes(job.method)) {
+          const embedding = batchEmbeddings.get(item.description)!;
+          matchResult = await this.matchingService.matchItemWithEmbedding(
+            item.description,
+            job.method as 'COHERE' | 'OPENAI',
+            embedding,
+            priceItems,
+            item.contextHeaders
+          );
+        } else {
+          // Fallback to regular matching
+          matchResult = await this.matchingService.matchItem(
+            item.description,
+            job.method as any,
+            priceItems,
+            item.contextHeaders
+          );
+        }
+        
         const matchDuration = Date.now() - matchStartTime;
 
         // Log exceptional matches
@@ -549,6 +681,7 @@ export class JobProcessorService extends EventEmitter {
       console.error('Failed to update Convex status:', error);
     }
   }
+
 
   private async finalizeJob(jobId: string, job: ProcessingJob, results: any[]) {
     try {

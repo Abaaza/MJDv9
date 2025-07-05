@@ -3,6 +3,7 @@ export interface RetryOptions {
   delayMs?: number;
   backoffMultiplier?: number;
   maxDelayMs?: number;
+  timeout?: number;
   onRetry?: (error: Error, attempt: number) => void;
 }
 
@@ -15,6 +16,7 @@ export async function withRetry<T>(
     delayMs = 1000,
     backoffMultiplier = 2,
     maxDelayMs = 10000,
+    timeout,
     onRetry
   } = options;
 
@@ -22,7 +24,15 @@ export async function withRetry<T>(
   
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      return await fn();
+      // If timeout is specified, race the function against a timeout
+      if (timeout) {
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error(`Operation timed out after ${timeout}ms`)), timeout);
+        });
+        return await Promise.race([fn(), timeoutPromise]);
+      } else {
+        return await fn();
+      }
     } catch (error) {
       lastError = error as Error;
       

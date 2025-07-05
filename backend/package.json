@@ -43,6 +43,7 @@
     "joi": "^17.13.3",
     "jsonwebtoken": "^9.0.2",
     "lodash": "^4.17.21",
+    "lru-cache": "^11.1.0",
     "morgan": "^1.10.0",
     "multer": "^2.0.1",
     "node-cache": "^5.1.2",

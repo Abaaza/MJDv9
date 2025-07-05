@@ -19,7 +19,7 @@ interface JobLog {
 
 interface JobStatus {
   jobId: string;
-  status: 'pending' | 'parsing' | 'processing' | 'completed' | 'failed' | 'cancelled';
+  status: 'pending' | 'parsing' | 'matching' | 'processing' | 'completed' | 'failed' | 'cancelled';
   progress: number;
   progressMessage: string;
   itemCount: number;
@@ -42,6 +42,14 @@ export function useJobPolling() {
     try {
       const response = await api.get(`/jobs/${jobId}/status`);
       const status: JobStatus = response.data;
+      
+      console.log(`[JobPolling] Status for job ${jobId}:`, {
+        status: status.status,
+        progress: status.progress,
+        matchedCount: status.matchedCount,
+        itemCount: status.itemCount,
+        progressMessage: status.progressMessage
+      });
       
       // Update progress
       setJobProgress(prev => ({
@@ -67,6 +75,7 @@ export function useJobPolling() {
       // Check for status changes
       const previousStatus = lastStatusRef.current.get(jobId);
       if (previousStatus !== status.status) {
+        console.log(`[JobPolling] Status changed for job ${jobId}: ${previousStatus} -> ${status.status}`);
         lastStatusRef.current.set(jobId, status.status);
         
         // Show notifications for status changes
@@ -101,14 +110,14 @@ export function useJobPolling() {
       }
       
       // Continue polling if job is still running
-      if (status.status === 'pending' || status.status === 'parsing' || status.status === 'processing') {
+      if (status.status === 'pending' || status.status === 'parsing' || status.status === 'processing' || status.status === 'matching') {
         return true; // Continue polling
       }
       
       return false; // Stop polling
       
     } catch (error) {
-      console.error('Error polling job status:', error);
+      console.error('[JobPolling] Error polling job status:', error);
       return true; // Continue polling on error
     }
   }, []);

@@ -3,8 +3,6 @@ export interface MatchingThresholds {
     local: number;
     cohere: number;
     openai: number;
-    hybrid: number;
-    advanced: number;
     default: number;
   };
   unitMatchBonus: number;
@@ -49,8 +47,6 @@ export const defaultMatchingConfig: MatchingConfig = {
       local: 0.6,
       cohere: 0.5,
       openai: 0.5,
-      hybrid: 0.55,
-      advanced: 0.65,
       default: 0.5
     },
     unitMatchBonus: 10,

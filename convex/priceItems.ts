@@ -52,8 +52,7 @@ export const create = mutation({
 
 export const update = mutation({
   args: {
-    _id: v.id("priceItems"),
-    id: v.optional(v.string()),
+    id: v.id("priceItems"),
     code: v.optional(v.string()),
     ref: v.optional(v.string()),
     description: v.optional(v.string()),
@@ -84,14 +83,23 @@ export const update = mutation({
     type: v.optional(v.string()),
     vehicle_type: v.optional(v.string()),
     vendor: v.optional(v.string()),
+    // Metadata
     isActive: v.optional(v.boolean()),
   },
-  handler: async (ctx, args) => {
-    const { _id, ...updates } = args;
-    await ctx.db.patch(_id, {
+  handler: async (ctx, { id, ...updates }) => {
+    await ctx.db.patch(id, {
       ...updates,
       updatedAt: Date.now(),
     });
+  },
+});
+
+export const getAll = query({
+  handler: async (ctx) => {
+    return await ctx.db
+      .query("priceItems")
+      .filter((q) => q.eq(q.field("isActive"), true))
+      .collect();
   },
 });
 
@@ -99,337 +107,265 @@ export const getActive = query({
   handler: async (ctx) => {
     return await ctx.db
       .query("priceItems")
-      .withIndex("by_active", (q) => q.eq("isActive", true))
+      .filter((q) => q.eq(q.field("isActive"), true))
       .collect();
-  },
-});
-
-export const getActivePaginated = query({
-  args: { paginationOpts: paginationOptsValidator },
-  handler: async (ctx, args) => {
-    return await ctx.db
-      .query("priceItems")
-      .withIndex("by_active", (q) => q.eq("isActive", true))
-      .order("desc")
-      .paginate(args.paginationOpts);
-  },
-});
-
-export const getAll = query({
-  handler: async (ctx) => {
-    return await ctx.db.query("priceItems").collect();
-  },
-});
-
-export const getAllPaginated = query({
-  args: { paginationOpts: paginationOptsValidator },
-  handler: async (ctx, args) => {
-    return await ctx.db
-      .query("priceItems")
-      .order("desc")
-      .paginate(args.paginationOpts);
   },
 });
 
 export const getById = query({
-  args: { id: v.string() },
+  args: { id: v.id("priceItems") },
   handler: async (ctx, args) => {
-    return await ctx.db
-      .query("priceItems")
-      .withIndex("by_item_id", (q) => q.eq("id", args.id))
-      .first();
+    return await ctx.db.get(args.id);
   },
 });
 
-export const getByCode = query({
-  args: { code: v.string() },
+export const getByIds = query({
+  args: { ids: v.array(v.id("priceItems")) },
   handler: async (ctx, args) => {
-    return await ctx.db
-      .query("priceItems")
-      .withIndex("by_code", (q) => q.eq("code", args.code))
-      .first();
+    const items = [];
+    for (const id of args.ids) {
+      const item = await ctx.db.get(id);
+      if (item) {
+        items.push(item);
+      }
+    }
+    return items;
   },
 });
 
-export const getByCategory = query({
-  args: { category: v.string() },
-  handler: async (ctx, args) => {
-    return await ctx.db
-      .query("priceItems")
-      .withIndex("by_category", (q) => q.eq("category", args.category))
-      .collect();
-  },
-});
-
-export const getByCategoryPaginated = query({
+export const getPaginated = query({
   args: { 
-    category: v.string(),
-    paginationOpts: paginationOptsValidator 
+    paginationOpts: paginationOptsValidator,
+    searchQuery: v.optional(v.string()),
+    category: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    return await ctx.db
-      .query("priceItems")
-      .withIndex("by_category", (q) => q.eq("category", args.category))
-      .order("desc")
-      .paginate(args.paginationOpts);
+    let query = ctx.db.query("priceItems").filter((q) => q.eq(q.field("isActive"), true));
+    
+    // Apply filters if provided
+    if (args.category) {
+      query = query.filter((q) => q.eq(q.field("category"), args.category));
+    }
+    
+    return await query.paginate(args.paginationOpts);
   },
 });
 
-export const updateEmbedding = mutation({
-  args: {
-    _id: v.id("priceItems"),
-    embedding: v.array(v.number()),
-    embeddingProvider: v.union(v.literal("cohere"), v.literal("openai")),
-  },
-  handler: async (ctx, args) => {
-    await ctx.db.patch(args._id, {
-      embedding: args.embedding,
-      embeddingProvider: args.embeddingProvider,
-      updatedAt: Date.now(),
-    });
-  },
-});
-
-export const searchPriceItems = query({
+// Optimized search query
+export const search = query({
   args: {
     query: v.string(),
-    category: v.optional(v.string()),
-    subcategory: v.optional(v.string()),
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const limit = args.limit || 50;
+    const searchQuery = args.query.toLowerCase().trim();
+    const limit = args.limit || 20;
     
-    let results = await ctx.db
-      .query("priceItems")
-      .withSearchIndex("search_price_items", (q) => {
-        let search = q.search("description", args.query);
-        
-        if (args.category) {
-          search = search.eq("category", args.category);
-        }
-        
-        if (args.subcategory) {
-          search = search.eq("subcategory", args.subcategory);
-        }
-        
-        return search.eq("isActive", true);
-      })
-      .take(limit);
-    
-    return results;
-  },
-});
+    if (searchQuery.length < 2) {
+      return [];
+    }
 
-export const searchPriceItemsPaginated = query({
-  args: {
-    query: v.string(),
-    category: v.optional(v.string()),
-    subcategory: v.optional(v.string()),
-    paginationOpts: paginationOptsValidator,
-  },
-  handler: async (ctx, args) => {
-    let queryBuilder = ctx.db
+    // Get all active items
+    const allItems = await ctx.db
       .query("priceItems")
-      .withSearchIndex("search_price_items", (q) => {
-        let search = q.search("description", args.query);
-        
-        if (args.category) {
-          search = search.eq("category", args.category);
-        }
-        
-        if (args.subcategory) {
-          search = search.eq("subcategory", args.subcategory);
-        }
-        
-        return search.eq("isActive", true);
-      });
-    
-    return await queryBuilder.paginate(args.paginationOpts);
-  },
-});
+      .filter((q) => q.eq(q.field("isActive"), true))
+      .collect();
 
-export const bulkImport = mutation({
-  args: {
-    items: v.array(
-      v.object({
-        id: v.string(),
-        code: v.optional(v.string()),
-        ref: v.optional(v.string()),
-        description: v.string(),
-        keywords: v.optional(v.array(v.string())),
-        // Construction-specific fields
-        material_type: v.optional(v.string()),
-        material_grade: v.optional(v.string()),
-        material_size: v.optional(v.string()),
-        material_finish: v.optional(v.string()),
-        category: v.optional(v.string()),
-        subcategory: v.optional(v.string()),
-        work_type: v.optional(v.string()),
-        brand: v.optional(v.string()),
-        unit: v.optional(v.string()),
-        rate: v.number(),
-        labor_rate: v.optional(v.number()),
-        material_rate: v.optional(v.number()),
-        wastage_percentage: v.optional(v.number()),
-        // Supplier info
-        supplier: v.optional(v.string()),
-        location: v.optional(v.string()),
-        availability: v.optional(v.string()),
-        remark: v.optional(v.string()),
-      })
-    ),
-    userId: v.string(),
-  },
-  handler: async (ctx, args) => {
-    const results = {
-      created: 0,
-      updated: 0,
-      skipped: 0,
-      errors: [] as string[],
-    };
-    
-    // Process items in smaller batches to avoid query limits
-    const batchSize = 5; // Reduced to avoid rate limits
-    for (let i = 0; i < args.items.length; i += batchSize) {
-      const batch = args.items.slice(i, i + batchSize);
+    // Score each item based on search relevance
+    const scoredItems = allItems.map(item => {
+      let score = 0;
+      const description = (item.description || '').toLowerCase();
+      const code = (item.code || '').toLowerCase();
+      const category = (item.category || '').toLowerCase();
       
-      for (const item of batch) {
-        try {
-          // Skip check for existing item to avoid query limits
-          // Just try to insert, and handle duplicates
-          // Temporarily disable existence check and always create new items
-          
-          // Create new item
-          await ctx.db.insert("priceItems", {
-            ...item,
-            isActive: true,
-            createdAt: Date.now(),
-            updatedAt: Date.now(),
-            createdBy: args.userId as any,
-          });
-          results.created++;
-        } catch (error: any) {
-          results.errors.push(`Item ${item.id}: ${error.message}`);
+      // Exact matches get highest score
+      if (description === searchQuery || code === searchQuery) {
+        score = 100;
+      }
+      // Starts with gets high score
+      else if (description.startsWith(searchQuery) || code.startsWith(searchQuery)) {
+        score = 80;
+      }
+      // Word boundary matches
+      else if (description.includes(' ' + searchQuery) || description.includes(searchQuery + ' ')) {
+        score = 60;
+      }
+      // Contains match
+      else if (description.includes(searchQuery) || code.includes(searchQuery)) {
+        score = 40;
+      }
+      // Category match
+      else if (category.includes(searchQuery)) {
+        score = 30;
+      }
+      // Check other fields
+      else {
+        const otherFields = [
+          item.subcategory,
+          item.material_type,
+          item.brand,
+          item.supplier,
+        ].filter(Boolean).join(' ').toLowerCase();
+        
+        if (otherFields.includes(searchQuery)) {
+          score = 20;
         }
       }
       
-      // Log progress
-      const processed = Math.min(i + batchSize, args.items.length);
-      console.log(`Processed ${processed}/${args.items.length} items`);
-    }
-    
-    return results;
+      return { item, score };
+    });
+
+    // Filter out non-matches and sort by score
+    const matches = scoredItems
+      .filter(({ score }) => score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit)
+      .map(({ item }) => item);
+
+    return matches;
   },
 });
 
-export const bulkCreate = mutation({
+export const setActive = mutation({
   args: {
-    items: v.array(
-      v.object({
-        id: v.string(),
-        code: v.optional(v.string()),
-        ref: v.optional(v.string()),
-        description: v.string(),
-        keywords: v.optional(v.array(v.string())),
-        subCategoryCode: v.optional(v.string()),
-        subCategoryName: v.optional(v.string()),
-        vehicle_make: v.optional(v.string()),
-        vehicle_model: v.optional(v.string()),
-        year: v.optional(v.string()),
-        part_type: v.optional(v.string()),
-        position: v.optional(v.string()),
-        operation: v.optional(v.string()),
-        damage_type: v.optional(v.string()),
-        repair_type: v.optional(v.string()),
-        rate: v.number(),
-        category: v.optional(v.string()),
-        remark: v.optional(v.string()),
-        sub_category: v.optional(v.string()),
-        subcategory: v.optional(v.string()),
-        type: v.optional(v.string()),
-        vehicle_type: v.optional(v.string()),
-        vendor: v.optional(v.string()),
-        unit: v.optional(v.string()),
-      })
-    ),
-    userId: v.id("users"),
+    id: v.id("priceItems"),
+    isActive: v.boolean(),
   },
   handler: async (ctx, args) => {
-    const results = [];
-    for (const item of args.items) {
-      const priceItemId = await ctx.db.insert("priceItems", {
-        ...item,
-        isActive: true,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        createdBy: args.userId,
-      });
-      results.push(priceItemId);
-    }
-    return results;
-  },
-});
-
-export const deactivate = mutation({
-  args: { _id: v.id("priceItems") },
-  handler: async (ctx, args) => {
-    await ctx.db.patch(args._id, {
-      isActive: false,
+    await ctx.db.patch(args.id, {
+      isActive: args.isActive,
       updatedAt: Date.now(),
     });
   },
 });
 
 export const deleteItem = mutation({
-  args: { _id: v.id("priceItems") },
+  args: { id: v.id("priceItems") },
   handler: async (ctx, args) => {
-    await ctx.db.delete(args._id);
+    // Instead of deleting, we'll mark as inactive
+    await ctx.db.patch(args.id, {
+      isActive: false,
+      updatedAt: Date.now(),
+    });
   },
 });
 
-export const getCount = query({
-  handler: async (ctx) => {
-    const items = await ctx.db.query("priceItems").collect();
-    return items.length;
+export const deleteBatch = mutation({
+  args: { ids: v.array(v.id("priceItems")) },
+  handler: async (ctx, args) => {
+    for (const id of args.ids) {
+      await ctx.db.patch(id, {
+        isActive: false,
+        updatedAt: Date.now(),
+      });
+    }
   },
 });
 
-export const getActiveCount = query({
+export const createBatch = mutation({
+  args: {
+    items: v.array(v.object({
+      id: v.string(),
+      code: v.optional(v.string()),
+      ref: v.optional(v.string()),
+      description: v.string(),
+      keywords: v.optional(v.array(v.string())),
+      material_type: v.optional(v.string()),
+      material_grade: v.optional(v.string()),
+      material_size: v.optional(v.string()),
+      material_finish: v.optional(v.string()),
+      category: v.optional(v.string()),
+      subcategory: v.optional(v.string()),
+      work_type: v.optional(v.string()),
+      brand: v.optional(v.string()),
+      unit: v.optional(v.string()),
+      rate: v.number(),
+      labor_rate: v.optional(v.number()),
+      material_rate: v.optional(v.number()),
+      wastage_percentage: v.optional(v.number()),
+      supplier: v.optional(v.string()),
+      location: v.optional(v.string()),
+      availability: v.optional(v.string()),
+      remark: v.optional(v.string()),
+      subCategoryCode: v.optional(v.string()),
+      subCategoryName: v.optional(v.string()),
+      sub_category: v.optional(v.string()),
+      type: v.optional(v.string()),
+      vehicle_type: v.optional(v.string()),
+      vendor: v.optional(v.string()),
+    })),
+    userId: v.id("users"),
+  },
+  handler: async (ctx, { items, userId }) => {
+    const created = [];
+    for (const item of items) {
+      const id = await ctx.db.insert("priceItems", {
+        ...item,
+        isActive: true,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        createdBy: userId,
+      });
+      created.push(id);
+    }
+    return created;
+  },
+});
+
+export const getCategories = query({
   handler: async (ctx) => {
     const items = await ctx.db
       .query("priceItems")
-      .withIndex("by_active", (q) => q.eq("isActive", true))
+      .filter((q) => q.eq(q.field("isActive"), true))
       .collect();
-    return items.length;
+    
+    const categories = new Set<string>();
+    items.forEach(item => {
+      if (item.category) {
+        categories.add(item.category);
+      }
+    });
+    
+    return Array.from(categories).sort();
   },
 });
 
-export const getStats = query({
-  handler: async (ctx) => {
-    const allItems = await ctx.db
+// Internal query for getting items with embeddings
+export const getItemsForEmbedding = internalQuery({
+  args: {
+    provider: v.union(v.literal("cohere"), v.literal("openai")),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const query = ctx.db
       .query("priceItems")
-      .withIndex("by_active", (q) => q.eq("isActive", true))
-      .collect();
+      .filter((q) => q.eq(q.field("isActive"), true));
     
-    // Get unique categories
-    const categories = [...new Set(allItems.map(item => item.category).filter(Boolean))];
+    const items = await query.collect();
     
-    // Count incomplete items
-    const incompleteCount = allItems.filter(item => 
-      !item.category || !item.subcategory || !item.rate || !item.unit || !item.description
-    ).length;
+    // Filter items that don't have embeddings or have embeddings from a different provider
+    const itemsNeedingEmbedding = items.filter(item => 
+      !item.embedding || item.embeddingProvider !== args.provider
+    );
     
-    // Get last updated timestamp
-    const lastUpdated = allItems.reduce((latest, item) => {
-      return item.updatedAt > latest ? item.updatedAt : latest;
-    }, 0);
-    
-    return {
-      totalItems: allItems.length,
-      categories,
-      incompleteCount,
-      lastUpdated,
-    };
+    return args.limit 
+      ? itemsNeedingEmbedding.slice(0, args.limit)
+      : itemsNeedingEmbedding;
+  },
+});
+
+// Update item with embedding
+export const updateEmbedding = mutation({
+  args: {
+    id: v.id("priceItems"),
+    embedding: v.array(v.number()),
+    embeddingProvider: v.union(v.literal("cohere"), v.literal("openai")),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.id, {
+      embedding: args.embedding,
+      embeddingProvider: args.embeddingProvider,
+      updatedAt: Date.now(),
+    });
   },
 });

@@ -68,3 +68,9 @@ export const getJob = query({
     return await ctx.db.get(args.jobId as any);
   },
 });
+
+export const getAll = query({
+  handler: async (ctx) => {
+    return await ctx.db.query("aiMatchingJobs").collect();
+  },
+});

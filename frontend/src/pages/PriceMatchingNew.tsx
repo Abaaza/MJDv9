@@ -38,16 +38,12 @@ interface JobStatus {
   startedAt?: number;
 }
 
-type MatchingMethod = 'LOCAL' | 'COHERE' | 'OPENAI' | 'HYBRID' | 'ADVANCED' | 'LOCAL_UNIT' | 'HYBRID_CATEGORY';
+type MatchingMethod = 'LOCAL' | 'COHERE' | 'OPENAI';
 
 const matchingMethods = [
   { value: 'LOCAL', label: 'Local Matching', description: 'Fast fuzzy string matching' },
-  { value: 'LOCAL_UNIT', label: 'Local Unit-Priority', description: 'Prioritizes unit compatibility' },
-  { value: 'COHERE', label: 'Cohere AI', description: 'Neural embeddings with Cohere' },
-  { value: 'OPENAI', label: 'OpenAI', description: 'GPT embeddings' },
-  { value: 'HYBRID', label: 'Hybrid', description: 'Combines multiple AI services' },
-  { value: 'HYBRID_CATEGORY', label: 'Hybrid Category-Priority', description: 'AI with category emphasis' },
-  { value: 'ADVANCED', label: 'Advanced', description: 'Multi-technique with domain rules' },
+  { value: 'COHERE', label: 'Cohere AI', description: 'Neural semantic matching' },
+  { value: 'OPENAI', label: 'OpenAI', description: 'GPT-powered matching' },
 ];
 
 export default function PriceMatchingNew() {
@@ -70,7 +66,7 @@ export default function PriceMatchingNew() {
     clientId: '',
     clientName: '',
     projectName: '',
-    matchingMethod: 'ADVANCED',
+    matchingMethod: 'LOCAL',
     file: null,
   });
 
@@ -92,6 +88,27 @@ export default function PriceMatchingNew() {
       };
     }
   }, [currentJobId, subscribeToJob, unsubscribeFromJob]);
+
+  // Fetch job logs from memory API (no Convex, no 429!)
+  const { data: logData } = useQuery({
+    queryKey: ['jobLogs', currentJobId],
+    queryFn: async () => {
+      if (!currentJobId) return { logs: [], progress: null };
+      try {
+        const response = await api.get(`/jobs/${currentJobId}/logs`);
+        return response.data;
+      } catch (error) {
+        console.error('Failed to fetch job logs:', error);
+        return { logs: [], progress: null };
+      }
+    },
+    enabled: !!currentJobId,
+    refetchInterval: 500, // Poll every 500ms for smooth updates
+    staleTime: 0,
+  });
+
+  const memoryLogs = logData?.logs || [];
+  const memoryProgress = logData?.progress;
 
   // Create client mutation
   const createClientMutation = useMutation({
@@ -434,7 +451,7 @@ export default function PriceMatchingNew() {
         </Card>
 
       {/* Progress Section */}
-      {currentJobId && (jobStatus || jobProgress[currentJobId]) && (
+      {currentJobId && (jobStatus || jobProgress[currentJobId] || memoryProgress) && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center justify-between">
@@ -455,7 +472,8 @@ export default function PriceMatchingNew() {
                   <Terminal className="h-4 w-4 mr-1" />
                   {showLogs ? 'Hide' : 'Show'} Logs
                 </Button>
-                {jobStatus?.status !== 'completed' && jobStatus?.status !== 'failed' && jobStatus?.status !== 'stopped' && (
+                {jobStatus?.status !== 'completed' && jobStatus?.status !== 'failed' && jobStatus?.status !== 'stopped' && 
+                 memoryProgress?.status !== 'completed' && memoryProgress?.status !== 'failed' && memoryProgress?.status !== 'stopped' && (
                   <>
                     <Button
                       size="sm"
@@ -483,17 +501,17 @@ export default function PriceMatchingNew() {
               <div>
                 <div className="flex justify-between mb-2">
                   <span className="text-sm font-medium">
-                    {jobProgress[currentJobId]?.progressMessage || jobStatus?.progressMessage || 'Processing...'}
+                    {memoryProgress?.progressMessage || jobProgress[currentJobId]?.progressMessage || jobStatus?.progressMessage || 'Processing...'}
                   </span>
-                  <span className="text-sm font-medium">{jobProgress[currentJobId]?.progress || jobStatus?.progress || 0}%</span>
+                  <span className="text-sm font-medium">{memoryProgress?.progress || jobProgress[currentJobId]?.progress || jobStatus?.progress || 0}%</span>
                 </div>
                 <div className="w-full bg-gray-200 rounded-full h-3">
                   <div
                     className={cn(
                       'h-3 rounded-full transition-all duration-500',
-                      getProgressColor(jobProgress[currentJobId]?.progress || jobStatus?.progress || 0)
+                      getProgressColor(memoryProgress?.progress || jobProgress[currentJobId]?.progress || jobStatus?.progress || 0)
                     )}
-                    style={{ width: `${jobProgress[currentJobId]?.progress || jobStatus?.progress || 0}%` }}
+                    style={{ width: `${memoryProgress?.progress || jobProgress[currentJobId]?.progress || jobStatus?.progress || 0}%` }}
                   />
                 </div>
               </div>
@@ -501,7 +519,7 @@ export default function PriceMatchingNew() {
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <p className="text-gray-500">Status</p>
-                  <p className="font-medium capitalize">{jobProgress[currentJobId]?.status || jobStatus?.status || 'pending'}</p>
+                  <p className="font-medium capitalize">{memoryProgress?.status || jobProgress[currentJobId]?.status || jobStatus?.status || 'pending'}</p>
                 </div>
                 <div>
                   <p className="text-gray-500">Items Matched</p>
@@ -517,7 +535,7 @@ export default function PriceMatchingNew() {
                 </div>
               )}
 
-              {jobStatus?.status === 'completed' && (
+              {(jobStatus?.status === 'completed' || memoryProgress?.status === 'completed') && (
                 <div className="flex gap-3">
                   <Button
                     onClick={() => window.location.href = `/projects#${currentJobId}`}
@@ -542,18 +560,19 @@ export default function PriceMatchingNew() {
       )}
 
       {/* Job Logs */}
-      {currentJobId && showLogs && jobLogs[currentJobId] && (
+      {currentJobId && showLogs && (memoryLogs.length > 0 || memoryProgress) && (
         <JobLogs 
-          logs={jobLogs[currentJobId].map(log => ({
+          logs={memoryLogs.map((log: any) => ({
             jobId: currentJobId,
             level: log.level,
             message: log.message,
-            timestamp: new Date(log.timestamp).toISOString()
+            timestamp: log.timestamp
           }))} 
           title="Processing Logs" 
           className="mt-4"
-          jobStatus={jobStatus?.status}
-          startTime={jobStatus?.startedAt}
+          jobStatus={memoryProgress?.status || jobStatus?.status}
+          startTime={jobStatus?.startedAt || memoryProgress?.startTime}
+          matchingMethod={formData.matchingMethod}
         />
       )}
 

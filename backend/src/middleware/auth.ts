@@ -16,7 +16,7 @@ export function authenticate(req: Request, res: Response, next: NextFunction): v
     console.log(`[Auth] Verifying token for ${req.method} ${req.path}...`);
     
     const payload = verifyAccessToken(token);
-    console.log(`[Auth] Token verified successfully. User: ${payload.email} (ID: ${payload.id})`);
+    console.log(`[Auth] Token verified successfully for ${req.method} ${req.path}`);
     
     req.user = payload;
     next();

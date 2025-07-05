@@ -55,7 +55,25 @@ export async function getUserJobs(req: Request, res: Response): Promise<void> {
   }
 }
 
+export async function getAllJobs(req: Request, res: Response): Promise<void> {
+  try {
+    if (!req.user) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+
+    // Get all jobs from the database
+    const jobs = await convex.query(api.priceMatching.getAllJobs, {});
+
+    res.json(jobs);
+  } catch (error) {
+    console.error('Get all jobs error:', error);
+    res.status(500).json({ error: 'Failed to get all jobs' });
+  }
+}
+
 export async function uploadBOQ(req: Request, res: Response): Promise<void> {
+  console.log('[UploadBOQ] Request received');
   try {
     if (!req.file) {
       res.status(400).json({ error: 'No file uploaded' });
@@ -67,6 +85,7 @@ export async function uploadBOQ(req: Request, res: Response): Promise<void> {
       return;
     }
 
+    console.log('[UploadBOQ] Parsing Excel file:', req.file.originalname);
     // Parse the Excel file
     const parseResult = await excelService.parseExcelFile(req.file.buffer, req.file.originalname);
 
@@ -77,7 +96,7 @@ export async function uploadBOQ(req: Request, res: Response): Promise<void> {
     
     // Store the original file for later use in export
     const fileId = await fileStorage.saveFile(req.file.buffer, req.file.originalname);
-    console.log(`[Upload] Stored original Excel file with ID: ${fileId}`);
+    console.log(`[UploadBOQ] Stored original Excel file with ID: ${fileId}`);
     
     // Get items from all sheets
     const allItems = parseResult.sheets.flatMap(sheet => sheet.items);
@@ -90,6 +109,26 @@ export async function uploadBOQ(req: Request, res: Response): Promise<void> {
       item.quantity > 0
     );
 
+    console.log('[UploadBOQ] Parsed items:', {
+      totalItems: allItems.length,
+      itemsWithQuantities: itemsWithQuantities.length,
+      sheets: parseResult.sheets.length
+    });
+
+    // Create a project if projectName is provided
+    let projectId;
+    if (req.body.projectName && req.body.clientId) {
+      console.log('[UploadBOQ] Creating project:', req.body.projectName);
+      projectId = await convex.mutation(api.projects.create, {
+        name: req.body.projectName,
+        clientId: toConvexId<'clients'>(req.body.clientId),
+        description: `BOQ matching project for ${req.file.originalname}`,
+        status: 'active' as const,
+        userId: toConvexId<'users'>(req.user.id),
+      });
+      console.log('[UploadBOQ] Project created with ID:', projectId);
+    }
+
     // Create a matching job
     const jobId = await convex.mutation(api.priceMatching.createJob, {
       userId: toConvexId<'users'>(req.user.id),
@@ -98,454 +137,70 @@ export async function uploadBOQ(req: Request, res: Response): Promise<void> {
       fileBuffer: [],
       itemCount: itemsWithQuantities.length, // Only count items with quantities
       matchingMethod: req.body.matchingMethod || 'LOCAL',
+      clientName: req.body.clientName || 'Default Client',
       clientId: req.body.clientId ? toConvexId<'clients'>(req.body.clientId) : undefined,
-      // Store headers from all sheets (sanitized)
-      headers: (parseResult.sheets[0]?.headers || []).map(sanitizeFieldName),
-      sheetName: parseResult.sheets[0]?.sheetName || 'Sheet1',
-      originalFileId: fileId,
-      // sheets - removed until Convex schema is updated
+      projectId: projectId,
+      projectName: req.body.projectName,
+      headers: firstSheet?.headers || [],
+      sheetName: firstSheet?.sheetName || 'Sheet1',
+      // Use the fileId from storage instead
+      fileId: fileId,
     });
 
-    // Log activity
-    await convex.mutation(api.activityLogs.create, {
-      userId: toConvexId<'users'>(req.user.id),
-      action: 'uploaded_boq',
-      entityType: 'aiMatchingJobs',
-      entityId: jobId,
-      details: `Uploaded ${req.file.originalname} with ${itemsWithQuantities.length} items (${allItems.length - itemsWithQuantities.length} context headers) across ${parseResult.sheets.length} sheets`,
-    });
-
-    // Get more items to ensure we capture both headers and actual BOQ items
-    // Get ALL items from the first sheet to ensure we find 10 BOQ items
-    const allSheetItems = parseResult.sheets[0]?.items || [];
-    
-    console.log(`[Upload] Total items in first sheet: ${allSheetItems.length}`);
-    console.log(`[Upload] Items with quantities: ${allSheetItems.filter(item => item.quantity && item.quantity > 0).length}`);
-    console.log(`[Upload] Context headers: ${allSheetItems.filter(item => !item.quantity || item.quantity === 0).length}`);
-    
-    // Debug: show ALL items with quantities
-    console.log(`[Upload] ALL items with quantities:`, allSheetItems
-      .filter(item => item.quantity && item.quantity > 0)
-      .map(item => ({
-        row: item.rowNumber,
-        desc: item.description.substring(0, 50) + '...',
-        qty: item.quantity,
-        unit: item.unit
-      }))
-    );
-    
-    // Debug: show first few items
-    console.log(`[Upload] First 10 items in order:`, allSheetItems.slice(0, 10).map(item => ({
-      row: item.rowNumber,
-      desc: item.description.substring(0, 40) + '...',
-      qty: item.quantity,
-      unit: item.unit,
-      hasContext: !!item.contextHeaders
-    })));
-    
-    // Separate context headers and BOQ items
-    const boqItems = allSheetItems.filter(item => item.quantity && item.quantity > 0);
-    
-    // Take more items to show the Excel structure properly
-    // We want to show up to 10 BOQ items plus their context headers
-    const itemsToShow = [];
-    let boqItemCount = 0;
-    
-    for (const item of allSheetItems) {
-      itemsToShow.push(item);
+    // Store parsed items
+    const storedItems = [];
+    for (const item of allItems) {
+      const sanitizedOriginalData = sanitizeObjectKeys(item.originalData || {});
       
-      // Count actual BOQ items (with quantities)
-      if (item.quantity && item.quantity > 0) {
-        boqItemCount++;
-      }
-      
-      // Stop when we have shown 10 BOQ items (plus all their context headers)
-      if (boqItemCount >= 10) break;
-    }
-    
-    // If we have less than 10 BOQ items, just show what we have
-    if (itemsToShow.length === 0) {
-      itemsToShow.push(...allSheetItems.slice(0, 20)); // Show first 20 rows as fallback
-    }
-    
-    console.log(`[Upload] Items to show: ${itemsToShow.length} (${itemsToShow.filter(i => i.quantity && i.quantity > 0).length} BOQ items)`);
-    console.log(`[Upload] Sample items to show:`, itemsToShow.slice(0, 3).map(item => ({
-      row: item.rowNumber,
-      desc: item.description.substring(0, 40) + '...',
-      qty: item.quantity,
-      isHeader: !item.quantity
-    })));
-    
-    const formattedItems = itemsToShow.map((item, index) => {
-      // For context headers, just show the description
-      // For BOQ items, show description with quantity/unit
-      let fullText = item.description;
-      
-      // Add quantity and unit if available (for BOQ items)
-      if (item.quantity && item.unit) {
-        fullText += ` - ${item.quantity} ${item.unit}`;
-      }
-      
-      // Determine the type of item
-      let itemType = 'item'; // default
-      if (!item.quantity || item.quantity === 0) {
-        // Check what kind of header this is
-        if (item.description.match(/^(BILL|SUB-BILL)/i)) {
-          itemType = 'major-header';
-        } else if (item.description.match(/^[A-Z]\d+\s/i)) {
-          itemType = 'section-header';
-        } else if (item.description.match(/^(NOTE|Extra over|Earthwork|Disposal|Excavated|Filling)/i)) {
-          itemType = 'sub-header';
-        } else {
-          itemType = 'context-header';
-        }
-      }
-      
-      return {
-        index: index + 1,
+      const storedItem = {
+        jobId: jobId as any,
         rowNumber: item.rowNumber,
-        fullText: fullText,
         description: item.description,
         quantity: item.quantity,
         unit: item.unit,
-        contextHeaders: item.contextHeaders,
-        hasQuantity: !!(item.quantity && item.quantity > 0),
-        isContextHeader: !item.quantity || item.quantity === 0,
-        itemType: itemType,
-        originalData: item.originalData,
-        // Add indentation level based on context hierarchy
-        indentLevel: item.contextHeaders ? item.contextHeaders.length : 0
+        originalRowData: sanitizedOriginalData,
+        contextHeaders: item.contextHeaders || [],
       };
-    });
-
-    const response = {
-      jobId,
-      fileName: req.file.originalname,
-      itemCount: itemsWithQuantities.length,
-      contextHeaderCount: allItems.length - itemsWithQuantities.length,
-      totalRowsCount: allItems.length,
-      sheets: parseResult.sheets.map(sheet => ({
-        name: sheet.sheetName,
-        itemCount: sheet.items.length,
-        boqItemCount: sheet.items.filter(item => item.quantity && item.quantity > 0).length,
-        headers: sheet.headers,
-      })),
-      items: formattedItems, // All items in Excel order (headers + BOQ items)
-      previewInfo: {
-        totalItemsShown: formattedItems.length,
-        boqItemsShown: formattedItems.filter(item => item.hasQuantity).length,
-        contextHeadersShown: formattedItems.filter(item => item.isContextHeader).length,
-      }
-    };
-    
-    console.log(`[Upload] Response preview - Total items to show: ${response.previewInfo.totalItemsShown}`);
-    console.log(`[Upload] Response preview - BOQ items: ${response.previewInfo.boqItemsShown}`);
-    console.log(`[Upload] Response preview - Context headers: ${response.previewInfo.contextHeadersShown}`);
-    console.log(`[Upload] First 3 formatted items:`, formattedItems.slice(0, 3).map(item => ({
-      row: item.rowNumber,
-      desc: item.description.substring(0, 30) + '...',
-      qty: item.quantity,
-      fullTextPreview: item.fullText.substring(0, 100) + '...'
-    })));
-    
-    res.json(response);
-  } catch (error) {
-    console.error('Upload BOQ error:', error);
-    res.status(500).json({ error: 'Failed to upload BOQ file' });
-  }
-}
-
-export async function startMatching(req: Request, res: Response): Promise<void> {
-  try {
-    const { jobId } = req.params;
-    const { matchingMethod } = req.body;
-
-    if (!req.user) {
-      res.status(401).json({ error: 'Not authenticated' });
-      return;
+      
+      await convex.mutation(api.priceMatching.addParsedItem, storedItem);
+      storedItems.push(storedItem);
     }
 
-    // Get the job
-    const job = await convex.query(api.priceMatching.getJob, { jobId: toConvexId<'aiMatchingJobs'>(jobId) });
-    if (!job) {
-      res.status(404).json({ error: 'Job not found' });
-      return;
-    }
-
-    if (job.userId !== req.user.id) {
-      res.status(403).json({ error: 'Access denied' });
-      return;
-    }
-
-    // Update job status to parsing
-    await convex.mutation(api.priceMatching.updateJobStatus, {
-      jobId: toConvexId<'aiMatchingJobs'>(jobId),
-      status: 'parsing',
-      progress: 10,
-      progressMessage: 'Parsing Excel file...',
-    });
-
-    // Parse the Excel file again to get items
-    // TODO: Fetch file from fileUrl and parse it
-    // For now, we'll skip this step since fileBuffer is not stored
-    // const buffer = await fetchFileFromUrl(job.fileUrl);
-    // const parseResult = await excelService.parseExcelFile(buffer, job.fileName);
-
-    // Store parsed items with full row data from all sheets
-    // TODO: Uncomment when file parsing is implemented
-    // let allItems: any[] = [];
-    // for (const sheet of parseResult.sheets) {
-    //   const sheetItems = sheet.items.map(item => ({
-    //     rowNumber: item.rowNumber,
-    //     description: item.description,
-    //     quantity: item.quantity,
-    //     unit: item.unit,
-    //     originalRowData: item.originalData,
-    //     sheetName: sheet.sheetName,
-    //     contextHeaders: item.contextHeaders,
-    //   }));
-    //   allItems = allItems.concat(sheetItems);
-    // }
-
-    // TODO: Implement storeParsedItems in Convex backend
-    // await convex.mutation(api.priceMatching.storeParsedItems, {
-    //   jobId: toConvexId<'aiMatchingJobs'>(jobId),
-    //   items: allItems,
-    // });
-
-    // Start the matching process (in a real implementation, this would be async)
-    // For now, we'll just update the status
-    await convex.mutation(api.priceMatching.updateJobStatus, {
-      jobId: toConvexId<'aiMatchingJobs'>(jobId),
-      status: 'matching',
-      progress: 30,
-      progressMessage: 'Loading price database...',
-    });
-
-    res.json({
-      message: 'Matching started',
-      jobId,
-    });
-  } catch (error) {
-    console.error('Start matching error:', error);
-    res.status(500).json({ error: 'Failed to start matching' });
-  }
-}
-
-export async function getJobStatus(req: Request, res: Response): Promise<void> {
-  try {
-    const { jobId } = req.params;
-
-    if (!req.user) {
-      res.status(401).json({ error: 'Not authenticated' });
-      return;
-    }
-
-    const job = await convex.query(api.priceMatching.getJob, { jobId: toConvexId<'aiMatchingJobs'>(jobId) });
-    if (!job) {
-      res.status(404).json({ error: 'Job not found' });
-      return;
-    }
-
-    if (job.userId !== req.user.id && req.user.role !== 'admin') {
-      res.status(403).json({ error: 'Access denied' });
-      return;
-    }
-
-    res.json(job);
-  } catch (error) {
-    console.error('Get job status error:', error);
-    res.status(500).json({ error: 'Failed to get job status' });
-  }
-}
-
-export async function getMatchResults(req: Request, res: Response): Promise<void> {
-  try {
-    const { jobId } = req.params;
-    console.log(`[API] Getting match results for job: ${jobId}`);
-
-    if (!req.user) {
-      res.status(401).json({ error: 'Not authenticated' });
-      return;
-    }
-
-    console.log(`[API] Querying Convex for job ${jobId} results...`);
-    const results = await convex.query(api.priceMatching.getMatchResults, { jobId: toConvexId<'aiMatchingJobs'>(jobId) });
-    
-    console.log(`[API] Found ${results?.length || 0} results for job ${jobId}`);
-    if (results && results.length > 0) {
-      console.log(`[API] Sample result:`, {
-        rowNumber: results[0].rowNumber,
-        hasMatch: !!results[0].matchedDescription,
-        confidence: results[0].confidence
-      });
-    }
-
-    res.json(results);
-  } catch (error) {
-    console.error('[API] Get match results error:', error);
-    res.status(500).json({ error: 'Failed to get match results' });
-  }
-}
-
-export async function updateMatchResult(req: Request, res: Response): Promise<void> {
-  try {
-    const { resultId } = req.params;
-    const updates = req.body;
-
-    if (!req.user) {
-      res.status(401).json({ error: 'Not authenticated' });
-      return;
-    }
-
-    await convex.mutation(api.priceMatching.updateMatchResult, {
-      resultId: toConvexId<'matchResults'>(resultId),
-      updates,
-      userId: toConvexId<'users'>(req.user.id),
-    });
-
-    res.json({ message: 'Match result updated successfully' });
-  } catch (error) {
-    console.error('Update match result error:', error);
-    res.status(500).json({ error: 'Failed to update match result' });
-  }
-}
-
-export async function exportResults(req: Request, res: Response): Promise<void> {
-  try {
-    const { jobId } = req.params;
-    console.log(`[API/Export] Starting export for job: ${jobId}`);
-
-    if (!req.user) {
-      res.status(401).json({ error: 'Not authenticated' });
-      return;
-    }
-
-    // Get job and results
-    console.log(`[API/Export] Fetching job details...`);
-    const job = await convex.query(api.priceMatching.getJob, { jobId: toConvexId<'aiMatchingJobs'>(jobId) });
-    if (!job) {
-      console.error(`[API/Export] Job ${jobId} not found`);
-      res.status(404).json({ error: 'Job not found' });
-      return;
-    }
-    console.log(`[API/Export] Job found: ${job.fileName}, status: ${job.status}`);
-    console.log(`[API/Export] Original file ID: ${job.originalFileId || 'not found'}`);
-
-    console.log(`[API/Export] Fetching match results...`);
-    const results = await convex.query(api.priceMatching.getMatchResults, { jobId: toConvexId<'aiMatchingJobs'>(jobId) });
-    console.log(`[API/Export] Found ${results?.length || 0} results to export`);
-
-    if (!results || results.length === 0) {
-      console.warn(`[API/Export] No results found for job ${jobId}`);
-    }
-
-    // Try to get the original Excel file if available
-    let originalBuffer: Buffer | null = null;
-    if (job.originalFileId) {
-      console.log(`[API/Export] Retrieving original Excel file: ${job.originalFileId}`);
-      originalBuffer = await fileStorage.getFile(job.originalFileId);
-      if (originalBuffer) {
-        console.log(`[API/Export] Original file retrieved, size: ${originalBuffer.length} bytes`);
-      } else {
-        console.warn(`[API/Export] Could not retrieve original file`);
-      }
-    }
-
-    // Create Excel with results
-    console.log(`[API/Export] Creating Excel file with results...`);
-    const resultBuffer = await excelService.createExcelWithResults(originalBuffer, results, {
-      sheets: [],  // TODO: Get sheets from parsed data
-      headers: job.headers || [],
-      contextHeaders: [],
-      preserveOriginal: true, // Enable format preservation
-    });
-    
-    console.log(`[API/Export] Excel file created, buffer size: ${resultBuffer?.length || 0} bytes`);
-
-    // Set response headers
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename="matched_${job.fileName}"`);
-
-    res.send(resultBuffer);
-    console.log(`[API/Export] Export completed successfully for job ${jobId}`);
-  } catch (error) {
-    console.error('[API/Export] Export results error:', error);
-    res.status(500).json({ error: 'Failed to export results' });
-  }
-}
-
-export async function stopJob(req: Request, res: Response): Promise<void> {
-  try {
-    const { jobId } = req.params;
-
-    if (!req.user) {
-      res.status(401).json({ error: 'Not authenticated' });
-      return;
-    }
-
-    // Get the job
-    const job = await convex.query(api.priceMatching.getJob, { jobId: toConvexId<'aiMatchingJobs'>(jobId) });
-    if (!job) {
-      res.status(404).json({ error: 'Job not found' });
-      return;
-    }
-
-    if (job.userId !== req.user.id && req.user.role !== 'admin') {
-      res.status(403).json({ error: 'Access denied' });
-      return;
-    }
-
-    // Only allow stopping jobs that are in progress
-    if (job.status === 'completed' || job.status === 'failed') {
-      res.status(400).json({ error: 'Job is already finished' });
-      return;
-    }
-
-    // Cancel the job in the processor
-    const cancelled = await jobProcessor.cancelJob(jobId);
-    
-    if (!cancelled) {
-      // If processor couldn't cancel, update Convex directly
-      await convex.mutation(api.priceMatching.updateJobStatus, {
-        jobId: toConvexId<'aiMatchingJobs'>(jobId),
-        status: 'failed',
-        progress: job.progress,
-        error: 'Job stopped by user',
-      });
-    }
+    console.log('[UploadBOQ] Created job:', jobId, 'with', storedItems.length, 'items');
 
     // Log activity
-    await convex.mutation(api.activityLogs.create, {
-      userId: toConvexId<'users'>(req.user.id),
-      action: 'stopped_job',
-      entityType: 'aiMatchingJobs',
-      entityId: jobId,
-      details: `Stopped matching job ${job.fileName}`,
-    });
+    await logActivity(req, 'upload_boq', 'aiMatchingJobs', jobId.toString(), `Uploaded ${req.file.originalname} with ${itemsWithQuantities.length} items`);
 
-    res.json({ message: 'Job stopped successfully' });
+    res.json({
+      jobId: jobId.toString(),
+      fileName: req.file.originalname,
+      itemCount: itemsWithQuantities.length,
+      headers: firstSheet?.headers || [],
+      items: parseResult.sheets.flatMap(sheet => {
+        return sheet.items.map(item => ({
+          index: 0, // Will be set later
+          rowNumber: item.rowNumber,
+          fullText: item.description,
+          description: item.description,
+          quantity: item.quantity,
+          unit: item.unit,
+          type: item.quantity ? 'item' : 'header',
+          contextHeaders: item.contextHeaders || []
+        }));
+      }).map((item, index) => ({ ...item, index: index + 1 })),
+    });
   } catch (error) {
-    console.error('Stop job error:', error);
-    res.status(500).json({ error: 'Failed to stop job' });
+    console.error('[UploadBOQ] Error:', error);
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to upload BOQ' });
   }
 }
 
 export async function uploadAndMatch(req: Request, res: Response): Promise<void> {
+  const requestId = uuidv4().substring(0, 8);
+  console.log(`[UploadAndMatch-${requestId}] Starting upload and match process`);
   const startTime = Date.now();
-  const requestId = `REQ_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   
   try {
-    console.log('\n=== UPLOAD AND MATCH REQUEST START ===');
-    console.log(`Request ID: ${requestId}`);
-    console.log(`Timestamp: ${new Date().toISOString()}`);
-    console.log(`User: ${req.user?.email} (ID: ${req.user?.id})`);
-    console.log(`File: ${req.file?.originalname} (Size: ${req.file?.size} bytes)`);
-    console.log(`Client ID: ${req.body.clientId}`);
-    console.log(`Project Name: ${req.body.projectName}`);
-    console.log(`Matching Method: ${req.body.matchingMethod}`);
-    console.log('=================================\n');
-    
     if (!req.file) {
       res.status(400).json({ error: 'No file uploaded' });
       return;
@@ -556,12 +211,70 @@ export async function uploadAndMatch(req: Request, res: Response): Promise<void>
       return;
     }
 
-    const { clientId, projectName, matchingMethod } = req.body;
+    const { matchingMethod = 'LOCAL', clientName = 'Default Client', clientId, projectName } = req.body;
+    const userId = req.user.id;
 
-    if (!clientId || !projectName || !matchingMethod) {
-      res.status(400).json({ error: 'Missing required fields: clientId, projectName, matchingMethod' });
+    console.log(`[${requestId}] Parameters:`, {
+      fileName: req.file.originalname,
+      fileSize: req.file.size,
+      matchingMethod,
+      clientName,
+      userId
+    });
+
+    // Helper function to generate detailed preview items
+    function generatePreviewItems(items: any[]): any[] {
+      return items.map((item, index) => {
+        // For context headers, just show the description
+        // For BOQ items, show description with quantity/unit
+        let fullText = item.description;
+        
+        // Add quantity and unit if available (for BOQ items)
+        if (item.quantity && item.unit) {
+          fullText += ` - ${item.quantity} ${item.unit}`;
+        }
+        
+        // Determine the type of item
+        let itemType = 'item'; // default
+        if (!item.quantity || item.quantity === 0) {
+          // Check what kind of header this is
+          if (item.description.match(/^(BILL|SUB-BILL)/i)) {
+            itemType = 'major-header';
+          } else if (item.description.match(/^[A-Z]\d+\s/i)) {
+            itemType = 'section-header';
+          } else if (item.description.match(/^(NOTE|Extra over|Earthwork|Disposal|Excavated|Filling)/i)) {
+            itemType = 'sub-header';
+          } else {
+            itemType = 'context-header';
+          }
+        }
+        
+        return {
+          index: index + 1,
+          rowNumber: item.rowNumber,
+          fullText: fullText,
+          description: item.description,
+          quantity: item.quantity,
+          unit: item.unit,
+          type: itemType,
+          contextHeaders: item.contextHeaders || []
+        };
+      });
+    }
+
+    console.log(`[${requestId}] Step 0: Validating matching method...`);
+    if (!['LOCAL', 'COHERE', 'OPENAI'].includes(matchingMethod)) {
+      res.status(400).json({ error: 'Invalid matching method' });
       return;
     }
+    
+    // Add a timeout for the entire operation
+    const operationTimeout = setTimeout(() => {
+      console.error(`[${requestId}] Operation timeout after 2 minutes`);
+      if (!res.headersSent) {
+        res.status(504).json({ error: 'Operation timeout. Please try uploading a smaller file or contact support.' });
+      }
+    }, 120000); // 2 minute timeout
 
     console.log(`[${requestId}] Step 1: Starting Excel file parsing...`);
     const parseStartTime = Date.now();
@@ -612,138 +325,511 @@ export async function uploadAndMatch(req: Request, res: Response): Promise<void>
     console.log(`[${requestId}] Total items: ${allItems.length}`);
     console.log(`[${requestId}] Items with quantities (will be matched): ${itemsWithQuantities.length}`);
     console.log(`[${requestId}] Items without quantities (context headers): ${itemsWithoutQuantities.length}`);
+
+    console.log(`[${requestId}] Step 3: Creating project and job in database...`);
+    const jobCreateStartTime = Date.now();
     
-    if (itemsWithQuantities.length < 10) {
-      console.log(`[${requestId}] Sample items with quantities:`, itemsWithQuantities.map(item => ({
+    // Create a project if projectName is provided
+    let projectId;
+    if (projectName && clientId) {
+      console.log(`[${requestId}] Creating project: ${projectName} for client: ${clientId}`);
+      projectId = await convex.mutation(api.projects.create, {
+        name: projectName,
+        clientId: toConvexId<'clients'>(clientId),
+        description: `BOQ matching project for ${req.file.originalname}`,
+        status: 'active' as const,
+        userId: toConvexId<'users'>(userId),
+      });
+      console.log(`[${requestId}] Project created with ID: ${projectId}`);
+    }
+    
+    // Create a matching job
+    const jobId = await convex.mutation(api.priceMatching.createJob, {
+      userId: toConvexId<'users'>(userId),
+      fileName: req.file.originalname,
+      fileBuffer: [],
+      itemCount: itemsWithQuantities.length, // Only count items with quantities
+      matchingMethod: matchingMethod,
+      clientName: clientName,
+      clientId: clientId ? toConvexId<'clients'>(clientId) : undefined,
+      projectId: projectId,
+      projectName: projectName,
+      headers: firstSheet?.headers || [],
+      sheetName: firstSheet?.sheetName || 'Sheet1',
+      fileId: fileId,
+    });
+
+    console.log(`[${requestId}] Job created with ID: ${jobId}`);
+    
+    const jobCreateEndTime = Date.now();
+    console.log(`[${requestId}] Step 3 Complete: Job creation took ${jobCreateEndTime - jobCreateStartTime}ms`);
+
+    console.log(`[${requestId}] Step 4: Storing parsed items...`);
+    const storeItemsStartTime = Date.now();
+    
+    // Store parsed items - batch them for efficiency
+    const storedItems = [];
+    const batchSize = 25; // Store 25 items at a time
+    
+    for (let i = 0; i < allItems.length; i += batchSize) {
+      const batch = allItems.slice(i, i + batchSize);
+      const batchPromises = batch.map(async (item) => {
+        const sanitizedOriginalData = sanitizeObjectKeys(item.originalData || {});
+        
+        const storedItem = {
+          jobId: jobId as any,
+          rowNumber: item.rowNumber,
+          description: item.description,
+          quantity: item.quantity,
+          unit: item.unit,
+          originalRowData: sanitizedOriginalData,
+          contextHeaders: item.contextHeaders || [],
+        };
+        
+        await convex.mutation(api.priceMatching.addParsedItem, storedItem);
+        return storedItem;
+      });
+      
+      const batchResults = await Promise.all(batchPromises);
+      storedItems.push(...batchResults);
+      
+      console.log(`[${requestId}] Stored batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(allItems.length / batchSize)} (${batchResults.length} items)`);
+    }
+
+    const storeItemsEndTime = Date.now();
+    console.log(`[${requestId}] Step 4 Complete: Storing items took ${storeItemsEndTime - storeItemsStartTime}ms`);
+
+    console.log(`[${requestId}] Step 5: Adding job to processor queue...`);
+    const processorStartTime = Date.now();
+    
+    // Add job to processor queue with all parsed items
+    await jobProcessor.addJob(jobId.toString(), userId.toString(), storedItems, matchingMethod);
+    
+    const processorEndTime = Date.now();
+    console.log(`[${requestId}] Step 5 Complete: Adding to processor took ${processorEndTime - processorStartTime}ms`);
+
+    // Log activity
+    await logActivity(req, 'upload_and_match', 'aiMatchingJobs', jobId.toString(), 
+      `Uploaded ${req.file.originalname} with ${itemsWithQuantities.length} items and started ${matchingMethod} matching`
+    );
+
+    const totalEndTime = Date.now();
+    console.log(`[${requestId}] Total operation time: ${totalEndTime - startTime}ms`);
+    console.log(`[${requestId}] Breakdown:`, {
+      parsing: parseEndTime - parseStartTime,
+      jobCreation: jobCreateEndTime - jobCreateStartTime,
+      itemStorage: storeItemsEndTime - storeItemsStartTime,
+      processorQueue: processorEndTime - processorStartTime,
+      total: totalEndTime - startTime
+    });
+
+    // Clear the timeout since we're done
+    clearTimeout(operationTimeout);
+
+    // Return response with preview items
+    res.json({
+      jobId: jobId.toString(),
+      fileName: req.file.originalname,
+      itemCount: itemsWithQuantities.length,
+      headers: firstSheet?.headers || [],
+      items: generatePreviewItems(allItems), // Include all items in preview
+      startTime: Date.now(),
+    });
+  } catch (error: any) {
+    console.error(`[${requestId}] Upload and match error:`, error);
+    console.error(`[${requestId}] Error stack:`, error.stack);
+    
+    // Clear the timeout on error
+    clearTimeout(operationTimeout!);
+    
+    if (!res.headersSent) {
+      res.status(500).json({ error: error.message || 'Failed to upload and match BOQ' });
+    }
+  }
+}
+
+export async function startMatching(req: Request, res: Response): Promise<void> {
+  const requestId = uuidv4();
+  console.log(`\n[StartMatching-${requestId}] ========== START MATCHING REQUEST ==========`);
+  console.log(`[StartMatching-${requestId}] Time: ${new Date().toISOString()}`);
+  console.log(`[StartMatching-${requestId}] User: ${req.user?.email || 'Unknown'} (ID: ${req.user?.id})`);
+  console.log(`[StartMatching-${requestId}] Job ID: ${req.params.jobId}`);
+  console.log(`[StartMatching-${requestId}] Method: ${req.body.matchingMethod}`);
+  console.log(`[StartMatching-${requestId}] Full request body:`, JSON.stringify(req.body, null, 2));
+  
+  try {
+    const { jobId } = req.params;
+    const { matchingMethod } = req.body;
+
+    if (!req.user) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+
+    // Get the job
+    console.log('[StartMatching] Fetching job from Convex:', jobId);
+    const job = await convex.query(api.priceMatching.getJob, { jobId: toConvexId<'aiMatchingJobs'>(jobId) });
+    if (!job) {
+      console.error('[StartMatching] Job not found:', jobId);
+      res.status(404).json({ error: 'Job not found' });
+      return;
+    }
+
+    if (job.userId !== req.user.id) {
+      res.status(403).json({ error: 'Access denied' });
+      return;
+    }
+
+    console.log('[StartMatching] Job found:', {
+      jobId,
+      userId: job.userId,
+      itemCount: job.itemCount,
+      status: job.status
+    });
+
+    // Get parsed items from the job
+    console.log(`[StartMatching-${requestId}] Fetching parsed items from database...`);
+    const parsedItems = await convex.query(api.priceMatching.getParsedItems, {
+      jobId: toConvexId<'aiMatchingJobs'>(jobId),
+    });
+    
+    console.log(`[StartMatching-${requestId}] Found ${parsedItems.length} parsed items`);
+    if (parsedItems.length > 0) {
+      const itemsWithQty = parsedItems.filter(item => item.quantity && item.quantity > 0).length;
+      const contextHeaders = parsedItems.filter(item => !item.quantity || item.quantity === 0).length;
+      console.log(`[StartMatching-${requestId}] Items breakdown:`);
+      console.log(`[StartMatching-${requestId}]   - Items with quantity: ${itemsWithQty}`);
+      console.log(`[StartMatching-${requestId}]   - Context headers: ${contextHeaders}`);
+      console.log(`[StartMatching-${requestId}] First 3 items:`, parsedItems.slice(0, 3).map(item => ({
         row: item.rowNumber,
         desc: item.description.substring(0, 50) + '...',
         qty: item.quantity,
         unit: item.unit
       })));
     }
-    
-    if (itemsWithoutQuantities.length > 0 && itemsWithoutQuantities.length < 10) {
-      console.log(`[${requestId}] Sample context headers:`, itemsWithoutQuantities.map(item => ({
-        row: item.rowNumber,
-        desc: item.description.substring(0, 50) + '...',
-        context: item.contextHeaders
-      })));
-    }
-    
-    // Create a matching job with correct item count
-    console.log(`[${requestId}] Step 3: Creating matching job in database...`);
-    const jobCreateStartTime = Date.now();
-    let jobId;
-    try {
-      jobId = await convex.mutation(api.priceMatching.createJob, {
-        userId: toConvexId<'users'>(req.user.id),
-        fileName: req.file.originalname,
-        // Provide empty array for fileBuffer until Convex schema is updated
-        fileBuffer: [],
-        itemCount: itemsWithQuantities.length, // Only count items with quantities
-        matchingMethod,
-        clientId: toConvexId<'clients'>(clientId),
-        headers: firstSheet.headers.map(sanitizeFieldName),
-        sheetName: firstSheet.sheetName,
-        originalFileId: fileId,
-        // projectName - removed until Convex schema is updated
-      });
-      const jobCreateEndTime = Date.now();
-      console.log(`[${requestId}] Step 3 Complete: Job created in ${jobCreateEndTime - jobCreateStartTime}ms`);
-      console.log(`[${requestId}] Job ID: ${jobId}`);
-    } catch (createError: any) {
-      console.error(`[${requestId}] ERROR: Failed to create job:`, createError);
-      console.error(`[${requestId}] Error type:`, createError.constructor.name);
-      console.error(`[${requestId}] Error message:`, createError.message);
-      console.error(`[${requestId}] Error stack:`, createError.stack);
-      throw createError;
+
+    if (parsedItems.length === 0) {
+      console.error('[StartMatching] No parsed items found for job:', jobId);
+      res.status(400).json({ error: 'No items found for this job' });
+      return;
     }
 
-    // Log activity
-    await convex.mutation(api.activityLogs.create, {
-      userId: toConvexId<'users'>(req.user.id),
-      action: 'uploaded_boq',
-      entityType: 'aiMatchingJobs',
-      entityId: jobId,
-      details: `Uploaded ${req.file.originalname} with ${itemsWithQuantities.length} items (${itemsWithoutQuantities.length} context headers) for project: ${projectName}`,
-    });
-
-    // Start matching immediately
-    await convex.mutation(api.priceMatching.updateJobStatus, {
-      jobId: toConvexId<'aiMatchingJobs'>(jobId),
-      status: 'parsing',
-      progress: 10,
-      progressMessage: 'Processing Excel file...',
-    });
-
-    // Store parsed items (all items including context headers)
-    // TODO: Implement storeParsedItems in Convex backend
-    // await convex.mutation(api.priceMatching.storeParsedItems, {
-    //   jobId: toConvexId<'aiMatchingJobs'>(jobId),
-    //   items: allItems.map(item => ({
-    //     rowNumber: item.rowNumber,
-    //     description: item.description,
-    //     quantity: item.quantity,
-    //     unit: item.unit,
-    //     originalRowData: sanitizeObjectKeys(item.originalData),
-    //     contextHeaders: item.contextHeaders,
-    //   })),
-    // });
-
-    // Update status to pending
-    await convex.mutation(api.priceMatching.updateJobStatus, {
-      jobId: toConvexId<'aiMatchingJobs'>(jobId),
-      status: 'pending',
-      progress: 0,
-      progressMessage: 'Job queued for processing...',
-    });
-
-    // Add job to the processor queue instead of processing inline
-    console.log(`[${requestId}] Step 4: Adding job to processing queue...`);
-    const queueStartTime = Date.now();
+    // Add job to processor queue
+    console.log(`[StartMatching-${requestId}] Checking processor status before adding job...`);
+    console.log(`[StartMatching-${requestId}] Processor status:`, jobProcessor.getQueueStatus());
     
-    await jobProcessor.addJob(jobId, req.user.id, allItems, matchingMethod);
-    
-    const queueEndTime = Date.now();
-    console.log(`[${requestId}] Step 4 Complete: Job queued in ${queueEndTime - queueStartTime}ms`);
-    console.log(`[${requestId}] Queue status:`, jobProcessor.getQueueStatus());
-
-    const totalTime = Date.now() - startTime;
-    console.log(`[${requestId}] === UPLOAD AND MATCH REQUEST COMPLETE ===`);
-    console.log(`[${requestId}] Total time: ${totalTime}ms`);
-    console.log(`[${requestId}] Response: Job ID ${jobId} with ${itemsWithQuantities.length} items`);
-    console.log(`[${requestId}] =====================================\n`);
-    
-    res.json({
+    console.log(`[StartMatching-${requestId}] Adding job to processor queue:`, {
       jobId,
-      fileName: req.file.originalname,
-      itemCount: itemsWithQuantities.length, // Return count of items with quantities
-      userId: toConvexId<'users'>(req.user.id),
+      userId: req.user.id,
+      itemCount: parsedItems.length,
+      method: matchingMethod
     });
-  } catch (error: any) {
-    const totalTime = Date.now() - startTime;
-    console.error(`[${requestId}] === UPLOAD AND MATCH ERROR ===`);
-    console.error(`[${requestId}] Failed after ${totalTime}ms`);
-    console.error(`[${requestId}] Error type:`, error.constructor.name);
-    console.error(`[${requestId}] Error message:`, error.message);
-    console.error(`[${requestId}] Error stack:`, error.stack);
-    console.error(`[${requestId}] ============================\n`);
-    res.status(500).json({ error: error.message || 'Failed to start matching job' });
+    
+    await jobProcessor.addJob(jobId, req.user.id.toString(), parsedItems, matchingMethod);
+    
+    console.log(`[StartMatching-${requestId}] Job added successfully to processor`);
+    console.log(`[StartMatching-${requestId}] Processor status after:`, jobProcessor.getQueueStatus());
+    console.log(`[StartMatching-${requestId}] ========== REQUEST COMPLETE ==========\n`);
+
+    res.json({
+      success: true,
+      message: 'Matching started',
+      jobId,
+    });
+  } catch (error) {
+    console.error('[StartMatching] Error:', error);
+    res.status(500).json({ error: 'Failed to start matching' });
   }
 }
 
-/* DEPRECATED: Now using JobProcessorService for better rate limit management
-async function processMatchingJob(jobId: string, method: string, userId: string, parsedItems: any[]) {
-  // Old implementation moved to JobProcessorService
-  // This function processed jobs inline which caused rate limiting issues
-  // The new JobProcessorService:
-  // - Processes jobs in a queue
-  // - Batches Convex updates
-  // - Implements proper rate limiting
-  // - Keeps processing state in Node.js memory
-  // - Only uses Convex for data storage
+export async function getJobStatus(req: Request, res: Response): Promise<void> {
+  console.log('[GetJobStatus] Request for job:', req.params.jobId);
+  try {
+    const { jobId } = req.params;
+
+    if (!req.user) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+
+    // First check in-memory status from job processor
+    const inMemoryJob = jobProcessor.getJobStatus(jobId);
+    console.log('[GetJobStatus] In-memory job status:', inMemoryJob ? {
+      status: inMemoryJob.status,
+      progress: inMemoryJob.progress,
+      matchedCount: inMemoryJob.matchedCount,
+      progressMessage: inMemoryJob.progressMessage
+    } : 'Not found in memory');
+    
+    const job = await convex.query(api.priceMatching.getJob, { jobId: toConvexId<'aiMatchingJobs'>(jobId) });
+    if (!job) {
+      res.status(404).json({ error: 'Job not found' });
+      return;
+    }
+
+    console.log('[GetJobStatus] Database job status:', {
+      status: job.status,
+      progress: job.progress,
+      matchedCount: job.matchedCount,
+      progressMessage: job.progressMessage
+    });
+
+    if (job.userId !== req.user.id && req.user.role !== 'admin') {
+      res.status(403).json({ error: 'Access denied' });
+      return;
+    }
+
+    // Merge in-memory status with database status
+    // In-memory status takes precedence for active jobs
+    const status = {
+      _id: job._id,
+      status: inMemoryJob?.status || job.status,
+      progress: inMemoryJob?.progress ?? job.progress,
+      progressMessage: inMemoryJob?.progressMessage || job.progressMessage,
+      itemCount: inMemoryJob?.itemCount || job.itemCount,
+      matchedCount: inMemoryJob?.matchedCount ?? job.matchedCount,
+      error: job.error,
+      startedAt: job.startedAt,
+      completedAt: job.completedAt,
+    };
+
+    console.log('[GetJobStatus] Merged status:', {
+      status: status.status,
+      progress: status.progress,
+      matchedCount: status.matchedCount,
+      progressMessage: status.progressMessage
+    });
+
+    res.json(status);
+  } catch (error) {
+    console.error('[GetJobStatus] Error:', error);
+    res.status(500).json({ error: 'Failed to get job status' });
+  }
 }
-*/
+
+export async function getMatchResults(req: Request, res: Response): Promise<void> {
+  console.log('[GetMatchResults] Request for job:', req.params.jobId);
+  try {
+    const { jobId } = req.params;
+
+    if (!req.user) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+
+    // Get the job to check ownership
+    const job = await convex.query(api.priceMatching.getJob, { jobId: toConvexId<'aiMatchingJobs'>(jobId) });
+    if (!job) {
+      res.status(404).json({ error: 'Job not found' });
+      return;
+    }
+
+    if (job.userId !== req.user.id && req.user.role !== 'admin') {
+      res.status(403).json({ error: 'Access denied' });
+      return;
+    }
+
+    // Get results
+    const results = await convex.query(api.priceMatching.getJobResults, {
+      jobId: toConvexId<'aiMatchingJobs'>(jobId),
+    });
+
+    console.log('[GetMatchResults] Found results:', results.length);
+
+    res.json(results);
+  } catch (error) {
+    console.error('[GetMatchResults] Error:', error);
+    res.status(500).json({ error: 'Failed to get match results' });
+  }
+}
+
+export async function updateMatchResult(req: Request, res: Response): Promise<void> {
+  console.log('[UpdateMatchResult] Request received for resultId:', req.params.resultId);
+  console.log('[UpdateMatchResult] Updates:', req.body);
+  
+  try {
+    const { resultId } = req.params;
+    const updates = req.body;
+
+    if (!req.user) {
+      console.error('[UpdateMatchResult] No user in request');
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+
+    console.log('[UpdateMatchResult] User:', req.user.id);
+
+    // Get the result to check ownership
+    const result = await convex.query(api.priceMatching.getMatchResult, {
+      resultId: toConvexId<'matchResults'>(resultId),
+    });
+
+    if (!result) {
+      console.error('[UpdateMatchResult] Result not found:', resultId);
+      res.status(404).json({ error: 'Result not found' });
+      return;
+    }
+
+    console.log('[UpdateMatchResult] Found result, jobId:', result.jobId);
+
+    // Get the job to check ownership
+    const job = await convex.query(api.priceMatching.getJob, {
+      jobId: result.jobId as any,
+    });
+
+    if (!job || (job.userId !== req.user.id && req.user.role !== 'admin')) {
+      console.error('[UpdateMatchResult] Access denied. Job:', job ? 'exists' : 'not found', 'userId:', job?.userId, 'requestUserId:', req.user.id);
+      res.status(403).json({ error: 'Access denied' });
+      return;
+    }
+
+    console.log('[UpdateMatchResult] Updating result with mutation...');
+    console.log('[UpdateMatchResult] User ID to convert:', req.user.id);
+
+    try {
+      // Update the result
+      await convex.mutation(api.priceMatching.updateMatchResult, {
+        resultId: toConvexId<'matchResults'>(resultId),
+        updates: {
+          matchedDescription: updates.matchedDescription,
+          matchedCode: updates.matchedCode,
+          matchedUnit: updates.matchedUnit,
+          matchedRate: updates.matchedRate,
+          confidence: updates.confidence,
+          totalPrice: updates.totalPrice,
+          notes: updates.notes,
+          isManuallyEdited: updates.isManuallyEdited,
+          matchMethod: updates.matchMethod,
+        },
+        userId: toConvexId<'users'>(req.user.id),
+      });
+
+      console.log('[UpdateMatchResult] Mutation completed successfully');
+    } catch (mutationError) {
+      console.error('[UpdateMatchResult] Mutation error:', {
+        error: mutationError,
+        resultId,
+        userId: req.user.id,
+        updates
+      });
+      throw mutationError;
+    }
+
+    // Log activity
+    await logActivity(req, 'update_match', 'matchResults', resultId, 'Updated match result');
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('[UpdateMatchResult] Error details:', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+      fullError: error
+    });
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to update match result' });
+  }
+}
+
+export async function exportResults(req: Request, res: Response): Promise<void> {
+  try {
+    const { jobId } = req.params;
+
+    if (!req.user) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+
+    // Get the job
+    const job = await convex.query(api.priceMatching.getJob, { jobId: toConvexId<'aiMatchingJobs'>(jobId) });
+    if (!job) {
+      res.status(404).json({ error: 'Job not found' });
+      return;
+    }
+
+    if (job.userId !== req.user.id && req.user.role !== 'admin') {
+      res.status(403).json({ error: 'Access denied' });
+      return;
+    }
+
+    // Get results
+    const results = await convex.query(api.priceMatching.getJobResults, {
+      jobId: toConvexId<'aiMatchingJobs'>(jobId),
+    });
+
+    // Get original file
+    const originalFile = await fileStorage.getFile(job.fileId);
+    if (!originalFile) {
+      res.status(404).json({ error: 'Original file not found' });
+      return;
+    }
+
+    // Export to Excel
+    const exportBuffer = await excelService.exportMatchResults(
+      originalFile,
+      results,
+      {
+        matchingMethod: job.matchingMethod,
+        matchedCount: job.matchedCount,
+        itemCount: job.itemCount,
+      }
+    );
+
+    // Log activity
+    await logActivity(req, 'export_results', 'aiMatchingJobs', jobId, 'Exported match results');
+
+    // Send file
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="matched_${job.fileName}"`);
+    res.send(exportBuffer);
+  } catch (error) {
+    console.error('Export results error:', error);
+    res.status(500).json({ error: 'Failed to export results' });
+  }
+}
+
+export async function stopJob(req: Request, res: Response): Promise<void> {
+  try {
+    const { jobId } = req.params;
+
+    if (!req.user) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+
+    // Get the job to check ownership
+    const job = await convex.query(api.priceMatching.getJob, { jobId: toConvexId<'aiMatchingJobs'>(jobId) });
+    if (!job) {
+      res.status(404).json({ error: 'Job not found' });
+      return;
+    }
+
+    if (job.userId !== req.user.id && req.user.role !== 'admin') {
+      res.status(403).json({ error: 'Access denied' });
+      return;
+    }
+
+    // Cancel the job in the processor
+    const cancelled = await jobProcessor.cancelJob(jobId);
+    
+    if (cancelled) {
+      // Update job status in database
+      await convex.mutation(api.priceMatching.updateJobStatus, {
+        jobId: toConvexId<'aiMatchingJobs'>(jobId),
+        status: 'failed',
+        error: 'Job cancelled by user',
+      });
+
+      // Log activity
+      await logActivity(req, 'stop_job', 'aiMatchingJobs', jobId, 'Stopped matching job');
+
+      res.json({ success: true, message: 'Job stopped' });
+    } else {
+      res.status(400).json({ error: 'Job not found or already completed' });
+    }
+  } catch (error) {
+    console.error('Stop job error:', error);
+    res.status(500).json({ error: 'Failed to stop job' });
+  }
+}
 
 export async function autoSaveResult(req: Request, res: Response): Promise<void> {
   try {
@@ -755,121 +841,145 @@ export async function autoSaveResult(req: Request, res: Response): Promise<void>
       return;
     }
 
-    // Auto-save with minimal validation
-    await convex.mutation(api.priceMatching.autoSaveMatchResult, {
+    // Get the result to check ownership
+    const result = await convex.query(api.priceMatching.getMatchResult, {
       resultId: toConvexId<'matchResults'>(resultId),
-      updates,
-      userId: toConvexId<'users'>(req.user.id),
+    });
+
+    if (!result) {
+      res.status(404).json({ error: 'Result not found' });
+      return;
+    }
+
+    // Get the job to check ownership
+    const job = await convex.query(api.priceMatching.getJob, {
+      jobId: result.jobId as any,
+    });
+
+    if (!job || (job.userId !== req.user.id && req.user.role !== 'admin')) {
+      res.status(403).json({ error: 'Access denied' });
+      return;
+    }
+
+    // Update the result (autosave doesn't change isManuallyEdited)
+    await convex.mutation(api.priceMatching.updateMatchResult, {
+      resultId: toConvexId<'matchResults'>(resultId),
+      updates: {
+        matchedDescription: updates.matchedDescription,
+        matchedCode: updates.matchedCode,
+        matchedUnit: updates.matchedUnit,
+        matchedRate: updates.matchedRate,
+        confidence: updates.confidence,
+        totalPrice: updates.totalPrice,
+        notes: updates.notes,
+      },
     });
 
     res.json({ success: true });
   } catch (error) {
-    console.error('Auto-save error:', error);
-    // Don't fail loudly for auto-save
-    res.status(200).json({ success: false });
+    console.error('Autosave error:', error);
+    res.status(500).json({ error: 'Failed to autosave' });
   }
 }
 
 export async function runMatch(req: Request, res: Response): Promise<void> {
   try {
     const { resultId } = req.params;
-    const { method, jobId } = req.body;
+    const { method = 'LOCAL' } = req.body;
 
     if (!req.user) {
       res.status(401).json({ error: 'Not authenticated' });
       return;
     }
 
-    console.log(`[API] Re-matching result ${resultId} with method ${method}`);
-
-    // Get the existing match result
-    const result = await convex.query(api.priceMatching.getMatchResult, { 
-      resultId: toConvexId<'matchResults'>(resultId) 
+    // Get the result
+    const result = await convex.query(api.priceMatching.getMatchResult, {
+      resultId: toConvexId<'matchResults'>(resultId),
     });
-    
+
     if (!result) {
       res.status(404).json({ error: 'Result not found' });
       return;
     }
 
-    // Get all price items for matching
+    // Get the job to check ownership
+    const job = await convex.query(api.priceMatching.getJob, {
+      jobId: result.jobId as any,
+    });
+
+    if (!job || (job.userId !== req.user.id && req.user.role !== 'admin')) {
+      res.status(403).json({ error: 'Access denied' });
+      return;
+    }
+
+    // Get price items
     const priceItems = await convex.query(api.priceItems.getActive);
-    
-    // Run the matching with the new method
-    const matchingService = MatchingService.getInstance();
+
+    // Run matching
     const matchResult = await matchingService.matchItem(
       result.originalDescription,
       method,
       priceItems,
-      result.contextHeaders
+      result.contextHeaders || []
     );
 
-    // Update the result with the new match
-    const updates = {
-      matchedItemId: matchResult.matchedItemId,
-      matchedDescription: matchResult.matchedDescription,
-      matchedCode: matchResult.matchedCode,
-      matchedUnit: matchResult.matchedUnit,
-      matchedRate: matchResult.matchedRate,
-      confidence: matchResult.confidence,
-      totalPrice: (result.originalQuantity || 0) * (matchResult.matchedRate || 0),
-      notes: `Re-matched using ${method}`,
-      isManuallyEdited: false, // Reset manual edit flag
-    };
-
+    // Update the result
     await convex.mutation(api.priceMatching.updateMatchResult, {
       resultId: toConvexId<'matchResults'>(resultId),
-      updates,
-      userId: toConvexId<'users'>(req.user.id),
+      updates: {
+        matchedItemId: matchResult.matchedItemId,
+        matchedDescription: matchResult.matchedDescription,
+        matchedCode: matchResult.matchedCode,
+        matchedUnit: matchResult.matchedUnit,
+        matchedRate: matchResult.matchedRate,
+        confidence: matchResult.confidence,
+        totalPrice: (result.originalQuantity || 0) * (matchResult.matchedRate || 0),
+        matchMethod: method,
+      },
     });
 
-    console.log(`[API] Re-match completed for result ${resultId}`);
-    res.json({ success: true, ...updates });
+    res.json({ success: true, matchResult });
   } catch (error) {
     console.error('Run match error:', error);
-    res.status(500).json({ error: error instanceof Error ? error.message : 'Match failed' });
+    res.status(500).json({ error: 'Failed to run match' });
   }
 }
 
 export async function deleteJob(req: Request, res: Response): Promise<void> {
   try {
+    const { jobId } = req.params;
+
     if (!req.user) {
       res.status(401).json({ error: 'Not authenticated' });
       return;
     }
 
-    const { jobId } = req.params;
-
-    // Get the job to verify ownership
-    const job = await convex.query(api.priceMatching.getJobById, {
-      jobId: toConvexId<'aiMatchingJobs'>(jobId),
-    });
-
+    // Get the job to check ownership
+    const job = await convex.query(api.priceMatching.getJob, { jobId: toConvexId<'aiMatchingJobs'>(jobId) });
     if (!job) {
       res.status(404).json({ error: 'Job not found' });
       return;
     }
 
-    if (job.userId !== req.user.id) {
-      res.status(403).json({ error: 'Not authorized to delete this job' });
+    if (job.userId !== req.user.id && req.user.role !== 'admin') {
+      res.status(403).json({ error: 'Access denied' });
       return;
     }
 
-    // Cancel job if it's in the processor
-    await jobProcessor.cancelJob(jobId);
-
     // Delete all match results for this job
-    // TODO: Implement deleteJobResults in Convex backend
-    // await convex.mutation(api.priceMatching.deleteJobResults, {
-    //   jobId: toConvexId<'aiMatchingJobs'>(jobId),
-    // });
+    await convex.mutation(api.priceMatching.deleteJobResults, {
+      jobId: toConvexId<'aiMatchingJobs'>(jobId),
+    });
 
-    // Delete the job itself
+    // Delete the job
     await convex.mutation(api.priceMatching.deleteJob, {
       jobId: toConvexId<'aiMatchingJobs'>(jobId),
     });
 
-    res.json({ message: 'Job deleted successfully' });
+    // Log activity
+    await logActivity(req, 'delete_job', 'aiMatchingJobs', jobId, 'Deleted matching job');
+
+    res.json({ success: true });
   } catch (error) {
     console.error('Delete job error:', error);
     res.status(500).json({ error: 'Failed to delete job' });
@@ -892,6 +1002,7 @@ export async function getProcessorStatus(req: Request, res: Response): Promise<v
 }
 
 export async function testLocalMatch(req: Request, res: Response): Promise<void> {
+  console.log('[TestLocalMatch] Request received:', { description: req.body.description });
   try {
     const { description } = req.body;
 
@@ -905,40 +1016,100 @@ export async function testLocalMatch(req: Request, res: Response): Promise<void>
       return;
     }
 
-    console.log(`[API] Testing local match for: "${description}"`);
+    console.log(`[TestLocalMatch] Testing local match for: "${description}"`);
 
     // Get all active price items for matching
+    console.log('[TestLocalMatch] Fetching price items from Convex...');
     const priceItems = await convex.query(api.priceItems.getActive);
+    console.log('[TestLocalMatch] Found price items:', priceItems?.length || 0);
     
     if (!priceItems || priceItems.length === 0) {
+      console.error('[TestLocalMatch] No price items found in database');
       res.status(500).json({ error: 'No price items available for matching' });
       return;
     }
 
     // Run local match test
+    console.log('[TestLocalMatch] Running match with matching service...');
     const matchResult = await matchingService.matchItem(
       description,
       'LOCAL',
       priceItems,
       [] // No context headers for instant test
     );
+    console.log('[TestLocalMatch] Match result:', matchResult);
 
-    // Get top 3 matches if using LOCAL method
-    const allMatches = await matchingService.getTopMatches(
-      description,
-      'LOCAL',
-      priceItems,
-      3
-    );
+    // For now, return just the best match as an array
+    const matches = [{
+      description: matchResult.matchedDescription,
+      code: matchResult.matchedCode,
+      unit: matchResult.matchedUnit,
+      rate: matchResult.matchedRate,
+      confidence: matchResult.confidence,
+    }];
 
-    console.log(`[API] Local test complete. Found ${allMatches.length} matches`);
+    console.log(`[TestLocalMatch] Local test complete. Found 1 match`);
 
     res.json({
-      matches: allMatches,
+      matches: matches,
       bestMatch: matchResult,
     });
   } catch (error) {
-    console.error('Test local match error:', error);
+    console.error('[TestLocalMatch] Error:', error);
     res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to test local match' });
+  }
+}
+
+export async function stopAllJobs(req: Request, res: Response): Promise<void> {
+  try {
+    if (!req.user) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+
+    // Only allow admins or the user to stop their own jobs
+    // For now, let's allow any authenticated user to stop all running jobs
+    console.log(`[StopAllJobs] User ${req.user.id} requested to stop all running jobs`);
+
+    // Get all running jobs from Convex
+    const runningJobs = await convex.query(api.priceMatching.getRunningJobs, {});
+    console.log(`[StopAllJobs] Found ${runningJobs.length} running jobs in Convex`);
+
+    // Cancel all jobs in the processor
+    const cancelledCount = await jobProcessor.cancelAllJobs();
+    console.log(`[StopAllJobs] Cancelled ${cancelledCount} jobs in processor`);
+
+    // Update all running jobs in Convex to failed status
+    let convexUpdateCount = 0;
+    for (const job of runningJobs) {
+      if (job.status !== 'completed' && job.status !== 'failed') {
+        try {
+          await convex.mutation(api.priceMatching.updateJobStatus, {
+            jobId: job._id as any,
+            status: 'failed',
+            error: 'Job stopped by user (bulk stop)',
+          });
+          convexUpdateCount++;
+        } catch (error) {
+          console.error(`[StopAllJobs] Failed to update job ${job._id} in Convex:`, error);
+        }
+      }
+    }
+    console.log(`[StopAllJobs] Updated ${convexUpdateCount} jobs in Convex`);
+
+    // Log activity
+    await logActivity(req, 'stop_all_jobs', 'system', null, `Stopped all running jobs (${cancelledCount} cancelled)`);
+
+    res.json({
+      success: true,
+      message: `Stopped ${cancelledCount} running jobs`,
+      details: {
+        processorCancelled: cancelledCount,
+        convexUpdated: convexUpdateCount,
+      }
+    });
+  } catch (error) {
+    console.error('[StopAllJobs] Error:', error);
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to stop all jobs' });
   }
 }

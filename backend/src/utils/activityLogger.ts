@@ -21,8 +21,8 @@ export async function logActivity(
       entityType,
       entityId,
       details,
-      ipAddress: req.ip || req.socket.remoteAddress,
-      userAgent: req.get('user-agent'),
+      ipAddress: 'REDACTED',
+      userAgent: 'REDACTED',
     });
   } catch (error) {
     console.error('[ActivityLogger] Failed to log activity:', error);

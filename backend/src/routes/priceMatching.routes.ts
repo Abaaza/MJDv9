@@ -9,12 +9,15 @@ import {
   updateMatchResult,
   exportResults,
   stopJob,
+  stopAllJobs,
   autoSaveResult,
   getUserJobs,
+  getAllJobs,
   runMatch,
   uploadAndMatch,
   deleteJob,
   getProcessorStatus,
+  testLocalMatch,
 } from '../controllers/priceMatching.controller.js';
 
 const router = Router();
@@ -24,6 +27,9 @@ router.use(authenticate);
 
 // Get all user jobs
 router.get('/jobs', getUserJobs);
+
+// Get all jobs (for admin/client counting)
+router.get('/all-jobs', getAllJobs);
 
 // Upload BOQ file
 router.post('/upload', uploadExcel, uploadBOQ);
@@ -52,6 +58,9 @@ router.get('/:jobId/export', exportResults);
 // Stop a running job
 router.post('/:jobId/stop', stopJob);
 
+// Stop all running jobs
+router.post('/stop-all', stopAllJobs);
+
 // Auto-save match result
 router.post('/results/:resultId/autosave', autoSaveResult);
 
@@ -65,22 +74,6 @@ router.delete('/:jobId', deleteJob);
 router.get('/processor/status', getProcessorStatus);
 
 // Test local match for single item (instant test)
-router.post('/test/local', async (req, res) => {
-  try {
-    const { description } = req.body;
-    
-    if (!description) {
-      res.status(400).json({ error: 'Description is required' });
-      return;
-    }
-    
-    // Import here to avoid circular dependency
-    const { testLocalMatch } = await import('../controllers/priceMatching.controller.js');
-    await testLocalMatch(req, res);
-  } catch (error) {
-    console.error('Test local match route error:', error);
-    res.status(500).json({ error: 'Failed to test local match' });
-  }
-});
+router.post('/test/local', testLocalMatch);
 
 export default router;

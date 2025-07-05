@@ -414,10 +414,6 @@ export default function Dashboard() {
                       <span className="font-medium">{timeframeData.matches || 0}</span>
                     </div>
                     <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Total Value</span>
-                      <span className="font-medium">{formatPrice(timeframeData.totalValue || 0)}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Activities</span>
                       <span className="font-medium">{timeframeData.activities || 0}</span>
                     </div>
@@ -444,7 +440,7 @@ export default function Dashboard() {
             <Button 
               variant="ghost" 
               size="sm"
-              onClick={() => navigate('/price-matching')}
+              onClick={() => navigate('/projects')}
               className="gap-1"
             >
               View All
@@ -493,7 +489,7 @@ export default function Dashboard() {
                   variant="outline" 
                   size="sm" 
                   className="mt-3"
-                  onClick={() => navigate('/price-matching')}
+                  onClick={() => navigate('/projects')}
                 >
                   Start New Job
                 </Button>

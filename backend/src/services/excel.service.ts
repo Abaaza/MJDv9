@@ -781,6 +781,25 @@ export class ExcelService {
     
     return headerPatterns.some(pattern => pattern.test(description));
   }
+
+  async exportMatchResults(
+    originalBuffer: Buffer,
+    matchResults: any[],
+    jobMetadata: {
+      matchingMethod: string;
+      matchedCount: number;
+      itemCount: number;
+    }
+  ): Promise<Buffer> {
+    console.log(`[ExcelService] Exporting match results...`);
+    console.log(`[ExcelService] Match results count: ${matchResults?.length || 0}`);
+    console.log(`[ExcelService] Job metadata:`, jobMetadata);
+    
+    // Use the createExcelWithResults method with preserveOriginal flag
+    return this.createExcelWithResults(originalBuffer, matchResults, {
+      preserveOriginal: true
+    });
+  }
 }
 
 // Export singleton instance for consistency

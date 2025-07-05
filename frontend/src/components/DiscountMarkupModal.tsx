@@ -45,13 +45,16 @@ export function DiscountMarkupModal({
   
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md" aria-describedby="discount-markup-description">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Percent className="h-5 w-5" />
             Apply Discount or Markup
           </DialogTitle>
         </DialogHeader>
+        <p id="discount-markup-description" className="sr-only">
+          Apply a discount or markup percentage to the selected items total value
+        </p>
         
         <div className="space-y-4">
           {/* Type Selection */}

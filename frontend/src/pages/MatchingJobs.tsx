@@ -768,13 +768,13 @@ export default function Projects() {
 
 
   return (
-    <div className="space-y-6 overflow-x-hidden">
+    <div className="space-y-6">
       {/* Matching Jobs */}
       <Card>
         <CardHeader>
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="flex items-center gap-2">
-              <CardTitle>Projects</CardTitle>
+              <CardTitle>Matching Jobs</CardTitle>
               <div className={cn(
                 "flex items-center gap-1 text-xs px-2 py-1 rounded-full",
                 connected ? "text-green-600 bg-green-50" : "text-red-600 bg-red-50"
@@ -783,48 +783,45 @@ export default function Projects() {
                 {connected ? "Live" : "Offline"}
               </div>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-2">
               {jobs && jobs.some(job => ['pending', 'parsing', 'matching', 'processing'].includes(job.status)) && (
                 <Button
                   variant="destructive"
                   size="sm"
                   onClick={handleStopAllJobs}
                   disabled={stopAllJobsMutation.isPending}
-                  className="bg-red-600 hover:bg-red-700 text-xs sm:text-sm"
+                  className="bg-red-600 hover:bg-red-700"
                 >
                   {stopAllJobsMutation.isPending ? (
-                    <Loader2 className="h-3 w-3 sm:h-4 sm:w-4 mr-1 animate-spin" />
+                    <Loader2 className="h-4 w-4 mr-1 animate-spin" />
                   ) : (
-                    <StopCircle className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+                    <StopCircle className="h-4 w-4 mr-1" />
                   )}
-                  <span className="hidden sm:inline">Stop All Jobs</span>
-                  <span className="sm:hidden">Stop All</span>
+                  Stop All Jobs
                 </Button>
               )}
               {jobs && jobs.length > jobsPerPage && (
-                <div className="flex items-center gap-1 sm:gap-2">
+                <>
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
                     disabled={currentPage === 1}
-                    className="p-1 sm:p-2"
                   >
-                    <ChevronLeft className="h-3 w-3 sm:h-4 sm:w-4" />
+                    <ChevronLeft className="h-4 w-4" />
                   </Button>
-                  <span className="text-xs sm:text-sm text-muted-foreground whitespace-nowrap">
-                    {currentPage}/{totalPages}
+                  <span className="text-sm text-muted-foreground">
+                    Page {currentPage} of {totalPages}
                   </span>
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
                     disabled={currentPage === totalPages}
-                    className="p-1 sm:p-2"
                   >
-                    <ChevronRight className="h-3 w-3 sm:h-4 sm:w-4" />
+                    <ChevronRight className="h-4 w-4" />
                   </Button>
-                </div>
+                </>
               )}
             </div>
           </div>
@@ -833,7 +830,7 @@ export default function Projects() {
           {jobsLoading ? (
             <p className="text-muted-foreground">Loading jobs...</p>
           ) : paginatedJobs && paginatedJobs.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               {paginatedJobs.map((job, index) => (
                 <div
                   key={job._id}
@@ -850,8 +847,8 @@ export default function Projects() {
                   )}
                   style={{ animationDelay: `${index * 50}ms` }}
                 >
-                  <div className="flex items-start justify-between mb-2 gap-2">
-                    <div className="flex items-center gap-2 flex-1 overflow-hidden">
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
                       {getStatusIcon(job.status)}
                       <h4 className="font-medium text-sm truncate" title={job.fileName}>
                         {job.fileName}
@@ -1018,33 +1015,31 @@ export default function Projects() {
                 </div>
                 
                 {/* Action Buttons */}
-                <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+                <div className="flex gap-3">
                   <Button
                     onClick={() => {
                       console.log('[Projects] Opening results modal for job:', selectedJobId);
                       setShowResultsModal(true);
                     }}
-                    className="flex-1 text-sm"
+                    className="flex-1"
                   >
                     <Search className="h-4 w-4 mr-2" />
-                    View Results
+                    View Detailed Results
                   </Button>
                   <Button
                     onClick={() => handleDownloadResults(selectedJobId)}
                     variant="outline"
-                    className="flex-1 text-sm"
+                    className="flex-1"
                   >
                     <Download className="h-4 w-4 mr-2" />
-                    Export
+                    Export Excel
                   </Button>
                   <Button
                     onClick={() => setShowDiscountModal(true)}
                     variant="outline"
-                    className="flex-1 sm:flex-initial text-sm"
                   >
                     <Percent className="h-4 w-4 mr-2" />
-                    <span className="hidden sm:inline">Apply Discount/Markup</span>
-                    <span className="sm:hidden">Discount</span>
+                    Apply Discount/Markup
                   </Button>
                 </div>
                 
@@ -1107,8 +1102,8 @@ export default function Projects() {
 
       {/* Results Modal */}
       {showResultsModal && selectedJobId && selectedJob && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-2 sm:p-4 z-50">
-          <div className="bg-white dark:bg-gray-900 rounded-lg shadow-xl w-full max-w-6xl max-h-[95vh] sm:max-h-[90vh] overflow-hidden">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white dark:bg-gray-900 rounded-lg shadow-xl max-w-6xl w-full max-h-[90vh] overflow-hidden">
             <div className="h-full overflow-y-auto">
               {selectedJob.matchingMethod === 'LOCAL' ? (
                 <LocalMatchResultsModal

@@ -6,6 +6,7 @@ import { JobPollingService } from '../services/jobPolling.service.js';
 import { toConvexId } from '../utils/convexId.js';
 import { fileStorage } from '../services/fileStorage.service.js';
 import { logActivity } from '../utils/activityLogger.js';
+import { logStorage } from '../services/logStorage.service.js';
 
 const convex = getConvexClient();
 const excelService = new ExcelService();
@@ -138,9 +139,20 @@ export async function getJobLogs(req: Request, res: Response): Promise<void> {
   try {
     const { jobId } = req.params;
     
-    const logs = await convex.query(api.jobLogs.getJobLogs, { jobId });
+    // Get logs from memory - no Convex calls, no 429 errors!
+    const logs = logStorage.getLogs(jobId);
     
-    res.json({ logs });
+    // Also get the current progress
+    const progress = logStorage.getProgress(jobId);
+    
+    // Debug logging
+    console.log(`[API] Fetched ${logs.length} logs for job ${jobId} from memory`);
+    
+    res.json({
+      logs,
+      progress,
+      timestamp: new Date().toISOString()
+    });
     
   } catch (error: any) {
     console.error('Get job logs error:', error);

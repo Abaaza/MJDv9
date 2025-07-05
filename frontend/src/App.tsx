@@ -17,7 +17,6 @@ import AdminSettings from './pages/AdminSettings';
 import Profile from './pages/Profile';
 import UserSettings from './pages/UserSettings';
 import Activity from './pages/Activity';
-import TestMatching from './pages/TestMatching';
 import { queryClient } from './lib/query-config';
 import { useTokenRefresh } from './hooks/useTokenRefresh';
 import './styles/animations.css';
@@ -87,14 +86,6 @@ function App() {
                   element={
                     <AdminRoute>
                       <AdminSettings />
-                    </AdminRoute>
-                  }
-                />
-                <Route
-                  path="test-matching"
-                  element={
-                    <AdminRoute>
-                      <TestMatching />
                     </AdminRoute>
                   }
                 />

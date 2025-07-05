@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
 import { Plus, Edit2, Trash2, Phone, Mail, MapPin, User, Building } from 'lucide-react';
@@ -8,8 +8,6 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
-import { useConvex } from 'convex/react';
-import { api as convexApi } from '../../../convex/_generated/api';
 import { useAuthStore } from '../stores/auth.store';
 import { api } from '../lib/api';
 
@@ -25,7 +23,6 @@ interface Client {
 }
 
 export default function Clients() {
-  const convex = useConvex();
   const queryClient = useQueryClient();
   const [showDialog, setShowDialog] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
@@ -106,22 +103,62 @@ export default function Clients() {
     },
   });
 
-  // Get projects count for each client
-  const { data: projectsData = [] } = useQuery({
-    queryKey: ['projects-by-clients'],
+  // Get matching jobs count for each client
+  // Since we can't use Convex directly, let's manually count from displayed jobs
+  const { data: allJobs = [] } = useQuery({
+    queryKey: ['all-matching-jobs'],
     queryFn: async () => {
       try {
-        const projects = await convex.query(convexApi.projects.getAll);
-        return projects;
+        // Fetch user's jobs first (temporary solution)
+        const response = await api.get('/price-matching/jobs');
+        const userJobs = response.data || [];
+        
+        // In a real app, you'd want to create an admin endpoint to get ALL jobs
+        // For now, we'll work with what we have
+        console.log('[Clients] Fetched user jobs:', userJobs);
+        // Log the first job to see its structure
+        if (userJobs.length > 0) {
+          console.log('[Clients] First job structure:', userJobs[0]);
+        }
+        
+        return userJobs;
       } catch (error) {
-        // If projects query fails, return empty array
+        console.error('Error fetching jobs:', error);
         return [];
       }
     },
   });
 
-  const getProjectsCount = (clientId: string) => {
-    return projectsData.filter(p => p.clientId === clientId).length;
+  // Group jobs by client ID first, then map to names
+  const jobsByClient = React.useMemo(() => {
+    // First group by client ID
+    const groupedById: Record<string, number> = {};
+    allJobs.forEach((job: any) => {
+      const clientId = job.clientId;
+      if (clientId) {
+        groupedById[clientId] = (groupedById[clientId] || 0) + 1;
+      }
+    });
+    
+    // Then map IDs to names
+    const groupedByName: Record<string, number> = {};
+    clients.forEach((client: Client) => {
+      const count = groupedById[client._id] || 0;
+      if (count > 0) {
+        groupedByName[client.name] = count;
+      }
+    });
+    
+    console.log('[Clients] Jobs grouped by ID:', groupedById);
+    console.log('[Clients] Jobs grouped by name:', groupedByName);
+    console.log('[Clients] Client mapping:', clients.map((c: Client) => ({ id: c._id, name: c.name })));
+    
+    return groupedByName;
+  }, [allJobs, clients]);
+
+  const getProjectsCount = (clientName: string) => {
+    console.log('[Clients] Getting project count for:', clientName, 'Result:', jobsByClient[clientName]);
+    return jobsByClient[clientName] || 0;
   };
 
   const handleOpenDialog = (client?: Client) => {
@@ -194,15 +231,6 @@ export default function Clients() {
       client.contactPerson?.toLowerCase().includes(searchTerm.toLowerCase())
   });
 
-  // Debug: Also fetch directly from Convex to compare
-  const { data: convexClients } = useQuery({
-    queryKey: ['convex-clients'],
-    queryFn: async () => {
-      const result = await convex.query(convexApi.clients.getAll);
-      console.log('Direct Convex clients:', result);
-      return result;
-    },
-  });
 
   return (
     <div className="space-y-6">
@@ -213,10 +241,6 @@ export default function Clients() {
         </Button>
       </div>
 
-      {/* Debug info */}
-      <div className="text-xs text-muted-foreground">
-        API clients: {clients.length} | Direct Convex: {convexClients?.length || 0}
-      </div>
 
       {/* Search Bar */}
       <Card>
@@ -298,7 +322,7 @@ export default function Clients() {
                   </div>
                 )}
                 <div className="pt-2 text-sm text-muted-foreground">
-                  {getProjectsCount(client._id)} projects
+                  {getProjectsCount(client.name)} projects
                 </div>
               </CardContent>
             </Card>

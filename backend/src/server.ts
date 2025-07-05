@@ -14,19 +14,52 @@ import priceListRoutes from './routes/priceList.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 import clientsRoutes from './routes/clients.routes.js';
 import projectsRoutes from './routes/projects.routes.js';
-import testRoutes from './routes/test.routes.js';
 import jobsRoutes from './routes/jobs.routes.js';
+import healthRoutes from './routes/health.routes.js';
 import { fileStorage } from './services/fileStorage.service.js';
 
 const app = express();
 
-// Security middleware
-app.use(helmet());
+// Security middleware with enhanced configuration
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'"],
+      imgSrc: ["'self'", "data:", "https:"],
+      connectSrc: ["'self'"],
+      fontSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      mediaSrc: ["'self'"],
+      frameSrc: ["'none'"],
+    },
+  },
+  hsts: {
+    maxAge: 31536000,
+    includeSubDomains: true,
+    preload: true,
+  },
+}));
 
-// CORS configuration
+// CORS configuration with additional security
 app.use(cors({
-  origin: env.FRONTEND_URL,
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    // Check if the origin is allowed
+    if (env.FRONTEND_URL === origin) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  exposedHeaders: ['X-Total-Count'],
+  maxAge: 86400, // 24 hours
 }));
 
 // Body parsing middleware
@@ -59,11 +92,22 @@ const statusLimiter = rateLimit({
   skipSuccessfulRequests: true, // Only count failed requests
 });
 
+// Very lenient rate limit for logs endpoint (high frequency polling)
+const logsLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 200, // Allow 200 requests per minute (3.3 per second for 500ms polling)
+  message: 'Too many log requests',
+  skipSuccessfulRequests: true, // Only count failed requests
+});
+
 // Apply status limiter to specific endpoints before general limiter
-app.use('/api/price-matching/:jobId/status', statusLimiter);
-app.use('/api/price-matching/processor/status', statusLimiter);
-app.use('/api/projects/:projectId/jobs', statusLimiter);
-app.use('/api/jobs/:jobId/status', statusLimiter);
+if (!isDevelopment) {
+  app.use('/api/price-matching/:jobId/status', statusLimiter);
+  app.use('/api/price-matching/processor/status', statusLimiter);
+  app.use('/api/projects/:projectId/jobs', statusLimiter);
+  app.use('/api/jobs/:jobId/status', statusLimiter);
+  app.use('/api/jobs/:jobId/logs', logsLimiter);  // Special limiter for logs
+}
 
 // File upload rate limiter (more restrictive)
 const uploadLimiter = rateLimit({
@@ -77,7 +121,10 @@ app.use('/api/projects/upload-and-match', uploadLimiter);
 app.use('/api/price-matching/upload', uploadLimiter);
 app.use('/api/price-matching/upload-and-match', uploadLimiter);
 
-app.use('/api', limiter);
+// Apply general rate limiting in production
+if (!isDevelopment) {
+  app.use('/api', limiter);
+}
 
 // Routes
 app.use('/api/auth', authRoutes);
@@ -87,8 +134,8 @@ app.use('/api/price-list', priceListRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/clients', clientsRoutes);
 app.use('/api/projects', projectsRoutes);
-app.use('/api/test', testRoutes);
 app.use('/api/jobs', jobsRoutes);
+app.use('/api', healthRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
@@ -97,7 +144,7 @@ app.get('/health', (req, res) => {
 
 // Error handling middleware
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error(err.stack);
+  console.error('[Server] An error occurred');
   res.status(500).json({ error: 'Internal server error' });
 });
 
@@ -120,7 +167,7 @@ if (process.env.NODE_ENV !== 'production') {
     console.log('=================================');
     console.log(`📡 HTTP Server: http://localhost:${PORT}`);
     console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
-    console.log(`📊 Convex URL: ${process.env.CONVEX_URL?.substring(0, 50)}...`);
+    console.log(`📊 Convex URL: [CONFIGURED]`);
     console.log('=================================');
     console.log('📝 Key endpoints:');
     console.log('  - POST /api/auth/login');

@@ -96,9 +96,7 @@ export default defineSchema({
     matchingMethod: v.union(
       v.literal("LOCAL"),
       v.literal("COHERE"),
-      v.literal("OPENAI"),
-      v.literal("HYBRID"),
-      v.literal("ADVANCED")
+      v.literal("OPENAI")
     ),
     totalValue: v.optional(v.number()),
     error: v.optional(v.string()),
@@ -210,5 +208,6 @@ export default defineSchema({
     timestamp: v.number(),
   })
     .index("by_job", ["jobId"])
+    .index("by_job_timestamp", ["jobId", "timestamp"])
     .index("by_timestamp", ["timestamp"]),
 });

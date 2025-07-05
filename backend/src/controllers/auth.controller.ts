@@ -86,8 +86,8 @@ export async function login(req: Request<{}, {}, LoginRequest>, res: Response): 
       entityType: 'users',
       entityId: user._id,
       details: 'User logged in',
-      ipAddress: req.ip || req.socket.remoteAddress,
-      userAgent: req.get('user-agent'),
+      ipAddress: 'REDACTED',
+      userAgent: 'REDACTED',
     });
 
     // Set refresh token as httpOnly cookie
@@ -115,7 +115,7 @@ export async function login(req: Request<{}, {}, LoginRequest>, res: Response): 
 
 export async function refresh(req: Request, res: Response): Promise<void> {
   try {
-    console.log('[Auth] Refresh request - Cookies:', Object.keys(req.cookies));
+    console.log('[Auth] Refresh request received');
     const { refreshToken } = req.cookies;
 
     if (!refreshToken) {
@@ -131,7 +131,7 @@ export async function refresh(req: Request, res: Response): Promise<void> {
       payload = verifyRefreshToken(refreshToken);
       console.log('[Auth] Refresh token verified successfully');
     } catch (verifyError: any) {
-      console.log('[Auth] Refresh token verification failed:', verifyError.message);
+      console.log('[Auth] Refresh token verification failed');
       res.status(401).json({ error: 'Invalid refresh token' });
       return;
     }
@@ -208,7 +208,7 @@ export async function getMe(req: Request, res: Response): Promise<void> {
       {
         maxAttempts: 3,
         onRetry: (error, attempt) => {
-          console.log(`Retrying getMe query (attempt ${attempt}):`, error.message);
+          console.log(`Retrying getMe query (attempt ${attempt})`);
         }
       }
     );

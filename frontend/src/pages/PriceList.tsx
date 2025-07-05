@@ -730,7 +730,11 @@ export default function PriceList() {
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <p className="text-muted-foreground">Loading price items...</p>
+            <div className="flex flex-col items-center justify-center py-16 space-y-4">
+              <Loader2 className="h-12 w-12 animate-spin text-primary" />
+              <p className="text-muted-foreground text-lg font-medium">Loading price items...</p>
+              <p className="text-sm text-muted-foreground">This may take a moment for large datasets</p>
+            </div>
           ) : filteredItems.length > 0 ? (
             <>
               {/* Desktop Table */}

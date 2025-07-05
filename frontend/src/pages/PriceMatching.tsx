@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
 import { Upload, FileSpreadsheet, Play, Download, RefreshCw, Search, StopCircle } from 'lucide-react';
@@ -6,6 +6,8 @@ import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { api } from '../lib/api';
 import { cn } from '../lib/utils';
+import { JobLogs } from '../components/JobLogs';
+import { useJobPolling } from '../hooks/useJobPolling';
 
 interface UploadResponse {
   jobId: string;
@@ -13,6 +15,7 @@ interface UploadResponse {
   itemCount: number;
   headers: string[];
   items: any[];
+  startTime?: number;
 }
 
 interface JobStatus {
@@ -23,16 +26,15 @@ interface JobStatus {
   itemCount: number;
   matchedCount: number;
   error?: string;
+  startedAt?: number;
 }
 
-type MatchingMethod = 'LOCAL' | 'COHERE' | 'OPENAI' | 'HYBRID' | 'ADVANCED';
+type MatchingMethod = 'LOCAL' | 'COHERE' | 'OPENAI';
 
 const matchingMethods = [
   { value: 'LOCAL', label: 'Local Matching', description: 'Fast fuzzy string matching' },
   { value: 'COHERE', label: 'Cohere AI', description: 'Neural embeddings with Cohere' },
   { value: 'OPENAI', label: 'OpenAI', description: 'GPT embeddings' },
-  { value: 'HYBRID', label: 'Hybrid', description: 'Combines multiple AI services' },
-  { value: 'ADVANCED', label: 'Advanced', description: 'Multi-technique with domain rules' },
 ];
 
 export default function PriceMatching() {
@@ -41,6 +43,7 @@ export default function PriceMatching() {
   const [uploadedJob, setUploadedJob] = useState<UploadResponse | null>(null);
   const [selectedMethod, setSelectedMethod] = useState<MatchingMethod>('LOCAL');
   const [currentJobId, setCurrentJobId] = useState<string | null>(null);
+  const { connected, jobProgress, jobLogs, subscribeToJob, unsubscribeFromJob } = useJobPolling();
 
   // Upload mutation
   const uploadMutation = useMutation({
@@ -51,6 +54,7 @@ export default function PriceMatching() {
       return response.data;
     },
     onSuccess: (data) => {
+      console.log('[PriceMatching] Upload successful:', data);
       setUploadedJob(data);
       toast.success(`File uploaded: ${data.itemCount} items found`);
     },
@@ -68,6 +72,7 @@ export default function PriceMatching() {
       return response.data;
     },
     onSuccess: (data) => {
+      console.log('[PriceMatching] Matching started successfully:', data);
       setCurrentJobId(data.jobId);
       toast.success('Matching started');
     },
@@ -108,6 +113,28 @@ export default function PriceMatching() {
       return 1000; // Poll every second while in progress
     },
   });
+  
+  // Subscribe to job updates
+  useEffect(() => {
+    if (currentJobId && connected) {
+      console.log('[PriceMatching] Subscribing to job updates:', currentJobId);
+      subscribeToJob(currentJobId);
+      return () => {
+        console.log('[PriceMatching] Unsubscribing from job updates:', currentJobId);
+        unsubscribeFromJob(currentJobId);
+      };
+    }
+  }, [currentJobId, connected, subscribeToJob, unsubscribeFromJob]);
+  
+  // Get logs for current job
+  const currentJobLogs = currentJobId ? jobLogs[currentJobId] || [] : [];
+  const currentJobProgress = currentJobId ? jobProgress[currentJobId] : null;
+  
+  // Merge progress data
+  const mergedJobStatus = currentJobProgress ? {
+    ...jobStatus,
+    ...currentJobProgress,
+  } : jobStatus;
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -120,7 +147,8 @@ export default function PriceMatching() {
 
   const handleUpload = async () => {
     if (!selectedFile) return;
-
+    
+    console.log('[PriceMatching] Starting file upload:', selectedFile.name);
     const formData = new FormData();
     formData.append('file', selectedFile);
     
@@ -129,6 +157,12 @@ export default function PriceMatching() {
 
   const handleStartMatching = () => {
     if (!uploadedJob) return;
+    
+    console.log('[PriceMatching] Starting matching job:', {
+      jobId: uploadedJob.jobId,
+      method: selectedMethod,
+      itemCount: uploadedJob.itemCount
+    });
     
     startMatchingMutation.mutate({
       jobId: uploadedJob.jobId,
@@ -288,9 +322,9 @@ export default function PriceMatching() {
               <div>
                 <div className="flex justify-between mb-2">
                   <span className="text-sm font-medium">
-                    {jobStatus.progressMessage || 'Processing...'}
+                    {mergedJobStatus?.progressMessage || jobStatus.progressMessage || 'Processing...'}
                   </span>
-                  <span className="text-sm font-medium">{jobStatus.progress}%</span>
+                  <span className="text-sm font-medium">{mergedJobStatus?.progress || jobStatus.progress}%</span>
                 </div>
                 <div className="w-full bg-gray-200 rounded-full h-3">
                   <div
@@ -298,7 +332,7 @@ export default function PriceMatching() {
                       'h-3 rounded-full transition-all duration-500',
                       getProgressColor(jobStatus.progress)
                     )}
-                    style={{ width: `${jobStatus.progress}%` }}
+                    style={{ width: `${mergedJobStatus?.progress || jobStatus.progress}%` }}
                   />
                 </div>
               </div>
@@ -306,12 +340,12 @@ export default function PriceMatching() {
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <p className="text-gray-500">Status</p>
-                  <p className="font-medium capitalize">{jobStatus.status}</p>
+                  <p className="font-medium capitalize">{mergedJobStatus?.status || jobStatus.status}</p>
                 </div>
                 <div>
                   <p className="text-gray-500">Items Matched</p>
                   <p className="font-medium">
-                    {jobStatus.matchedCount} / {jobStatus.itemCount}
+                    {mergedJobStatus?.matchedCount || jobStatus.matchedCount} / {mergedJobStatus?.itemCount || jobStatus.itemCount}
                   </p>
                 </div>
               </div>
@@ -325,7 +359,7 @@ export default function PriceMatching() {
               {jobStatus.status === 'completed' && (
                 <div className="flex gap-3">
                   <Button
-                    onClick={() => window.location.href = `/projects/${currentJobId}`}
+                    onClick={() => window.location.href = `/projects?jobId=${currentJobId}`}
                     className="flex-1"
                   >
                     <Search className="mr-2 h-4 w-4" />
@@ -344,6 +378,21 @@ export default function PriceMatching() {
             </div>
           </CardContent>
         </Card>
+      )}
+      
+      {/* Job Logs */}
+      {currentJobId && jobStatus && (
+        <JobLogs
+          logs={currentJobLogs.map(log => ({ 
+            ...log, 
+            jobId: currentJobId,
+            timestamp: new Date(log.timestamp).toISOString() 
+          }))}
+          title="Processing Logs"
+          jobStatus={mergedJobStatus?.status || jobStatus.status}
+          startTime={jobStatus.startedAt || Date.now()}
+          matchingMethod={selectedMethod}
+        />
       )}
     </div>
   );

@@ -3,8 +3,9 @@ import { cn } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
-import { AlertCircle, CheckCircle, Info, AlertTriangle, Terminal, Clock } from 'lucide-react';
+import { AlertCircle, CheckCircle, Info, AlertTriangle, Terminal, Clock, Cpu, Zap, Package, Layers } from 'lucide-react';
 import { format } from 'date-fns';
+import { Progress } from '@/components/ui/progress';
 
 interface JobLog {
   jobId: string;
@@ -19,11 +20,33 @@ interface JobLogsProps {
   title?: string;
   jobStatus?: string;
   startTime?: number;
+  matchingMethod?: string;
 }
 
-export function JobLogs({ logs, className, title = "Processing Logs", jobStatus, startTime }: JobLogsProps) {
+export function JobLogs({ logs, className, title = "Processing Logs", jobStatus, startTime, matchingMethod }: JobLogsProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [elapsedTime, setElapsedTime] = useState('00:00');
+  const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null);
+  const isAIMethod = matchingMethod && ['COHERE', 'OPENAI', 'HYBRID', 'HYBRID_CATEGORY', 'ADVANCED'].includes(matchingMethod);
+
+  // Parse batch progress from logs
+  useEffect(() => {
+    const batchLog = logs.find(log => log.message.includes('Created') && log.message.includes('batches'));
+    if (batchLog) {
+      const match = batchLog.message.match(/Created (\d+) batches/);
+      if (match) {
+        setBatchProgress({ current: 0, total: parseInt(match[1]) });
+      }
+    }
+    
+    const batchStartLog = logs.filter(log => log.message.includes('Starting AI batch') || log.message.includes('Starting batch')).pop();
+    if (batchStartLog) {
+      const match = batchStartLog.message.match(/Starting (?:AI )?batch (\d+)/);
+      if (match) {
+        setBatchProgress(prev => prev ? { ...prev, current: parseInt(match[1]) } : null);
+      }
+    }
+  }, [logs]);
 
   // Auto-scroll to bottom when new logs arrive
   useEffect(() => {
@@ -53,7 +76,22 @@ export function JobLogs({ logs, className, title = "Processing Logs", jobStatus,
     }
   }, [startTime, jobStatus]);
 
-  const getLogIcon = (level: string) => {
+  const getLogIcon = (level: string, message: string) => {
+    // Special icons based on message content
+    if (message.includes('batch') || message.includes('Batch')) {
+      return <Layers className="h-3 w-3" />;
+    }
+    if (message.includes('AI') || message.includes('embedding') || message.includes('semantic')) {
+      return <Cpu className="h-3 w-3" />;
+    }
+    if (message.includes('LOCAL') || message.includes('fuzzy')) {
+      return <Zap className="h-3 w-3" />;
+    }
+    if (message.includes('Processing') || message.includes('Fetching')) {
+      return <Package className="h-3 w-3" />;
+    }
+    
+    // Default icons based on level
     switch (level) {
       case 'info':
         return <Info className="h-3 w-3" />;
@@ -102,6 +140,11 @@ export function JobLogs({ logs, className, title = "Processing Logs", jobStatus,
             <CardTitle className="text-sm font-medium flex items-center gap-2">
               <Terminal className="h-4 w-4" />
               {title}
+              {matchingMethod && (
+                <Badge variant="outline" className="text-xs">
+                  {matchingMethod}
+                </Badge>
+              )}
             </CardTitle>
             <div className="flex items-center gap-2">
               {startTime && (
@@ -156,8 +199,27 @@ export function JobLogs({ logs, className, title = "Processing Logs", jobStatus,
           <CardTitle className="text-sm font-medium flex items-center gap-2">
             <Terminal className="h-4 w-4" />
             {title}
+            {matchingMethod && (
+              <Badge variant="outline" className="text-xs">
+                {matchingMethod}
+              </Badge>
+            )}
           </CardTitle>
           <div className="flex items-center gap-2">
+            {isAIMethod && batchProgress && batchProgress.total > 0 && (
+              <div className="flex items-center gap-2 mr-2">
+                <span className="text-xs text-muted-foreground">Batch:</span>
+                <Badge variant="outline" className="text-xs">
+                  {batchProgress.current} / {batchProgress.total}
+                </Badge>
+                <div className="w-16">
+                  <Progress 
+                    value={(batchProgress.current / batchProgress.total) * 100} 
+                    className="h-1.5"
+                  />
+                </div>
+              </div>
+            )}
             {startTime && (
               <>
                 <span className="text-xs text-muted-foreground">Elapsed:</span>
@@ -179,33 +241,59 @@ export function JobLogs({ logs, className, title = "Processing Logs", jobStatus,
       <CardContent className="p-0">
         <ScrollArea className="h-[300px] w-full" ref={scrollRef}>
           <div className="p-4 space-y-2">
-            {logs.map((log, index) => (
-              <div
-                key={`${log.timestamp}-${index}`}
-                className={cn(
-                  "flex items-start gap-2 text-xs font-mono",
-                  "p-2 rounded-lg bg-muted/50",
-                  "animate-in fade-in slide-in-from-bottom-2 duration-200"
-                )}
-              >
-                <span className={cn("flex-shrink-0 mt-0.5", getLogColor(log.level))}>
-                  {getLogIcon(log.level)}
-                </span>
-                <div className="flex-1 space-y-1">
-                  <div className="flex items-center gap-2">
-                    <Badge variant={getBadgeVariant(log.level)} className="text-xs px-1.5 py-0">
-                      {log.level.toUpperCase()}
-                    </Badge>
-                    <span className="text-muted-foreground">
-                      {format(new Date(log.timestamp), 'HH:mm:ss.SSS')}
-                    </span>
+            {logs.map((log, index) => {
+              const isBatchLog = log.message.includes('batch') || log.message.includes('Batch');
+              const isMatchLog = log.message.includes('Matched:') || log.message.includes('confidence');
+              const isContextHeader = log.message.includes('Context header') || log.message.includes('context header');
+              
+              return (
+                <div
+                  key={`${log.timestamp}-${index}`}
+                  className={cn(
+                    "flex items-start gap-2 text-xs font-mono",
+                    "p-2 rounded-lg",
+                    isBatchLog && isAIMethod ? "bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800" :
+                    isMatchLog ? "bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800" :
+                    isContextHeader ? "bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800" :
+                    "bg-muted/50",
+                    "animate-in fade-in slide-in-from-bottom-2 duration-200"
+                  )}
+                >
+                  <span className={cn("flex-shrink-0 mt-0.5", getLogColor(log.level))}>
+                    {getLogIcon(log.level, log.message)}
+                  </span>
+                  <div className="flex-1 space-y-1">
+                    <div className="flex items-center gap-2">
+                      <Badge variant={getBadgeVariant(log.level)} className="text-xs px-1.5 py-0">
+                        {log.level.toUpperCase()}
+                      </Badge>
+                      <span className="text-muted-foreground">
+                        {format(new Date(log.timestamp), 'HH:mm:ss.SSS')}
+                      </span>
+                      {isBatchLog && isAIMethod && (
+                        <Badge variant="outline" className="text-xs px-1.5 py-0 bg-purple-100 dark:bg-purple-900/50">
+                          BATCH
+                        </Badge>
+                      )}
+                      {isMatchLog && (
+                        <Badge variant="outline" className="text-xs px-1.5 py-0 bg-green-100 dark:bg-green-900/50">
+                          MATCH
+                        </Badge>
+                      )}
+                    </div>
+                    <p className={cn(
+                      "break-words leading-relaxed",
+                      isMatchLog ? "text-green-700 dark:text-green-300 font-medium" :
+                      isBatchLog ? "text-purple-700 dark:text-purple-300 font-medium" :
+                      isContextHeader ? "text-yellow-700 dark:text-yellow-300" :
+                      "text-foreground/90"
+                    )}>
+                      {log.message}
+                    </p>
                   </div>
-                  <p className="text-foreground/90 break-words leading-relaxed">
-                    {log.message}
-                  </p>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </ScrollArea>
       </CardContent>

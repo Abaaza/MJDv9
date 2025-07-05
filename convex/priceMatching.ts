@@ -10,9 +10,7 @@ export const createJob = mutation({
     matchingMethod: v.union(
       v.literal("LOCAL"),
       v.literal("COHERE"),
-      v.literal("OPENAI"),
-      v.literal("HYBRID"),
-      v.literal("ADVANCED")
+      v.literal("OPENAI")
     ),
     clientId: v.optional(v.id("clients")),
     projectId: v.optional(v.id("projects")),
@@ -160,6 +158,16 @@ export const getUserJobs = query({
   },
 });
 
+export const getAllJobs = query({
+  args: {},
+  handler: async (ctx) => {
+    return await ctx.db
+      .query("aiMatchingJobs")
+      .order("desc")
+      .collect();
+  },
+});
+
 export const getJob = query({
   args: {
     jobId: v.id("aiMatchingJobs"),
@@ -234,6 +242,7 @@ export const updateMatchResult = mutation({
       totalPrice: v.optional(v.number()),
       notes: v.optional(v.string()),
       isManuallyEdited: v.optional(v.boolean()),
+      matchMethod: v.optional(v.string()),
     }),
     userId: v.id("users"),
   },
@@ -312,5 +321,23 @@ export const updateTotalValue = mutation({
     await ctx.db.patch(args.jobId, {
       totalValue: args.totalValue,
     });
+  },
+});
+
+export const getRunningJobs = query({
+  args: {},
+  handler: async (ctx) => {
+    // Get all jobs that are not completed or failed
+    const runningJobs = await ctx.db
+      .query("aiMatchingJobs")
+      .filter((q) => 
+        q.and(
+          q.neq(q.field("status"), "completed"),
+          q.neq(q.field("status"), "failed")
+        )
+      )
+      .collect();
+    
+    return runningJobs;
   },
 });

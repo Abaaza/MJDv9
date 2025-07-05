@@ -9,7 +9,13 @@ export function getConvexClient(): ConvexHttpClient {
     if (!url) {
       throw new Error('CONVEX_URL is not configured');
     }
+    
+    // Create client with custom options for better network handling
     convexClient = new ConvexHttpClient(url);
+    
+    // Log successful connection
+    console.log('[Convex] Client initialized with URL:', url.substring(0, 30) + '...');
   }
   return convexClient;
 }
+
