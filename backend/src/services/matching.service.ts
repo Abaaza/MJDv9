@@ -182,13 +182,13 @@ export class MatchingService {
       
       const similarity = this.cosineSimilarity(preGeneratedEmbedding, embedding);
       
-      if (similarity > 0.3) {
-        scoredMatches.push({ item, similarity });
-      }
+      // Always collect all matches regardless of similarity
+      scoredMatches.push({ item, similarity });
     }
     
+    // Always proceed with best match, even if low similarity
     if (scoredMatches.length === 0) {
-      console.warn(`[MatchingService/${method}] No good semantic matches. Falling back to LOCAL.`);
+      console.warn(`[MatchingService/${method}] No embeddings available. Falling back to LOCAL.`);
       return this.localMatch(description, priceItems, contextHeaders);
     }
     
@@ -331,18 +331,14 @@ export class MatchingService {
         score = Math.min(100, score + (commonKeywords.length * 2));
       }
       
-      if (score > 60) {
-        matches.push({ item, score });
-      }
+      // Always collect all matches regardless of score
+      matches.push({ item, score });
     }
     
-    // Sort by score
+    // Sort by score to find the best match
     matches.sort((a, b) => b.score - a.score);
     
-    if (matches.length === 0) {
-      throw new Error('No suitable matches found');
-    }
-    
+    // Always return the best match, even if low confidence
     const bestMatch = matches[0];
     const result: MatchingResult = {
       matchedItemId: bestMatch.item._id,
@@ -454,9 +450,8 @@ export class MatchingService {
       
       const similarity = this.cosineSimilarity(queryEmbedding, embedding);
       
-      if (similarity > 0.3) {
-        scoredMatches.push({ item, similarity });
-      }
+      // Always collect all matches regardless of similarity
+      scoredMatches.push({ item, similarity });
     }
     
     if (scoredMatches.length === 0) {
@@ -549,9 +544,8 @@ export class MatchingService {
       
       const similarity = this.cosineSimilarity(queryEmbedding, embedding);
       
-      if (similarity > 0.3) {
-        scoredMatches.push({ item, similarity });
-      }
+      // Always collect all matches regardless of similarity
+      scoredMatches.push({ item, similarity });
     }
     
     if (scoredMatches.length === 0) {

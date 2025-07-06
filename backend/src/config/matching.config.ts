@@ -44,10 +44,10 @@ export interface MatchingConfig {
 export const defaultMatchingConfig: MatchingConfig = {
   thresholds: {
     minConfidence: {
-      local: 0.6,
-      cohere: 0.5,
-      openai: 0.5,
-      default: 0.5
+      local: 0.1,  // Lowered from 0.6 to return even low confidence matches
+      cohere: 0.1,  // Lowered from 0.5
+      openai: 0.1,  // Lowered from 0.5
+      default: 0.1  // Lowered from 0.5
     },
     unitMatchBonus: 10,
     categoryMatchBonus: 15,
