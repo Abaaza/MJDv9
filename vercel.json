@@ -16,10 +16,7 @@
     "api/**/*.ts": {
       "maxDuration": 300,
       "runtime": "nodejs20.x",
-      "memory": 3008,
-      "environment": {
-        "NODE_OPTIONS": "--enable-source-maps"
-      }
+      "memory": 3008
     },
     "api/price-matching/process-job.ts": {
       "maxDuration": 300,

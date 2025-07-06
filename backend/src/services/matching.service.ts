@@ -967,7 +967,7 @@ export class MatchingService {
       /\b(CFT|cft|SFT|sft|RFT|rft|CUFT|SQFT)\b/i,
       /\b(BRASS|brass)\b/i, // Common in South Asian construction
       /\b(TRIP|trip|LOAD|load)\b/i, // For transportation
-      /\b(\d+(?:'|ft|foot|feet))\s*[xX×]\s*\d+(?:'|ft|foot|feet))/i // Dimension patterns
+      /(\d+(?:'|ft|foot|feet))\s*[xX×]\s*(\d+(?:'|ft|foot|feet))/i // Dimension patterns
     ];
     
     for (const pattern of unitPatterns) {
