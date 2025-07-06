@@ -54,3 +54,11 @@ uploads/
 # Logs
 logs/
 *.log
+
+# Vercel
+.vercel
+.vercel.json.local
+
+# Test files (keep them out of deployment)
+test-files/
+*.test.xlsx
