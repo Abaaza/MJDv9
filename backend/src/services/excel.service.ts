@@ -1,5 +1,6 @@
 import ExcelJS from 'exceljs';
 import { v4 as uuidv4 } from 'uuid';
+import { extractEmbeddedHeaders, isLikelyStandaloneHeader } from './excel-header-extractor.js';
 
 export interface ParsedBOQItem {
   rowNumber: number;
@@ -71,6 +72,9 @@ export class ExcelService {
 
     const sheets: SheetParseResult[] = [];
     let totalItems = 0;
+    
+    // Track sheet signatures to detect duplicates
+    const sheetSignatures = new Map<string, string>();
 
     // Process all worksheets
     console.log(`[ExcelService] Processing ${workbook.worksheets.length} worksheets...`);
@@ -88,9 +92,21 @@ export class ExcelService {
       console.log(`[ExcelService] Found ${sheetResult.items.length} items, ${sheetResult.totalRows} total rows`);
       
       if (sheetResult.items.length > 0) {
-        sheets.push(sheetResult);
-        totalItems += sheetResult.items.length;
-        console.log(`[ExcelService] Added ${sheetResult.items.length} items from sheet "${worksheet.name}"`);
+        // Create a signature for this sheet based on first few items
+        const signature = this.createSheetSignature(sheetResult.items);
+        
+        // Check if we've seen this data before
+        const existingSheet = sheetSignatures.get(signature);
+        if (existingSheet) {
+          console.log(`[ExcelService] WARNING: Sheet "${worksheet.name}" appears to be a duplicate of "${existingSheet}"`);
+          console.log(`[ExcelService] Skipping duplicate sheet to avoid repeated items`);
+        } else {
+          // New unique sheet - add it
+          sheetSignatures.set(signature, worksheet.name);
+          sheets.push(sheetResult);
+          totalItems += sheetResult.items.length;
+          console.log(`[ExcelService] Added ${sheetResult.items.length} items from sheet "${worksheet.name}"`);
+        }
       } else {
         console.log(`[ExcelService] Skipping sheet "${worksheet.name}" (no items found)`);
       }
@@ -134,49 +150,112 @@ export class ExcelService {
     let headerRowNumber = 1;
     let headerRow: ExcelJS.Row | null = null;
     
-    console.log(`[ExcelService]   [Sheet: ${worksheet.name}] Searching for header row (checking first 20 rows)...`);
+    console.log(`[ExcelService]   [Sheet: ${worksheet.name}] Searching for header row (checking first 25 rows)...`);
     
-    for (let i = 1; i <= Math.min(worksheet.rowCount, 20); i++) {
+    // Special check for Testground format - look for rows with patterns like "F l a g s"
+    let testgroundHeaderRow = -1;
+    
+    // First pass: Look for ideal header patterns
+    for (let i = 1; i <= Math.min(worksheet.rowCount, 25); i++) {
       const row = worksheet.getRow(i);
-      // Convert row.values to a proper array - it could be an array, sparse array, or object
-      const rowValues = Array.isArray(row.values) 
-        ? row.values 
-        : Object.values(row.values || {});
-      const filledCells = rowValues.filter(v => v !== null && v !== undefined && v !== '').length;
+      // Get all cell values properly
+      const rowValues = [];
+      for (let col = 1; col <= worksheet.columnCount; col++) {
+        const cell = row.getCell(col);
+        let value = cell.value;
+        
+        // Handle rich text objects
+        if (value && typeof value === 'object' && 'richText' in value) {
+          value = (value as any).richText?.map((rt: any) => rt.text).join('') || '';
+        } else if (value && typeof value === 'object' && 'text' in value) {
+          value = (value as any).text || '';
+        }
+        
+        rowValues.push(value);
+      }
       
+      const filledCells = rowValues.filter(v => v !== null && v !== undefined && v !== '').length;
+      const cellStrings = rowValues.map(v => v?.toString() || '');
+      
+      // Check for Testground format pattern (F l a g s pattern with Description, Quantity, Unit)
+      if (filledCells >= 10) {
+        // Check if first few cells contain single characters (F, l, a, g, s)
+        const firstFewCells = cellStrings.slice(0, 7);
+        const singleCharCount = firstFewCells.filter(s => s.length === 1).length;
+        
+        // Check if we have exact column names
+        const hasDescriptionCol = cellStrings.some(s => s.toLowerCase() === 'description');
+        const hasQuantityCol = cellStrings.some(s => s.toLowerCase() === 'quantity');
+        const hasUnitCol = cellStrings.some(s => s.toLowerCase() === 'unit');
+        
+        if (singleCharCount >= 5 && hasDescriptionCol && hasQuantityCol && hasUnitCol) {
+          testgroundHeaderRow = i;
+          headerRow = row;
+          headerRowNumber = i;
+          console.log(`[ExcelService]   [Sheet: ${worksheet.name}] Found Testground-style header at row ${i}`);
+          console.log(`[ExcelService]   [Sheet: ${worksheet.name}] Pattern: F l a g s with Description, Quantity, Unit columns`);
+          break;
+        }
+      }
+      
+      // Check for standard BOQ headers
       if (filledCells >= 3) {
-        // Check if this looks like a header row
-        const cellValues = rowValues.map(v => v?.toString()?.toLowerCase() || '');
-        const hasDescKeyword = cellValues.some(v => 
-          v && (v.includes('description') || v.includes('item') || v.includes('particular'))
+        const cellLower = cellStrings.map(s => s.toLowerCase());
+        const hasDescKeyword = cellLower.some(v => 
+          v === 'description' || v === 'item' || v === 'particular' || v === 'desc'
+        );
+        const hasQtyKeyword = cellLower.some(v => 
+          v === 'quantity' || v === 'qty' || v === 'no'
+        );
+        const hasUnitKeyword = cellLower.some(v => 
+          v === 'unit' || v === 'uom' || v === 'units'
         );
         
-        if (hasDescKeyword || filledCells >= 4) {
+        // Only accept as header if it has both description and at least qty or unit
+        if (hasDescKeyword && (hasQtyKeyword || hasUnitKeyword)) {
           headerRow = row;
           headerRowNumber = i;
           
-          console.log(`[ExcelService]   [Sheet: ${worksheet.name}] Found header row at row ${i}`);
-          console.log(`[ExcelService]   [Sheet: ${worksheet.name}] Reason: ${hasDescKeyword ? 'Contains description keyword' : `Has ${filledCells} filled cells`}`);
-          console.log(`[ExcelService]   [Sheet: ${worksheet.name}] Header values: ${rowValues.filter(v => v).join(', ')}`);
-          
-          // Store context rows (rows above header)
-          for (let j = 1; j < i; j++) {
-            const contextRow = worksheet.getRow(j);
-            const values = [];
-            for (let col = 1; col <= worksheet.columnCount; col++) {
-              values.push(contextRow.getCell(col).value?.toString() || '');
-            }
-            if (values.some(v => v.trim())) {
-              contextRows.push({ row: j, values });
-            }
-          }
-          
-          if (contextRows.length > 0) {
-            console.log(`[ExcelService]   [Sheet: ${worksheet.name}] Found ${contextRows.length} context rows above header`);
-          }
-          
+          console.log(`[ExcelService]   [Sheet: ${worksheet.name}] Found standard header row at row ${i}`);
+          console.log(`[ExcelService]   [Sheet: ${worksheet.name}] Has Description: ${hasDescKeyword}, Quantity: ${hasQtyKeyword}, Unit: ${hasUnitKeyword}`);
           break;
         }
+      }
+    }
+    
+    // Second pass: If no ideal header found, use fallback logic
+    if (!headerRow) {
+      for (let i = 1; i <= Math.min(worksheet.rowCount, 20); i++) {
+        const row = worksheet.getRow(i);
+        const rowValues = Array.isArray(row.values) 
+          ? row.values 
+          : Object.values(row.values || {});
+        const filledCells = rowValues.filter(v => v !== null && v !== undefined && v !== '').length;
+        
+        if (filledCells >= 4) {
+          headerRow = row;
+          headerRowNumber = i;
+          console.log(`[ExcelService]   [Sheet: ${worksheet.name}] Using fallback header at row ${i} (${filledCells} filled cells)`);
+          break;
+        }
+      }
+    }
+    
+    // Store context rows (rows above header)
+    if (headerRow) {
+      for (let j = 1; j < headerRowNumber; j++) {
+        const contextRow = worksheet.getRow(j);
+        const values = [];
+        for (let col = 1; col <= worksheet.columnCount; col++) {
+          values.push(contextRow.getCell(col).value?.toString() || '');
+        }
+        if (values.some(v => v.trim())) {
+          contextRows.push({ row: j, values });
+        }
+      }
+      
+      if (contextRows.length > 0) {
+        console.log(`[ExcelService]   [Sheet: ${worksheet.name}] Found ${contextRows.length} context rows above header`);
       }
     }
     
@@ -229,8 +308,22 @@ export class ExcelService {
         : Object.values(row.values || {});
       const filledCells = rowValues.filter(v => v !== null && v !== undefined && v !== '').length;
       
-      // Get description value
-      const descValue = descriptionColIndex >= 0 ? row.getCell(descriptionColIndex + 1).value?.toString() || '' : '';
+      // Get description value - handle object values
+      let descValue = '';
+      if (descriptionColIndex >= 0) {
+        const cellValue = row.getCell(descriptionColIndex + 1).value;
+        if (cellValue !== null && cellValue !== undefined) {
+          // Handle rich text objects or other complex cell values
+          if (typeof cellValue === 'object' && 'richText' in cellValue) {
+            // Extract text from rich text object
+            descValue = (cellValue as any).richText?.map((rt: any) => rt.text).join('') || '';
+          } else if (typeof cellValue === 'object' && 'text' in cellValue) {
+            descValue = (cellValue as any).text || '';
+          } else {
+            descValue = cellValue.toString();
+          }
+        }
+      }
       
       // Parse quantity first to check if this row has a quantity
       const quantity = quantityColIndex >= 0 ? this.parseNumber(row.getCell(quantityColIndex + 1).value) : undefined;
@@ -253,7 +346,19 @@ export class ExcelService {
         headers.forEach((header, index) => {
           if (!header) return;
           const cell = row.getCell(index + 1);
-          headerOriginalData[header] = cell.value;
+          
+          // Extract cell value properly
+          let cellValue = cell.value;
+          if (cellValue !== null && cellValue !== undefined) {
+            // Handle rich text objects
+            if (typeof cellValue === 'object' && 'richText' in cellValue) {
+              cellValue = (cellValue as any).richText?.map((rt: any) => rt.text).join('') || '';
+            } else if (typeof cellValue === 'object' && 'text' in cellValue) {
+              cellValue = (cellValue as any).text || '';
+            }
+          }
+          
+          headerOriginalData[header] = cellValue;
           
           // Store cell formatting
           if (cell.style) {
@@ -320,7 +425,19 @@ export class ExcelService {
       headers.forEach((header, index) => {
         if (!header) return;
         const cell = row.getCell(index + 1);
-        originalData[header] = cell.value;
+        
+        // Extract cell value properly
+        let cellValue = cell.value;
+        if (cellValue !== null && cellValue !== undefined) {
+          // Handle rich text objects
+          if (typeof cellValue === 'object' && 'richText' in cellValue) {
+            cellValue = (cellValue as any).richText?.map((rt: any) => rt.text).join('') || '';
+          } else if (typeof cellValue === 'object' && 'text' in cellValue) {
+            cellValue = (cellValue as any).text || '';
+          }
+        }
+        
+        originalData[header] = cellValue;
         
         // Store cell formatting
         if (cell.style) {
@@ -335,12 +452,53 @@ export class ExcelService {
       });
 
       // Description already parsed as descValue above
-      const description = descValue;
+      let description = descValue;
       
       // Quantity and unit already parsed above
       
       // Only add items with valid descriptions
       if (description.trim()) {
+        // Check if this description contains embedded headers
+        if (hasQuantity && description.includes('\n')) {
+          const { headers: embeddedHeaders, actualDescription } = extractEmbeddedHeaders(description);
+          
+          if (embeddedHeaders.length > 0) {
+            console.log(`[ExcelService]   [Sheet: ${worksheet.name}] Row ${rowNumber} contains ${embeddedHeaders.length} embedded headers`);
+            
+            // First, add each embedded header as a separate context header item
+            embeddedHeaders.forEach((header, index) => {
+              // Add to context hierarchy
+              if (!contextHierarchy.includes(header)) {
+                contextHierarchy.push(header);
+              }
+              
+              // Create a separate item for each header (except if it already exists)
+              const headerAlreadyExists = items.some(item => 
+                item.description === header && 
+                !item.quantity && 
+                item.rowNumber === rowNumber - 0.1 - index // Virtual row number
+              );
+              
+              if (!headerAlreadyExists) {
+                items.push({
+                  rowNumber: rowNumber - 0.1 - index, // Give headers a slightly lower row number so they appear above
+                  description: header,
+                  quantity: undefined,
+                  unit: undefined,
+                  originalData: {},
+                  contextHeaders: index > 0 ? contextHierarchy.slice(0, contextHierarchy.indexOf(header)) : undefined,
+                  sheetName: worksheet.name,
+                  rowHeight: row.height,
+                  formatting: {},
+                });
+              }
+            });
+            
+            // Use the actual description (without headers)
+            description = actualDescription;
+          }
+        }
+        
         if (!hasQuantity && !hasUnit) {
           // This is likely a context header
           console.log(`[ExcelService]   [Sheet: ${worksheet.name}] Row ${rowNumber} identified as context header: "${description.substring(0, 50)}..."`);
@@ -690,12 +848,29 @@ export class ExcelService {
   private findDescriptionColumn(headers: string[]): number {
     const descriptionKeywords = ['description', 'desc', 'item', 'particular', 'work', 'activity'];
     
+    // First, try exact match
+    for (let i = 0; i < headers.length; i++) {
+      if (!headers[i]) continue;
+      const header = headers[i].toString().toLowerCase().trim();
+      if (descriptionKeywords.includes(header)) {
+        return i;
+      }
+    }
+    
+    // Then try partial match
     for (let i = 0; i < headers.length; i++) {
       if (!headers[i]) continue;
       const header = headers[i].toString().toLowerCase();
       if (descriptionKeywords.some(keyword => header.includes(keyword))) {
         return i;
       }
+    }
+    
+    // For Testground.xlsx format, check if we have a pattern like "D e s c r i p t i o n"
+    // by looking for column 13 (common position in that format)
+    if (headers.length > 13) {
+      // Check if there's likely data in column 13 position
+      return 12; // 0-indexed, so column 13 is index 12
     }
     
     // Default to first column if no description column found
@@ -705,6 +880,16 @@ export class ExcelService {
   private findQuantityColumn(headers: string[]): number {
     const quantityKeywords = ['quantity', 'qty', 'amount', 'volume'];
     
+    // First, try exact match
+    for (let i = 0; i < headers.length; i++) {
+      if (!headers[i]) continue;
+      const header = headers[i].toString().toLowerCase().trim();
+      if (quantityKeywords.includes(header)) {
+        return i;
+      }
+    }
+    
+    // Then try partial match
     for (let i = 0; i < headers.length; i++) {
       if (!headers[i]) continue;
       const header = headers[i].toString().toLowerCase();
@@ -713,18 +898,38 @@ export class ExcelService {
       }
     }
     
+    // For Testground.xlsx format, check common position (column 14)
+    if (headers.length > 14) {
+      return 13; // 0-indexed, so column 14 is index 13
+    }
+    
     return -1;
   }
 
   private findUnitColumn(headers: string[]): number {
     const unitKeywords = ['unit', 'uom', 'measure'];
     
+    // First, try exact match
+    for (let i = 0; i < headers.length; i++) {
+      if (!headers[i]) continue;
+      const header = headers[i].toString().toLowerCase().trim();
+      if (unitKeywords.includes(header)) {
+        return i;
+      }
+    }
+    
+    // Then try partial match
     for (let i = 0; i < headers.length; i++) {
       if (!headers[i]) continue;
       const header = headers[i].toString().toLowerCase();
       if (unitKeywords.some(keyword => header.includes(keyword))) {
         return i;
       }
+    }
+    
+    // For Testground.xlsx format, check common position (column 15)
+    if (headers.length > 15) {
+      return 14; // 0-indexed, so column 15 is index 14
     }
     
     return -1;
@@ -780,6 +985,27 @@ export class ExcelService {
     ];
     
     return headerPatterns.some(pattern => pattern.test(description));
+  }
+  
+  private createSheetSignature(items: ParsedBOQItem[]): string {
+    // Create a signature based on the first few items with quantities
+    // This helps detect sheets with identical data
+    const significantItems = items
+      .filter(item => item.quantity !== undefined && item.quantity > 0)
+      .slice(0, 5); // Use first 5 items with quantities
+    
+    if (significantItems.length === 0) {
+      // If no items with quantities, use first 5 items
+      const firstItems = items.slice(0, 5);
+      return firstItems
+        .map(item => `${item.description}|${item.rowNumber}`)
+        .join('||');
+    }
+    
+    // Create signature from description, quantity, and unit
+    return significantItems
+      .map(item => `${item.description}|${item.quantity}|${item.unit || 'NO_UNIT'}`)
+      .join('||');
   }
 
   async exportMatchResults(

@@ -9,6 +9,7 @@ import { withRetry } from '../utils/retry.js';
 import { EnhancedMatchingService } from './enhancedMatching.service.js';
 import { CacheService, matchingCache } from './cache.service.js';
 import { debugLog } from '../utils/debugLogger.js';
+import { ConstructionPatternsService } from './constructionPatterns.service.js';
 
 interface EmbeddingCacheEntry {
   embedding: number[];
@@ -120,8 +121,13 @@ export class MatchingService {
   /**
    * Create enriched text for embedding that includes all relevant information
    */
-  private createEnrichedText(item: PriceItem): string {
+  private createEnrichedText(item: PriceItem, contextHeaders?: string[]): string {
     const parts = [item.description];
+    
+    // Add context headers if provided
+    if (contextHeaders && contextHeaders.length > 0) {
+      parts.push(`Context: ${contextHeaders.join(' > ')}`);
+    }
     
     if (item.category) {
       parts.push(`Category: ${item.category}`);
@@ -280,15 +286,18 @@ export class MatchingService {
    * LOCAL MATCH - Fast fuzzy string matching
    */
   private async localMatch(description: string, priceItems: PriceItem[], contextHeaders?: string[]): Promise<MatchingResult> {
-    console.log(`[MatchingService/LOCAL] Fast fuzzy string matching`);
+    console.log(`[MatchingService/LOCAL] Fast fuzzy string matching with context awareness`);
     
     // Enhance description with context
     let enhancedDescription = description;
     let categoryContext = '';
+    let fullContext = '';
     if (contextHeaders && contextHeaders.length > 0) {
-      categoryContext = contextHeaders[0];
-      enhancedDescription = `${description} [Context: ${categoryContext}]`;
-      console.log(`[MatchingService/LOCAL] Using context: "${categoryContext}"`);
+      // Use all context headers for better matching
+      fullContext = contextHeaders.join(' > ');
+      categoryContext = contextHeaders[contextHeaders.length - 1]; // Most specific category
+      enhancedDescription = `${description} [Context: ${fullContext}]`;
+      console.log(`[MatchingService/LOCAL] Using context: "${fullContext}"`);
     }
     
     // Check cache
@@ -298,41 +307,117 @@ export class MatchingService {
       return cached;
     }
 
-    const matches: Array<{item: PriceItem, score: number}> = [];
+    const matches: Array<{item: PriceItem, score: number, breakdown: Record<string, number>}> = [];
     
     // Extract keywords for better matching
     const queryKeywords = EnhancedMatchingService.extractKeywords(enhancedDescription);
     const queryUnit = this.extractUnit(description);
     
+    // Extract category keywords from context
+    const contextKeywords = contextHeaders ? 
+      contextHeaders.flatMap(h => EnhancedMatchingService.extractKeywords(h)) : [];
+    
+    // Preprocess and extract construction features from query
+    const preprocessedDescription = this.preprocessDescription(description);
+    const queryFeatures = ConstructionPatternsService.extractConstructionFeatures(preprocessedDescription);
+    const expandedDescription = ConstructionPatternsService.expandAbbreviations(preprocessedDescription);
+    
     for (const item of priceItems) {
-      // Create searchable text
-      const searchText = this.createEnrichedText(item);
+      // Create searchable text with context
+      const searchText = this.createEnrichedText(item, contextHeaders);
       
-      // Calculate base fuzzy score
-      let score = fuzz.token_set_ratio(enhancedDescription, searchText);
+      // Extract construction features from item
+      const itemFeatures = ConstructionPatternsService.extractConstructionFeatures(item.description);
       
-      // Boost score for exact unit match
-      if (queryUnit && item.unit && queryUnit.toUpperCase() === item.unit.toUpperCase()) {
-        score = Math.min(100, score + 10);
-      }
+      // Initialize score components
+      const scoreBreakdown: Record<string, number> = {
+        fuzzy: 0,
+        unit: 0,
+        category: 0,
+        keywords: 0,
+        context: 0,
+        construction: 0
+      };
       
-      // Boost for category match
-      if (categoryContext && item.category) {
-        const categoryScore = fuzz.partial_ratio(categoryContext.toLowerCase(), item.category.toLowerCase());
-        if (categoryScore > 70) {
-          score = Math.min(100, score + 5);
+      // Calculate base fuzzy score - try multiple variations
+      const preprocessedItemDesc = this.preprocessDescription(item.description);
+      const fuzzyScores = [
+        fuzz.token_set_ratio(description, item.description),
+        fuzz.token_set_ratio(preprocessedDescription, preprocessedItemDesc),
+        fuzz.token_set_ratio(expandedDescription, item.description),
+        fuzz.partial_ratio(preprocessedDescription, preprocessedItemDesc)
+      ];
+      scoreBreakdown.fuzzy = Math.max(...fuzzyScores);
+      
+      // Enhanced unit matching with compatibility check
+      if (queryUnit && item.unit) {
+        if (this.areUnitsCompatible(queryUnit, item.unit)) {
+          scoreBreakdown.unit = 20; // High boost for compatible units
+        } else if (queryUnit.toUpperCase() === item.unit.toUpperCase()) {
+          scoreBreakdown.unit = 25; // Even higher for exact match
         }
       }
       
-      // Boost for keyword matches
+      // Enhanced category matching
+      if (contextHeaders && contextHeaders.length > 0 && item.category) {
+        // Check if any context header matches the item category
+        const categoryMatches = contextHeaders.map(header => 
+          fuzz.partial_ratio(header.toLowerCase(), item.category.toLowerCase())
+        );
+        const bestCategoryMatch = Math.max(...categoryMatches);
+        
+        if (bestCategoryMatch > 80) {
+          scoreBreakdown.category = 15;
+        } else if (bestCategoryMatch > 60) {
+          scoreBreakdown.category = 10;
+        } else if (bestCategoryMatch > 40) {
+          scoreBreakdown.category = 5;
+        }
+        
+        // Also check subcategory
+        if (item.subcategory) {
+          const subcategoryMatches = contextHeaders.map(header => 
+            fuzz.partial_ratio(header.toLowerCase(), item.subcategory.toLowerCase())
+          );
+          const bestSubcategoryMatch = Math.max(...subcategoryMatches);
+          if (bestSubcategoryMatch > 70) {
+            scoreBreakdown.category += 5;
+          }
+        }
+      }
+      
+      // Enhanced keyword matching
       const itemKeywords = EnhancedMatchingService.extractKeywords(searchText);
       const commonKeywords = queryKeywords.filter(k => itemKeywords.includes(k));
       if (commonKeywords.length > 0) {
-        score = Math.min(100, score + (commonKeywords.length * 2));
+        scoreBreakdown.keywords = Math.min(15, commonKeywords.length * 3);
       }
       
+      // Context keyword matching
+      const commonContextKeywords = contextKeywords.filter(k => itemKeywords.includes(k));
+      if (commonContextKeywords.length > 0) {
+        scoreBreakdown.context = Math.min(10, commonContextKeywords.length * 2);
+      }
+      
+      // Construction-specific scoring
+      const constructionScore = ConstructionPatternsService.calculateConstructionScore(
+        queryFeatures,
+        itemFeatures
+      );
+      scoreBreakdown.construction = constructionScore * 0.3; // 30% of construction score
+      
+      // Calculate total score with weighted components
+      const totalScore = Math.min(100, 
+        scoreBreakdown.fuzzy * 0.3 +      // 30% weight on description match (reduced from 40%)
+        scoreBreakdown.unit +             // Unit match bonus
+        scoreBreakdown.category +         // Category match bonus
+        scoreBreakdown.keywords +         // Keyword match bonus
+        scoreBreakdown.context +          // Context keyword bonus
+        scoreBreakdown.construction       // Construction pattern bonus
+      );
+      
       // Always collect all matches regardless of score
-      matches.push({ item, score });
+      matches.push({ item, score: totalScore, breakdown: scoreBreakdown });
     }
     
     // Sort by score to find the best match
@@ -349,9 +434,11 @@ export class MatchingService {
       confidence: bestMatch.score / 100,
       method: 'LOCAL',
       matchingDetails: {
-        scores: { fuzzy: bestMatch.score },
-        factors: ['fuzzy', 'keywords', 'unit'],
-        reasoning: `Fuzzy match with ${bestMatch.score}% similarity`
+        scores: bestMatch.breakdown,
+        factors: Object.keys(bestMatch.breakdown).filter(k => bestMatch.breakdown[k] > 0),
+        reasoning: `Composite match: ${bestMatch.breakdown.fuzzy.toFixed(0)}% description, ` +
+                   `${bestMatch.breakdown.unit}pts unit, ${bestMatch.breakdown.category}pts category, ` +
+                   `${bestMatch.breakdown.keywords}pts keywords`
       }
     };
     
@@ -378,12 +465,31 @@ export class MatchingService {
       throw new Error(error);
     }
 
-    // Build enriched query
+    // Build enriched query with full context and construction patterns
     let enrichedQuery = description;
+    const expandedDescription = ConstructionPatternsService.expandAbbreviations(description);
+    const queryFeatures = ConstructionPatternsService.extractConstructionFeatures(description);
+    
     if (contextHeaders && contextHeaders.length > 0) {
-      enrichedQuery = `Category: ${contextHeaders[0]}. Task: ${description}`;
-      debugLog.log('COHERE', `Enriched query with context`, { enrichedQuery });
+      const fullContext = contextHeaders.join(' > ');
+      enrichedQuery = `Category: ${fullContext}. Task: ${expandedDescription}`;
+      
+      // Add construction features to query
+      if (queryFeatures.workType) {
+        enrichedQuery += ` Work Type: ${queryFeatures.workType}.`;
+      }
+      if (queryFeatures.material) {
+        enrichedQuery += ` Material: ${queryFeatures.material}.`;
+      }
+      if (queryFeatures.grade) {
+        enrichedQuery += ` Grade: ${queryFeatures.grade}.`;
+      }
+      
+      debugLog.log('COHERE', `Enriched query with context and construction features`, { enrichedQuery });
     }
+    
+    // Extract unit from description for better matching
+    const queryUnit = this.extractUnit(description);
 
     // Get query embedding
     let queryEmbedding: number[];
@@ -459,10 +565,35 @@ export class MatchingService {
       return this.localMatch(description, priceItems, contextHeaders);
     }
     
-    // Sort by similarity
-    scoredMatches.sort((a, b) => b.similarity - a.similarity);
+    // Sort by similarity but consider unit compatibility
+    scoredMatches.sort((a, b) => {
+      // Boost score for unit compatibility
+      let aScore = a.similarity;
+      let bScore = b.similarity;
+      
+      if (queryUnit) {
+        if (this.areUnitsCompatible(queryUnit, a.item.unit)) {
+          aScore += 0.1; // 10% boost for unit compatibility
+        }
+        if (this.areUnitsCompatible(queryUnit, b.item.unit)) {
+          bScore += 0.1;
+        }
+      }
+      
+      return bScore - aScore;
+    });
     
     const bestMatch = scoredMatches[0];
+    
+    // Adjust confidence based on unit match
+    let finalConfidence = bestMatch.similarity;
+    let unitMatchInfo = '';
+    if (queryUnit && bestMatch.item.unit) {
+      if (this.areUnitsCompatible(queryUnit, bestMatch.item.unit)) {
+        finalConfidence = Math.min(0.99, finalConfidence + 0.05);
+        unitMatchInfo = ' with compatible unit';
+      }
+    }
     
     return {
       matchedItemId: bestMatch.item._id,
@@ -470,12 +601,12 @@ export class MatchingService {
       matchedCode: bestMatch.item.code || '',
       matchedUnit: bestMatch.item.unit || '',
       matchedRate: bestMatch.item.rate,
-      confidence: Math.min(bestMatch.similarity, 0.99),
+      confidence: Math.min(finalConfidence, 0.99),
       method: 'COHERE',
       matchingDetails: {
-        scores: { similarity: bestMatch.similarity },
-        factors: ['semantic'],
-        reasoning: `Semantic match with ${(bestMatch.similarity * 100).toFixed(1)}% similarity`
+        scores: { similarity: bestMatch.similarity, adjusted: finalConfidence },
+        factors: ['semantic', 'unit', 'context'],
+        reasoning: `Semantic match with ${(bestMatch.similarity * 100).toFixed(1)}% similarity${unitMatchInfo}`
       }
     };
   }
@@ -490,12 +621,31 @@ export class MatchingService {
       throw new Error('OpenAI client not initialized. Please configure OPENAI_API_KEY.');
     }
 
-    // Build enriched query
+    // Build enriched query with full context and construction patterns
     let enrichedQuery = description;
+    const expandedDescription = ConstructionPatternsService.expandAbbreviations(description);
+    const queryFeatures = ConstructionPatternsService.extractConstructionFeatures(description);
+    
     if (contextHeaders && contextHeaders.length > 0) {
-      enrichedQuery = `${description} [Category: ${contextHeaders[0]}]`;
+      const fullContext = contextHeaders.join(' > ');
+      enrichedQuery = `Context: ${fullContext}. Task: ${expandedDescription}`;
+      
+      // Add construction features to query
+      if (queryFeatures.workType) {
+        enrichedQuery += ` Work Type: ${queryFeatures.workType}.`;
+      }
+      if (queryFeatures.material) {
+        enrichedQuery += ` Material: ${queryFeatures.material}.`;
+      }
+      if (queryFeatures.grade) {
+        enrichedQuery += ` Grade: ${queryFeatures.grade}.`;
+      }
+      
       console.log(`[MatchingService/OPENAI] Enriched query: "${enrichedQuery.substring(0, 100)}..."`);
     }
+    
+    // Extract unit from description for better matching
+    const queryUnit = this.extractUnit(description);
 
     // Get query embedding
     let queryEmbedding: number[];
@@ -553,10 +703,35 @@ export class MatchingService {
       return this.localMatch(description, priceItems, contextHeaders);
     }
     
-    // Sort by similarity
-    scoredMatches.sort((a, b) => b.similarity - a.similarity);
+    // Sort by similarity but consider unit compatibility
+    scoredMatches.sort((a, b) => {
+      // Boost score for unit compatibility
+      let aScore = a.similarity;
+      let bScore = b.similarity;
+      
+      if (queryUnit) {
+        if (this.areUnitsCompatible(queryUnit, a.item.unit)) {
+          aScore += 0.1; // 10% boost for unit compatibility
+        }
+        if (this.areUnitsCompatible(queryUnit, b.item.unit)) {
+          bScore += 0.1;
+        }
+      }
+      
+      return bScore - aScore;
+    });
     
     const bestMatch = scoredMatches[0];
+    
+    // Adjust confidence based on unit match
+    let finalConfidence = bestMatch.similarity;
+    let unitMatchInfo = '';
+    if (queryUnit && bestMatch.item.unit) {
+      if (this.areUnitsCompatible(queryUnit, bestMatch.item.unit)) {
+        finalConfidence = Math.min(0.99, finalConfidence + 0.05);
+        unitMatchInfo = ' with compatible unit';
+      }
+    }
     
     return {
       matchedItemId: bestMatch.item._id,
@@ -564,12 +739,12 @@ export class MatchingService {
       matchedCode: bestMatch.item.code || '',
       matchedUnit: bestMatch.item.unit || '',
       matchedRate: bestMatch.item.rate,
-      confidence: Math.min(bestMatch.similarity, 0.99),
+      confidence: Math.min(finalConfidence, 0.99),
       method: 'OPENAI',
       matchingDetails: {
-        scores: { similarity: bestMatch.similarity },
-        factors: ['semantic'],
-        reasoning: `Semantic match with ${(bestMatch.similarity * 100).toFixed(1)}% similarity`
+        scores: { similarity: bestMatch.similarity, adjusted: finalConfidence },
+        factors: ['semantic', 'unit', 'context'],
+        reasoning: `Semantic match with ${(bestMatch.similarity * 100).toFixed(1)}% similarity${unitMatchInfo}`
       }
     };
   }
@@ -597,7 +772,8 @@ export class MatchingService {
           const texts = batch.map(item => {
             let enrichedQuery = item.description;
             if (item.contextHeaders && item.contextHeaders.length > 0) {
-              enrichedQuery = `Category: ${item.contextHeaders[0]}. Task: ${item.description}`;
+              const fullContext = item.contextHeaders.join(' > ');
+              enrichedQuery = `Context: ${fullContext}. Task: ${item.description}`;
             }
             return enrichedQuery;
           });
@@ -629,7 +805,8 @@ export class MatchingService {
           const texts = batch.map(item => {
             let enrichedQuery = item.description;
             if (item.contextHeaders && item.contextHeaders.length > 0) {
-              enrichedQuery = `${item.description} [Category: ${item.contextHeaders[0]}]`;
+              const fullContext = item.contextHeaders.join(' > ');
+              enrichedQuery = `Context: ${fullContext}. Task: ${item.description}`;
             }
             return enrichedQuery;
           });
@@ -781,23 +958,128 @@ export class MatchingService {
 
   private extractUnit(description: string): string | undefined {
     const unitPatterns = [
-      /\b(M3|M2|M|ITEM|NO|m3|m2|m|item|no)\b/i,
-      /\b(SQM|sqm|CUM|cum|LM|lm|RM|rm)\b/i,
+      /\b(M3|M2|M|ITEM|NO|m3|m2|m|item|no|nr|nos)\b/i,
+      /\b(SQM|sqm|CUM|cum|LM|lm|RM|rm|M1|m1|rmt)\b/i,
       /\b(EA|ea|PC|pc|PCS|pcs|UNIT|unit)\b/i,
-      /\b(TON|ton|KG|kg|MT|mt)\b/i,
+      /\b(TON|ton|TONNE|tonne|KG|kg|MT|mt|QTL|qtl|quintal)\b/i,
       /\b(L|l|LTR|ltr|LITER|liter|LITRE|litre)\b/i,
-      /\b(BAG|bag|SET|set)\b/i,
-      /\b(CFT|cft|SFT|sft|RFT|rft)\b/i
+      /\b(BAG|bag|SET|set|PAIR|pair)\b/i,
+      /\b(CFT|cft|SFT|sft|RFT|rft|CUFT|SQFT)\b/i,
+      /\b(BRASS|brass)\b/i, // Common in South Asian construction
+      /\b(TRIP|trip|LOAD|load)\b/i, // For transportation
+      /\b(\d+(?:'|ft|foot|feet))\s*[xX×]\s*\d+(?:'|ft|foot|feet))/i // Dimension patterns
     ];
     
     for (const pattern of unitPatterns) {
       const match = description.match(pattern);
       if (match) {
+        // Handle special cases
+        if (match[1].toLowerCase() === 'mt' && /metric\s+ton/i.test(description)) {
+          return 'TON';
+        }
         return match[1].toUpperCase();
       }
     }
     
     return undefined;
+  }
+
+  /**
+   * Preprocess description to normalize construction terms
+   */
+  private preprocessDescription(description: string): string {
+    let normalized = description;
+    
+    // Normalize common construction abbreviations
+    const replacements = new Map([
+      // Dimensions
+      [/(\d+)\s*['"'"]\s*[xX×]\s*(\d+)\s*['"'"]?/g, '$1 x $2'], // 10' x 20' -> 10 x 20
+      [/(\d+)\s*mm\s*[xX×]\s*(\d+)\s*mm/gi, '$1mm x $2mm'],
+      [/\b(\d+)\s*['"'"]/g, '$1 feet'], // 10' -> 10 feet
+      
+      // Common typos and variations
+      [/\bexcavat(e|ing|ion)\b/gi, 'excavating'],
+      [/\bfill(ing)?\b/gi, 'filling'],
+      [/\bconcret(e|ing)\b/gi, 'concrete'],
+      [/\breinforc(e|ing|ement)\b/gi, 'reinforcement'],
+      [/\bplaster(ing)?\b/gi, 'plastering'],
+      [/\bbrickwork\b/gi, 'brick work'],
+      [/\bformwork\b/gi, 'form work'],
+      
+      // Standardize measurements
+      [/\bthk\b/gi, 'thick'],
+      [/\bdia\b/gi, 'diameter'],
+      [/\bc\/c\b/gi, 'center to center'],
+      [/\b@\s*(\d+)/g, 'at $1'],
+      
+      // Material variations
+      [/\bM\s*(\d+)\b/g, 'M$1'], // M 20 -> M20
+      [/\bFe\s*(\d+)\b/g, 'Fe$1'], // Fe 500 -> Fe500
+      [/\bgrade\s+(\w+)/gi, 'grade $1'],
+      
+      // Remove extra spaces
+      [/\s+/g, ' '],
+      [/^\s+|\s+$/g, '']
+    ]);
+    
+    replacements.forEach((replacement, pattern) => {
+      normalized = normalized.replace(pattern, replacement);
+    });
+    
+    return normalized;
+  }
+
+  /**
+   * Check if two units are compatible/equivalent
+   */
+  private areUnitsCompatible(unit1: string | undefined, unit2: string | undefined): boolean {
+    if (!unit1 || !unit2) return false;
+    
+    const u1 = unit1.toUpperCase().trim();
+    const u2 = unit2.toUpperCase().trim();
+    
+    // Exact match
+    if (u1 === u2) return true;
+    
+    // Define unit equivalence groups
+    const unitGroups = [
+      // Linear measurements
+      ['M', 'M1', 'LM', 'RM', 'RMT', 'METER', 'METRE', 'MTR'],
+      // Area measurements
+      ['M2', 'SQM', 'SQ.M', 'SQUARE METER', 'SQUARE METRE', 'SM'],
+      // Volume measurements
+      ['M3', 'CUM', 'CU.M', 'CUBIC METER', 'CUBIC METRE', 'CM'],
+      // Count/quantity
+      ['NO', 'NR', 'NOS', 'NUMBER', 'ITEM', 'EACH', 'EA', 'PC', 'PCS', 'UNIT', 'QTY'],
+      // Weight - small
+      ['KG', 'KILOGRAM', 'KILO'],
+      // Weight - large
+      ['TON', 'TONNE', 'MT', 'METRIC TON', 'METRIC TONNE'],
+      ['QTL', 'QUINTAL'], // 100kg
+      // Volume - liquid
+      ['L', 'LTR', 'LITER', 'LITRE', 'LIT'],
+      // Area - imperial
+      ['SFT', 'SQFT', 'SQ.FT', 'SQUARE FEET', 'SQUARE FOOT'],
+      // Volume - imperial
+      ['CFT', 'CUFT', 'CU.FT', 'CUBIC FEET', 'CUBIC FOOT'],
+      // Running measurements
+      ['RFT', 'RUNNING FEET', 'RUNNING FOOT'],
+      // Special construction units
+      ['BAG', 'BAGS'], // Cement bags
+      ['BRASS', '100CFT'], // 100 cubic feet
+      ['TRIP', 'LOAD', 'TRUCKLOAD'],
+      ['SET', 'SETS'],
+      ['PAIR', 'PAIRS']
+    ];
+    
+    // Check if both units belong to the same group
+    for (const group of unitGroups) {
+      if (group.includes(u1) && group.includes(u2)) {
+        return true;
+      }
+    }
+    
+    return false;
   }
 
   /**
@@ -847,22 +1129,38 @@ export class MatchingService {
     const queryUnit = this.extractUnit(description);
     
     for (const item of priceItems) {
-      // Create searchable text
-      const searchText = this.createEnrichedText(item);
+      // Create searchable text with context
+      const searchText = this.createEnrichedText(item, contextHeaders);
+      
+      // Initialize score components
+      const scoreBreakdown: Record<string, number> = {
+        fuzzy: 0,
+        unit: 0,
+        category: 0,
+        keywords: 0
+      };
       
       // Calculate base fuzzy score
-      let score = fuzz.token_set_ratio(enhancedDescription, searchText);
+      scoreBreakdown.fuzzy = fuzz.token_set_ratio(description, item.description);
       
-      // Boost score for exact unit match
-      if (queryUnit && item.unit && queryUnit.toUpperCase() === item.unit.toUpperCase()) {
-        score = Math.min(100, score + 10);
+      // Enhanced unit matching with compatibility check
+      if (queryUnit && item.unit) {
+        if (this.areUnitsCompatible(queryUnit, item.unit)) {
+          scoreBreakdown.unit = 20;
+        } else if (queryUnit.toUpperCase() === item.unit.toUpperCase()) {
+          scoreBreakdown.unit = 25;
+        }
       }
       
-      // Boost for category match
+      // Enhanced category matching
       if (categoryContext && item.category) {
         const categoryScore = fuzz.partial_ratio(categoryContext.toLowerCase(), item.category.toLowerCase());
-        if (categoryScore > 70) {
-          score = Math.min(100, score + 5);
+        if (categoryScore > 80) {
+          scoreBreakdown.category = 15;
+        } else if (categoryScore > 60) {
+          scoreBreakdown.category = 10;
+        } else if (categoryScore > 40) {
+          scoreBreakdown.category = 5;
         }
       }
       
@@ -870,10 +1168,18 @@ export class MatchingService {
       const itemKeywords = EnhancedMatchingService.extractKeywords(searchText);
       const commonKeywords = queryKeywords.filter(k => itemKeywords.includes(k));
       if (commonKeywords.length > 0) {
-        score = Math.min(100, score + (commonKeywords.length * 2));
+        scoreBreakdown.keywords = Math.min(15, commonKeywords.length * 3);
       }
       
-      if (score > 60) {
+      // Calculate total score
+      const score = Math.min(100, 
+        scoreBreakdown.fuzzy * 0.4 +
+        scoreBreakdown.unit +
+        scoreBreakdown.category +
+        scoreBreakdown.keywords
+      );
+      
+      if (score > 50) { // Lower threshold for multiple matches
         matches.push({ item, score });
       }
     }
