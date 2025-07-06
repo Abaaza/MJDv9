@@ -70,12 +70,15 @@ app.use(cookieParser());
 // Compression
 app.use(compression());
 
-// Logging
-if (isDevelopment) {
-  app.use(morgan('dev'));
-} else {
-  app.use(morgan('combined'));
-}
+// Logging with reduced verbosity for polling endpoints
+const morganMiddleware = isDevelopment ? morgan('dev') : morgan('combined');
+app.use((req, res, next) => {
+  // Skip logging for frequent polling endpoints
+  if (req.path.includes('/status') || req.path.includes('/logs')) {
+    return next();
+  }
+  morganMiddleware(req, res, next);
+});
 
 // Rate limiting
 const limiter = rateLimit({

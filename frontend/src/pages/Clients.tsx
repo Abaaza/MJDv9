@@ -109,19 +109,17 @@ export default function Clients() {
     queryKey: ['all-matching-jobs'],
     queryFn: async () => {
       try {
-        // Fetch user's jobs first (temporary solution)
-        const response = await api.get('/price-matching/jobs');
-        const userJobs = response.data || [];
+        // Fetch all jobs to count by client
+        const response = await api.get('/price-matching/all-jobs');
+        const allJobs = response.data || [];
         
-        // In a real app, you'd want to create an admin endpoint to get ALL jobs
-        // For now, we'll work with what we have
-        console.log('[Clients] Fetched user jobs:', userJobs);
+        console.log('[Clients] Fetched all jobs:', allJobs);
         // Log the first job to see its structure
-        if (userJobs.length > 0) {
-          console.log('[Clients] First job structure:', userJobs[0]);
+        if (allJobs.length > 0) {
+          console.log('[Clients] First job structure:', allJobs[0]);
         }
         
-        return userJobs;
+        return allJobs;
       } catch (error) {
         console.error('Error fetching jobs:', error);
         return [];

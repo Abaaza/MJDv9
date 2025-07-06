@@ -145,8 +145,8 @@ export async function getJobLogs(req: Request, res: Response): Promise<void> {
     // Also get the current progress
     const progress = logStorage.getProgress(jobId);
     
-    // Debug logging
-    console.log(`[API] Fetched ${logs.length} logs for job ${jobId} from memory`);
+    // Debug logging - disabled to reduce verbosity
+    // console.log(`[API] Fetched ${logs.length} logs for job ${jobId} from memory`);
     
     res.json({
       logs,

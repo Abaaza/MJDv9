@@ -4,7 +4,9 @@ import { verifyAccessToken } from '../utils/jwt.js';
 export function authenticate(req: Request, res: Response, next: NextFunction): void {
   try {
     const authHeader = req.headers.authorization;
-    console.log(`[Auth] ${req.method} ${req.path} - Auth header present: ${!!authHeader}`);
+    
+    // Only log authentication issues, not successful auth for polling endpoints
+    const isPollingEndpoint = req.path.includes('/status') || req.path.includes('/logs');
     
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       console.log(`[Auth] No valid bearer token provided for ${req.method} ${req.path}`);
@@ -13,10 +15,13 @@ export function authenticate(req: Request, res: Response, next: NextFunction): v
     }
 
     const token = authHeader.split(' ')[1];
-    console.log(`[Auth] Verifying token for ${req.method} ${req.path}...`);
     
     const payload = verifyAccessToken(token);
-    console.log(`[Auth] Token verified successfully for ${req.method} ${req.path}`);
+    
+    // Only log non-polling requests or important endpoints
+    if (!isPollingEndpoint) {
+      console.log(`[Auth] Token verified for ${req.method} ${req.path}`);
+    }
     
     req.user = payload;
     next();

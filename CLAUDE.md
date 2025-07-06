@@ -63,13 +63,20 @@ npm run dev:convex
 npm run build:convex
 ```
 
+### Testing
+```bash
+# Run comprehensive matching test
+cd backend
+npx tsx src/tests/comprehensive-test.ts
+```
+
 ## Architecture Overview
 
 ### Technology Stack
 - **Frontend**: React 19 + TypeScript + Vite + TanStack Query + Zustand
 - **Backend**: Express.js + TypeScript + Node.js
 - **Database**: Convex (serverless database)
-- **Matching Engines**: LOCAL (fuzzball), COHERE (embeddings), OPENAI (embeddings)
+- **Matching Engines**: LOCAL, LOCAL_UNIT, COHERE, OPENAI, HYBRID, HYBRID_CATEGORY, ADVANCED
 
 ### Key Services and Patterns
 
@@ -89,8 +96,13 @@ npm run build:convex
 2. **Job Creation**: Stored in Convex with unique job ID
 3. **Batch Processing**: Items processed in configurable batches (default: 10)
 4. **Matching Methods**:
-   - LOCAL: Fast fuzzy string matching
-   - AI: Semantic embedding comparison with fallback to LOCAL
+   - LOCAL: Multi-strategy fuzzy matching with keyword extraction
+   - LOCAL_UNIT: Unit-focused matching with compatibility checks
+   - COHERE: Technical semantic understanding with embeddings
+   - OPENAI: Natural language understanding with work type extraction
+   - HYBRID: Intelligent ensemble voting across all methods
+   - HYBRID_CATEGORY: Category-aware matching with auto-detection
+   - ADVANCED: Multi-stage pattern matching with code recognition
 5. **Result Storage**: Matches stored with confidence scores and manual override support
 
 ### API Endpoints
@@ -101,6 +113,7 @@ npm run build:convex
 - **Price List**: `/api/price-list/*` - CRUD operations, bulk import
 - **Projects**: `/api/projects/*` - Project management
 - **Admin**: `/api/admin/*` - User management, settings
+- **Jobs**: `/api/jobs/*` - Job status polling
 
 #### Request/Response Patterns
 - All endpoints return consistent error format: `{ success: false, error: string }`
@@ -117,6 +130,9 @@ Key tables:
 - `matchResults`: Individual match results with confidence scores
 - `activityLogs`: User activity tracking
 - `applicationSettings`: Global configuration
+- `clients`: Client management
+- `projects`: Project tracking
+- `jobLogs`: Detailed job processing logs
 
 ### Configuration
 
@@ -158,14 +174,27 @@ See `backend/src/config/matching.config.ts`:
 
 ### Performance Considerations
 
-- **Caching**: Price items cached in memory, embeddings in LRU cache
+- **Caching**: Price items cached in memory (5-minute TTL), embeddings in LRU cache
 - **Batch Processing**: Prevents API rate limits and memory issues
 - **Virtual Scrolling**: Frontend uses @tanstack/react-virtual for large lists
 - **Connection Pooling**: Reused Convex client instances
 - **Lazy Loading**: AI clients initialized only when needed
+- **Parallel Processing**: HYBRID methods execute all matching strategies concurrently
 
-### Testing and Debugging
+### Enhanced Matching Features
+
+The system now includes advanced matching capabilities (see `backend/src/services/MATCHING_ENHANCEMENTS.md`):
+
+- **No Fallback Logic**: AI methods no longer fall back to LOCAL on failure
+- **Full Price List Matching**: All methods match against entire database
+- **Multi-Factor Scoring**: Each method uses multiple scoring factors with detailed breakdowns
+- **Technical Extraction**: Extracts specifications, materials, work types, and patterns
+- **Smart Unit Handling**: Recognizes compatible units (M/M1/LM, M2/SQM, etc.)
+- **Category Detection**: Automatic category inference from descriptions
+
+### Logging and Debugging
 
 - Backend logs to `backend/logs/` with Winston
 - Frontend errors caught by ErrorBoundary component
 - Job processing logs stored in Convex `jobLogs` table
+- Debug logging available via `debugLogger.js` utility

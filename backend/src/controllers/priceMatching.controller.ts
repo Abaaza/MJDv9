@@ -350,13 +350,12 @@ export async function uploadAndMatch(req: Request, res: Response): Promise<void>
       fileBuffer: [],
       itemCount: itemsWithQuantities.length, // Only count items with quantities
       matchingMethod: matchingMethod,
-      clientName: clientName,
       clientId: clientId ? toConvexId<'clients'>(clientId) : undefined,
       projectId: projectId,
       projectName: projectName,
       headers: firstSheet?.headers || [],
       sheetName: firstSheet?.sheetName || 'Sheet1',
-      fileId: fileId,
+      originalFileId: fileId,
     });
 
     console.log(`[${requestId}] Job created with ID: ${jobId}`);
@@ -364,46 +363,32 @@ export async function uploadAndMatch(req: Request, res: Response): Promise<void>
     const jobCreateEndTime = Date.now();
     console.log(`[${requestId}] Step 3 Complete: Job creation took ${jobCreateEndTime - jobCreateStartTime}ms`);
 
-    console.log(`[${requestId}] Step 4: Storing parsed items...`);
-    const storeItemsStartTime = Date.now();
+    console.log(`[${requestId}] Step 4: Preparing items for processing...`);
+    const prepareItemsStartTime = Date.now();
     
-    // Store parsed items - batch them for efficiency
-    const storedItems = [];
-    const batchSize = 25; // Store 25 items at a time
-    
-    for (let i = 0; i < allItems.length; i += batchSize) {
-      const batch = allItems.slice(i, i + batchSize);
-      const batchPromises = batch.map(async (item) => {
-        const sanitizedOriginalData = sanitizeObjectKeys(item.originalData || {});
-        
-        const storedItem = {
-          jobId: jobId as any,
-          rowNumber: item.rowNumber,
-          description: item.description,
-          quantity: item.quantity,
-          unit: item.unit,
-          originalRowData: sanitizedOriginalData,
-          contextHeaders: item.contextHeaders || [],
-        };
-        
-        await convex.mutation(api.priceMatching.addParsedItem, storedItem);
-        return storedItem;
-      });
+    // Prepare items for processing (no need to store in Convex)
+    const preparedItems = allItems.map((item) => {
+      const sanitizedOriginalData = sanitizeObjectKeys(item.originalData || {});
       
-      const batchResults = await Promise.all(batchPromises);
-      storedItems.push(...batchResults);
-      
-      console.log(`[${requestId}] Stored batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(allItems.length / batchSize)} (${batchResults.length} items)`);
-    }
+      return {
+        jobId: jobId.toString(),
+        rowNumber: item.rowNumber,
+        description: item.description,
+        quantity: item.quantity,
+        unit: item.unit,
+        originalRowData: sanitizedOriginalData,
+        contextHeaders: item.contextHeaders || [],
+      };
+    });
 
-    const storeItemsEndTime = Date.now();
-    console.log(`[${requestId}] Step 4 Complete: Storing items took ${storeItemsEndTime - storeItemsStartTime}ms`);
+    const prepareItemsEndTime = Date.now();
+    console.log(`[${requestId}] Step 4 Complete: Preparing items took ${prepareItemsEndTime - prepareItemsStartTime}ms`);
 
     console.log(`[${requestId}] Step 5: Adding job to processor queue...`);
     const processorStartTime = Date.now();
     
     // Add job to processor queue with all parsed items
-    await jobProcessor.addJob(jobId.toString(), userId.toString(), storedItems, matchingMethod);
+    await jobProcessor.addJob(jobId.toString(), userId.toString(), preparedItems, matchingMethod);
     
     const processorEndTime = Date.now();
     console.log(`[${requestId}] Step 5 Complete: Adding to processor took ${processorEndTime - processorStartTime}ms`);
@@ -418,7 +403,7 @@ export async function uploadAndMatch(req: Request, res: Response): Promise<void>
     console.log(`[${requestId}] Breakdown:`, {
       parsing: parseEndTime - parseStartTime,
       jobCreation: jobCreateEndTime - jobCreateStartTime,
-      itemStorage: storeItemsEndTime - storeItemsStartTime,
+      itemPreparation: prepareItemsEndTime - prepareItemsStartTime,
       processorQueue: processorEndTime - processorStartTime,
       total: totalEndTime - startTime
     });
@@ -630,7 +615,7 @@ export async function getMatchResults(req: Request, res: Response): Promise<void
     }
 
     // Get results
-    const results = await convex.query(api.priceMatching.getJobResults, {
+    const results = await convex.query(api.priceMatching.getMatchResults, {
       jobId: toConvexId<'aiMatchingJobs'>(jobId),
     });
 
@@ -751,12 +736,12 @@ export async function exportResults(req: Request, res: Response): Promise<void> 
     }
 
     // Get results
-    const results = await convex.query(api.priceMatching.getJobResults, {
+    const results = await convex.query(api.priceMatching.getMatchResults, {
       jobId: toConvexId<'aiMatchingJobs'>(jobId),
     });
 
     // Get original file
-    const originalFile = await fileStorage.getFile(job.fileId);
+    const originalFile = await fileStorage.getFile(job.originalFileId);
     if (!originalFile) {
       res.status(404).json({ error: 'Original file not found' });
       return;
