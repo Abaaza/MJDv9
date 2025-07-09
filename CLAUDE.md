@@ -2,199 +2,206 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Project Overview
+## Commands
 
-MJD Price Matcher is an AI-powered BOQ (Bill of Quantities) matching system for construction projects. It uses fuzzy matching and AI embeddings (Cohere/OpenAI) to match items from uploaded BOQ files against a master price list.
-
-## Development Commands
-
-### Full Stack Development
+### Development
 ```bash
-# Install all dependencies (root, backend, and frontend)
+# Install all dependencies
 npm run install:all
 
-# Run all services in development (Convex, Backend, Frontend)
+# Run full stack (Convex + Backend + Frontend)
 npm run dev
 
-# Build all services
-npm run build:all
-```
-
-### Backend Development
-```bash
-cd backend
-
-# Development mode with hot reload
-npm run dev
-
-# Build TypeScript
-npm run build
-
-# Start production server
-npm start
-
-# Run Convex admin script to create admin user
-npx tsx scripts/create-abaza-admin.ts
-```
-
-### Frontend Development
-```bash
-cd frontend
-
-# Development server
-npm run dev
+# Run individual services
+npm run dev:convex    # Database
+npm run dev:backend   # API server
+npm run dev:frontend  # React app
 
 # Build for production
-npm run build
-
-# Run ESLint
-npm run lint
-
-# Preview production build
-npm run preview
+npm run build:all
+npm run build:azure   # Azure-specific build
 ```
 
-### Convex Database
+### Testing & Validation
 ```bash
-# Development mode
-npm run dev:convex
+# Run comprehensive matching test
+cd backend && npx tsx src/tests/comprehensive-test.ts
 
-# Deploy to production
+# Run linting
+cd frontend && npm run lint
+
+# TypeScript type checking
+cd backend && npm run build
+cd frontend && npm run build
+```
+
+### Database Operations
+```bash
+# Create admin user
+cd backend && npx tsx scripts/create-abaza-admin.ts
+
+# Deploy Convex schema changes
 npm run build:convex
 ```
 
-### Testing
-```bash
-# Run comprehensive matching test
-cd backend
-npx tsx src/tests/comprehensive-test.ts
+## Architecture
+
+### System Overview
+MJD Price Matcher is a three-tier AI-powered BOQ matching system:
+- **Frontend**: React SPA with real-time updates
+- **Backend**: Express API with job queue processing
+- **Database**: Convex serverless database
+
+### Core Matching Flow
+1. User uploads Excel BOQ → Parsed by `ExcelService`
+2. Job created in Convex → Processed by `JobProcessor` singleton
+3. Items batched (default: 10) → Sent to `MatchingService`
+4. Results stored → Exported via `exportService`
+
+### Matching Methods Architecture
+Each method in `backend/src/services/matching.service.ts` follows this pattern:
+- Extract features from input text
+- Query/compare against price list items
+- Calculate multi-factor confidence scores
+- Return top matches with detailed scoring breakdowns
+
+**Method Characteristics**:
+- LOCAL/LOCAL_UNIT: Fuzzy string matching, no AI required
+- COHERE/OPENAI: Require API keys, use embeddings
+- HYBRID/HYBRID_CATEGORY: Execute all methods in parallel, vote on results
+- ADVANCED: Multi-stage pattern recognition
+
+### Key Design Patterns
+- **Singleton Services**: `MatchingService.getInstance()`, `JobProcessor.getInstance()`
+- **Repository Pattern**: All data access through Convex functions
+- **Factory Pattern**: AI client initialization in matching service
+- **Observer Pattern**: Job status polling/WebSocket updates
+
+### Authentication Architecture
+JWT-based with automatic token refresh:
+- Access tokens: 15 minutes
+- Refresh tokens: 7 days
+- Frontend interceptor handles refresh automatically
+- Roles: 'User' | 'Admin'
+
+### Caching Strategy
+- **Price Items**: 5-minute in-memory cache
+- **Embeddings**: LRU cache (100 items max)
+- **Match Results**: Cached per job until completion
+
+### Error Handling
+- Resilient Convex client with exponential backoff
+- Graceful degradation for AI services
+- Comprehensive error logging to Winston
+
+## Key Files & Locations
+
+### Backend Structure
+```
+backend/
+├── src/
+│   ├── server.ts                 # Express app entry point
+│   ├── services/
+│   │   ├── matching.service.ts   # Core matching logic
+│   │   ├── enhancedMatching.service.ts  # Enhanced methods
+│   │   └── jobProcessor.ts       # Job queue processor
+│   ├── controllers/              # Route handlers
+│   ├── routes/                   # API route definitions
+│   └── config/
+│       └── matching.config.ts    # Matching parameters
 ```
 
-## Architecture Overview
-
-### Technology Stack
-- **Frontend**: React 19 + TypeScript + Vite + TanStack Query + Zustand
-- **Backend**: Express.js + TypeScript + Node.js
-- **Database**: Convex (serverless database)
-- **Matching Engines**: LOCAL, LOCAL_UNIT, COHERE, OPENAI, HYBRID, HYBRID_CATEGORY, ADVANCED
-
-### Key Services and Patterns
-
-#### Backend Service Architecture
-- **Singleton Services**: MatchingService, JobProcessor, PriceListCache use singleton pattern
-- **Job Queue**: Sequential processing with configurable batch sizes
-- **Caching Strategy**: LRU cache for embeddings and match results
-- **Error Handling**: Resilient Convex client with automatic retries
-
-#### Authentication Flow
-- JWT-based authentication with access (15min) and refresh (7 days) tokens
-- Token refresh handled automatically by frontend interceptor
-- Role-based access control (User/Admin)
-
-#### Matching Process
-1. **Excel Upload**: Parsed with ExcelJS, supports multiple header formats
-2. **Job Creation**: Stored in Convex with unique job ID
-3. **Batch Processing**: Items processed in configurable batches (default: 10)
-4. **Matching Methods**:
-   - LOCAL: Multi-strategy fuzzy matching with keyword extraction
-   - LOCAL_UNIT: Unit-focused matching with compatibility checks
-   - COHERE: Technical semantic understanding with embeddings
-   - OPENAI: Natural language understanding with work type extraction
-   - HYBRID: Intelligent ensemble voting across all methods
-   - HYBRID_CATEGORY: Category-aware matching with auto-detection
-   - ADVANCED: Multi-stage pattern matching with code recognition
-5. **Result Storage**: Matches stored with confidence scores and manual override support
-
-### API Endpoints
-
-#### Core Endpoints
-- **Auth**: `/api/auth/*` - Registration, login, token refresh
-- **Price Matching**: `/api/price-matching/*` - Upload, status polling, results, export
-- **Price List**: `/api/price-list/*` - CRUD operations, bulk import
-- **Projects**: `/api/projects/*` - Project management
-- **Admin**: `/api/admin/*` - User management, settings
-- **Jobs**: `/api/jobs/*` - Job status polling
-
-#### Request/Response Patterns
-- All endpoints return consistent error format: `{ success: false, error: string }`
-- Successful responses: `{ success: true, data: any }`
-- File uploads use multipart/form-data
-- Job polling returns progress updates
-
-### Database Schema (Convex)
-
-Key tables:
-- `users`: Authentication with hashed passwords
-- `priceItems`: Master price list with optional embeddings
-- `aiMatchingJobs`: Job queue with status tracking
-- `matchResults`: Individual match results with confidence scores
-- `activityLogs`: User activity tracking
-- `applicationSettings`: Global configuration
-- `clients`: Client management
-- `projects`: Project tracking
-- `jobLogs`: Detailed job processing logs
-
-### Configuration
-
-#### Environment Variables
-Backend `.env`:
+### Frontend Structure
 ```
-PORT=5003
-JWT_SECRET=your-secret
-CONVEX_URL=https://your-instance.convex.cloud
-COHERE_API_KEY=your-key
-OPENAI_API_KEY=your-key
+frontend/
+├── src/
+│   ├── App.tsx                   # Main app component
+│   ├── pages/                    # Route components
+│   ├── components/               # Reusable UI components
+│   ├── lib/
+│   │   ├── api.ts               # API client
+│   │   └── convex.ts            # Convex client setup
+│   └── stores/                   # Zustand state management
 ```
 
-Frontend uses Vite's import.meta.env with VITE_ prefix.
+### Convex Schema
+```
+convex/
+├── schema.ts                     # Database schema
+├── priceItems.ts                # Price list operations
+├── aiMatchingJobs.ts            # Job management
+└── matchResults.ts              # Match result operations
+```
 
-#### Matching Configuration
-See `backend/src/config/matching.config.ts`:
-- Batch sizes, timeouts, confidence thresholds
-- Method-specific settings (embedding models, cache TTL)
-- Text preprocessing options
+## Performance Optimizations
 
-### Common Development Tasks
+### Batch Processing
+- Items processed in configurable batches (see `matching.config.ts`)
+- Prevents API rate limits and memory issues
+- Progress updates after each batch
 
-#### Adding New API Endpoint
+### Parallel Execution
+- HYBRID methods run all matchers concurrently
+- Promise.allSettled ensures partial failures don't block
+- Results aggregated with weighted voting
+
+### Virtual Scrolling
+- Large lists use @tanstack/react-virtual
+- Only renders visible items
+- Significantly improves UI performance
+
+### Connection Reuse
+- Singleton pattern for service instances
+- Convex client connection pooling
+- AI clients lazy-loaded and cached
+
+## Common Tasks
+
+### Add New Matching Method
+1. Add method type to `MatchingMethod` enum
+2. Implement in `matching.service.ts` following existing patterns
+3. Add configuration in `matching.config.ts`
+4. Update frontend method selector
+
+### Modify Matching Weights
+Edit `backend/src/config/matching.config.ts`:
+- Adjust confidence thresholds
+- Change scoring weights
+- Modify text preprocessing options
+
+### Add New API Endpoint
 1. Create controller in `backend/src/controllers/`
-2. Add routes in `backend/src/routes/`
-3. Register routes in `backend/src/server.ts`
-4. Update frontend API client in `frontend/src/lib/api.ts`
+2. Define routes in `backend/src/routes/`
+3. Register in `backend/src/server.ts`
+4. Add to frontend API client
 
-#### Modifying Matching Algorithm
-1. Main logic in `backend/src/services/matching.service.ts`
-2. Enhanced version in `enhancedMatching.service.ts`
-3. Configuration in `matching.config.ts`
+### Debug Matching Issues
+1. Check `backend/logs/` for detailed logs
+2. Use comprehensive test script with specific items
+3. Review job logs in Convex dashboard
+4. Enable debug logging in `matching.service.ts`
 
-#### Working with Convex
-1. Schema changes in `convex/schema.ts`
-2. Functions in respective files (e.g., `convex/priceItems.ts`)
-3. Run `npx convex dev` to sync schema changes
+## Deployment Considerations
 
-### Performance Considerations
+### Environment Variables
+Backend requires:
+- `CONVEX_URL`: Database connection
+- `JWT_SECRET`, `JWT_REFRESH_SECRET`: Auth tokens
+- `COHERE_API_KEY`, `OPENAI_API_KEY`: AI services (optional)
 
-- **Caching**: Price items cached in memory (5-minute TTL), embeddings in LRU cache
-- **Batch Processing**: Prevents API rate limits and memory issues
-- **Virtual Scrolling**: Frontend uses @tanstack/react-virtual for large lists
-- **Connection Pooling**: Reused Convex client instances
-- **Lazy Loading**: AI clients initialized only when needed
-- **Parallel Processing**: HYBRID methods execute all matching strategies concurrently
+Frontend requires:
+- `VITE_API_URL`: Backend API endpoint
+- `VITE_CONVEX_URL`: Database connection
 
-### Enhanced Matching Features
+### Deployment Targets
+- **Vercel**: Uses `/api` serverless functions
+- **Azure**: Traditional Node.js deployment
+- **Local**: Full stack with hot reload
 
-The system now includes advanced matching capabilities (see `backend/src/services/MATCHING_ENHANCEMENTS.md`):
-
-- **No Fallback Logic**: AI methods no longer fall back to LOCAL on failure
-- **Full Price List Matching**: All methods match against entire database
-- **Multi-Factor Scoring**: Each method uses multiple scoring factors with detailed breakdowns
-- **Technical Extraction**: Extracts specifications, materials, work types, and patterns
-- **Smart Unit Handling**: Recognizes compatible units (M/M1/LM, M2/SQM, etc.)
-- **Category Detection**: Automatic category inference from descriptions
-
-### Logging and Debugging
-
-- Backend logs to `backend/logs/` with Winston
-- Frontend errors caught by ErrorBoundary component
-- Job processing logs stored in Convex `jobLogs` table
-- Debug logging available via `debugLogger.js` utility
+### Production Checklist
+1. Set NODE_ENV=production
+2. Configure proper CORS origins
+3. Use secure JWT secrets
+4. Enable HTTPS
+5. Set up proper logging
+6. Configure rate limiting

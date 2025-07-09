@@ -1,15 +1,15 @@
-import { getConvexClient } from '../config/convex.js';
-import { api } from '../../../convex/_generated/api.js';
-import { PriceItem } from '../types/priceItem.types.js';
+﻿import { getConvexClient } from '../config/convex';
+import { api } from '../../../convex/_generated/api';
+import { PriceItem } from '../types/priceItem.types';
 import { CohereClient } from 'cohere-ai';
 import OpenAI from 'openai';
 import * as fuzz from 'fuzzball';
 import { LRUCache } from 'lru-cache';
-import { withRetry } from '../utils/retry.js';
-import { EnhancedMatchingService } from './enhancedMatching.service.js';
-import { CacheService, matchingCache } from './cache.service.js';
-import { debugLog } from '../utils/debugLogger.js';
-import { ConstructionPatternsService } from './constructionPatterns.service.js';
+import { withRetry } from '../utils/retry';
+import { EnhancedMatchingService } from './enhancedMatching.service';
+import { CacheService, matchingCache } from './cache.service';
+import { debugLog } from '../utils/debugLogger';
+import { ConstructionPatternsService } from './constructionPatterns.service';
 
 interface EmbeddingCacheEntry {
   embedding: number[];
@@ -129,16 +129,24 @@ export class MatchingService {
       parts.push(`Context: ${contextHeaders.join(' > ')}`);
     }
     
-    if (item.category) {
+    // Emphasize category + subcategory combination for better matching
+    if (item.category && item.subcategory) {
+      // Repeat the combination for stronger embedding signal
+      parts.push(`Category: ${item.category} - ${item.subcategory}`);
+      parts.push(`Classification: ${item.category} ${item.subcategory}`);
+      parts.push(`Type: ${item.category}/${item.subcategory}`);
+    } else if (item.category) {
       parts.push(`Category: ${item.category}`);
-    }
-    
-    if (item.subcategory) {
-      parts.push(`Subcategory: ${item.subcategory}`);
+      parts.push(`Type: ${item.category}`);
     }
     
     if (item.unit) {
+      // Include normalized unit for better matching
+      const normalizedUnit = this.normalizeUnit(item.unit);
       parts.push(`Unit: ${item.unit}`);
+      if (normalizedUnit !== item.unit.toUpperCase()) {
+        parts.push(`Unit: ${normalizedUnit}`);
+      }
     }
     
     if (item.keywords && item.keywords.length > 0) {
@@ -349,41 +357,67 @@ export class MatchingService {
       ];
       scoreBreakdown.fuzzy = Math.max(...fuzzyScores);
       
-      // Enhanced unit matching with compatibility check
+      // Enhanced unit matching with stronger weight (25% boost)
       if (queryUnit && item.unit) {
-        if (this.areUnitsCompatible(queryUnit, item.unit)) {
-          scoreBreakdown.unit = 20; // High boost for compatible units
+        const normalizedQueryUnit = this.normalizeUnit(queryUnit);
+        const normalizedItemUnit = this.normalizeUnit(item.unit);
+        
+        if (normalizedQueryUnit === normalizedItemUnit) {
+          scoreBreakdown.unit = 25; // Exact match after normalization - highest boost
+        } else if (this.areUnitsCompatible(queryUnit, item.unit)) {
+          scoreBreakdown.unit = 22; // Compatible units - very high boost
         } else if (queryUnit.toUpperCase() === item.unit.toUpperCase()) {
-          scoreBreakdown.unit = 25; // Even higher for exact match
+          scoreBreakdown.unit = 25; // Raw exact match - highest boost
         }
+      } else if (queryUnit && !item.unit) {
+        scoreBreakdown.unit = -5; // Penalty for missing unit when query has unit
       }
       
-      // Enhanced category matching
-      if (contextHeaders && contextHeaders.length > 0 && item.category) {
-        // Check if any context header matches the item category
-        const categoryMatches = contextHeaders.map(header => 
-          fuzz.partial_ratio(header.toLowerCase(), item.category.toLowerCase())
-        );
-        const bestCategoryMatch = Math.max(...categoryMatches);
+      // Enhanced category + subcategory matching as a combined unit
+      if (contextHeaders && contextHeaders.length > 0) {
+        let categoryScore = 0;
         
-        if (bestCategoryMatch > 80) {
-          scoreBreakdown.category = 15;
-        } else if (bestCategoryMatch > 60) {
-          scoreBreakdown.category = 10;
-        } else if (bestCategoryMatch > 40) {
-          scoreBreakdown.category = 5;
-        }
+        // Extract potential category and subcategory from context headers
+        const potentialCategory = contextHeaders[0]?.toLowerCase() || '';
+        const potentialSubcategory = contextHeaders[1]?.toLowerCase() || '';
         
-        // Also check subcategory
-        if (item.subcategory) {
-          const subcategoryMatches = contextHeaders.map(header => 
-            fuzz.partial_ratio(header.toLowerCase(), item.subcategory.toLowerCase())
-          );
-          const bestSubcategoryMatch = Math.max(...subcategoryMatches);
-          if (bestSubcategoryMatch > 70) {
-            scoreBreakdown.category += 5;
+        // Check for exact category + subcategory match (highest priority)
+        if (item.category && item.subcategory) {
+          const itemCategory = item.category.toLowerCase();
+          const itemSubcategory = item.subcategory.toLowerCase();
+          
+          // Exact category + subcategory match = maximum bonus
+          if (potentialCategory && potentialSubcategory &&
+              fuzz.ratio(potentialCategory, itemCategory) > 85 &&
+              fuzz.ratio(potentialSubcategory, itemSubcategory) > 85) {
+            categoryScore = 30; // Significant boost for exact category+subcategory match
+          }
+          // Category matches but different subcategory
+          else if (potentialCategory && fuzz.ratio(potentialCategory, itemCategory) > 85) {
+            categoryScore = 15; // Medium boost for category-only match
+            
+            // Check if any context header matches subcategory
+            const subcategoryMatches = contextHeaders.map(header => 
+              fuzz.partial_ratio(header.toLowerCase(), itemSubcategory)
+            );
+            if (Math.max(...subcategoryMatches) > 70) {
+              categoryScore += 10; // Additional boost if subcategory found in context
+            }
+          }
+          // Subcategory matches but different category (less common but possible)
+          else if (potentialSubcategory && fuzz.ratio(potentialSubcategory, itemSubcategory) > 85) {
+            categoryScore = 10;
           }
         }
+        // Fallback to category-only matching if no subcategory
+        else if (item.category && potentialCategory) {
+          const itemCategory = item.category.toLowerCase();
+          if (fuzz.ratio(potentialCategory, itemCategory) > 85) {
+            categoryScore = 20;
+          }
+        }
+        
+        scoreBreakdown.category = categoryScore;
       }
       
       // Enhanced keyword matching
@@ -408,8 +442,8 @@ export class MatchingService {
       
       // Calculate total score with weighted components
       const totalScore = Math.min(100, 
-        scoreBreakdown.fuzzy * 0.3 +      // 30% weight on description match (reduced from 40%)
-        scoreBreakdown.unit +             // Unit match bonus
+        scoreBreakdown.fuzzy * 0.25 +     // 25% weight on description match (reduced to give more weight to unit)
+        scoreBreakdown.unit +             // Unit match bonus (up to 25 points)
         scoreBreakdown.category +         // Category match bonus
         scoreBreakdown.keywords +         // Keyword match bonus
         scoreBreakdown.context +          // Context keyword bonus
@@ -437,7 +471,8 @@ export class MatchingService {
         scores: bestMatch.breakdown,
         factors: Object.keys(bestMatch.breakdown).filter(k => bestMatch.breakdown[k] > 0),
         reasoning: `Composite match: ${bestMatch.breakdown.fuzzy.toFixed(0)}% description, ` +
-                   `${bestMatch.breakdown.unit}pts unit, ${bestMatch.breakdown.category}pts category, ` +
+                   `${bestMatch.breakdown.unit}pts unit${queryUnit && bestMatch.item.unit ? ` (${queryUnit} → ${bestMatch.item.unit})` : ''}, ` +
+                   `${bestMatch.breakdown.category}pts category${bestMatch.item.subcategory ? '+subcategory' : ''}, ` +
                    `${bestMatch.breakdown.keywords}pts keywords`
       }
     };
@@ -470,9 +505,15 @@ export class MatchingService {
     const expandedDescription = ConstructionPatternsService.expandAbbreviations(description);
     const queryFeatures = ConstructionPatternsService.extractConstructionFeatures(description);
     
+    // Extract category/subcategory from context for stronger matching
+    let categoryContext = '';
     if (contextHeaders && contextHeaders.length > 0) {
+      const potentialCategory = contextHeaders[0] || '';
+      const potentialSubcategory = contextHeaders[1] || '';
+      categoryContext = `Target Category: ${potentialCategory}. Target Subcategory: ${potentialSubcategory}.`;
+      
       const fullContext = contextHeaders.join(' > ');
-      enrichedQuery = `Category: ${fullContext}. Task: ${expandedDescription}`;
+      enrichedQuery = `${categoryContext} Category: ${fullContext}. Task: ${expandedDescription}`;
       
       // Add construction features to query
       if (queryFeatures.workType) {
@@ -486,6 +527,8 @@ export class MatchingService {
       }
       
       debugLog.log('COHERE', `Enriched query with context and construction features`, { enrichedQuery });
+    } else {
+      enrichedQuery = expandedDescription;
     }
     
     // Extract unit from description for better matching
@@ -565,18 +608,55 @@ export class MatchingService {
       return this.localMatch(description, priceItems, contextHeaders);
     }
     
-    // Sort by similarity but consider unit compatibility
+    // Boost scores for category+subcategory matches
+    if (contextHeaders && contextHeaders.length >= 2) {
+      const targetCategory = contextHeaders[0]?.toLowerCase() || '';
+      const targetSubcategory = contextHeaders[1]?.toLowerCase() || '';
+      
+      scoredMatches.forEach(match => {
+        const itemCategory = match.item.category?.toLowerCase() || '';
+        const itemSubcategory = match.item.subcategory?.toLowerCase() || '';
+        
+        // Strong boost for exact category+subcategory match
+        if (targetCategory && targetSubcategory &&
+            itemCategory.includes(targetCategory) && 
+            itemSubcategory.includes(targetSubcategory)) {
+          match.similarity = Math.min(0.99, match.similarity * 1.3); // 30% boost
+          console.log(`[MatchingService/COHERE] Boosted ${match.item.code} for category+subcategory match`);
+        }
+        // Medium boost for category-only match
+        else if (targetCategory && itemCategory.includes(targetCategory)) {
+          match.similarity = Math.min(0.95, match.similarity * 1.15); // 15% boost
+        }
+      });
+    }
+    
+    // Sort by similarity but give strong preference to unit matches
     scoredMatches.sort((a, b) => {
-      // Boost score for unit compatibility
+      // Apply strong unit matching boost
       let aScore = a.similarity;
       let bScore = b.similarity;
       
       if (queryUnit) {
-        if (this.areUnitsCompatible(queryUnit, a.item.unit)) {
-          aScore += 0.1; // 10% boost for unit compatibility
+        const normalizedQueryUnit = this.normalizeUnit(queryUnit);
+        const normalizedAUnit = a.item.unit ? this.normalizeUnit(a.item.unit) : '';
+        const normalizedBUnit = b.item.unit ? this.normalizeUnit(b.item.unit) : '';
+        
+        // 25% boost for exact unit match
+        if (normalizedAUnit === normalizedQueryUnit) {
+          aScore *= 1.25;
+        } else if (this.areUnitsCompatible(queryUnit, a.item.unit)) {
+          aScore *= 1.20; // 20% boost for compatible units
+        } else if (!a.item.unit) {
+          aScore *= 0.95; // 5% penalty for missing unit
         }
-        if (this.areUnitsCompatible(queryUnit, b.item.unit)) {
-          bScore += 0.1;
+        
+        if (normalizedBUnit === normalizedQueryUnit) {
+          bScore *= 1.25;
+        } else if (this.areUnitsCompatible(queryUnit, b.item.unit)) {
+          bScore *= 1.20;
+        } else if (!b.item.unit) {
+          bScore *= 0.95;
         }
       }
       
@@ -589,10 +669,19 @@ export class MatchingService {
     let finalConfidence = bestMatch.similarity;
     let unitMatchInfo = '';
     if (queryUnit && bestMatch.item.unit) {
-      if (this.areUnitsCompatible(queryUnit, bestMatch.item.unit)) {
-        finalConfidence = Math.min(0.99, finalConfidence + 0.05);
+      const normalizedQueryUnit = this.normalizeUnit(queryUnit);
+      const normalizedItemUnit = this.normalizeUnit(bestMatch.item.unit);
+      
+      if (normalizedQueryUnit === normalizedItemUnit) {
+        finalConfidence = Math.min(0.99, finalConfidence * 1.15); // 15% boost for exact unit
+        unitMatchInfo = ' with exact unit match';
+      } else if (this.areUnitsCompatible(queryUnit, bestMatch.item.unit)) {
+        finalConfidence = Math.min(0.99, finalConfidence * 1.10); // 10% boost for compatible unit
         unitMatchInfo = ' with compatible unit';
       }
+    } else if (queryUnit && !bestMatch.item.unit) {
+      finalConfidence *= 0.95; // 5% penalty for missing unit
+      unitMatchInfo = ' (unit mismatch)';
     }
     
     return {
@@ -626,9 +715,15 @@ export class MatchingService {
     const expandedDescription = ConstructionPatternsService.expandAbbreviations(description);
     const queryFeatures = ConstructionPatternsService.extractConstructionFeatures(description);
     
+    // Extract category/subcategory from context for stronger matching
+    let categoryContext = '';
     if (contextHeaders && contextHeaders.length > 0) {
+      const potentialCategory = contextHeaders[0] || '';
+      const potentialSubcategory = contextHeaders[1] || '';
+      categoryContext = `Target Category: ${potentialCategory}. Target Subcategory: ${potentialSubcategory}.`;
+      
       const fullContext = contextHeaders.join(' > ');
-      enrichedQuery = `Context: ${fullContext}. Task: ${expandedDescription}`;
+      enrichedQuery = `${categoryContext} Context: ${fullContext}. Task: ${expandedDescription}`;
       
       // Add construction features to query
       if (queryFeatures.workType) {
@@ -642,6 +737,8 @@ export class MatchingService {
       }
       
       console.log(`[MatchingService/OPENAI] Enriched query: "${enrichedQuery.substring(0, 100)}..."`);
+    } else {
+      enrichedQuery = expandedDescription;
     }
     
     // Extract unit from description for better matching
@@ -703,18 +800,55 @@ export class MatchingService {
       return this.localMatch(description, priceItems, contextHeaders);
     }
     
-    // Sort by similarity but consider unit compatibility
+    // Boost scores for category+subcategory matches
+    if (contextHeaders && contextHeaders.length >= 2) {
+      const targetCategory = contextHeaders[0]?.toLowerCase() || '';
+      const targetSubcategory = contextHeaders[1]?.toLowerCase() || '';
+      
+      scoredMatches.forEach(match => {
+        const itemCategory = match.item.category?.toLowerCase() || '';
+        const itemSubcategory = match.item.subcategory?.toLowerCase() || '';
+        
+        // Strong boost for exact category+subcategory match
+        if (targetCategory && targetSubcategory &&
+            itemCategory.includes(targetCategory) && 
+            itemSubcategory.includes(targetSubcategory)) {
+          match.similarity = Math.min(0.99, match.similarity * 1.3); // 30% boost
+          console.log(`[MatchingService/OPENAI] Boosted ${match.item.code} for category+subcategory match`);
+        }
+        // Medium boost for category-only match
+        else if (targetCategory && itemCategory.includes(targetCategory)) {
+          match.similarity = Math.min(0.95, match.similarity * 1.15); // 15% boost
+        }
+      });
+    }
+    
+    // Sort by similarity but give strong preference to unit matches
     scoredMatches.sort((a, b) => {
-      // Boost score for unit compatibility
+      // Apply strong unit matching boost
       let aScore = a.similarity;
       let bScore = b.similarity;
       
       if (queryUnit) {
-        if (this.areUnitsCompatible(queryUnit, a.item.unit)) {
-          aScore += 0.1; // 10% boost for unit compatibility
+        const normalizedQueryUnit = this.normalizeUnit(queryUnit);
+        const normalizedAUnit = a.item.unit ? this.normalizeUnit(a.item.unit) : '';
+        const normalizedBUnit = b.item.unit ? this.normalizeUnit(b.item.unit) : '';
+        
+        // 25% boost for exact unit match
+        if (normalizedAUnit === normalizedQueryUnit) {
+          aScore *= 1.25;
+        } else if (this.areUnitsCompatible(queryUnit, a.item.unit)) {
+          aScore *= 1.20; // 20% boost for compatible units
+        } else if (!a.item.unit) {
+          aScore *= 0.95; // 5% penalty for missing unit
         }
-        if (this.areUnitsCompatible(queryUnit, b.item.unit)) {
-          bScore += 0.1;
+        
+        if (normalizedBUnit === normalizedQueryUnit) {
+          bScore *= 1.25;
+        } else if (this.areUnitsCompatible(queryUnit, b.item.unit)) {
+          bScore *= 1.20;
+        } else if (!b.item.unit) {
+          bScore *= 0.95;
         }
       }
       
@@ -727,10 +861,19 @@ export class MatchingService {
     let finalConfidence = bestMatch.similarity;
     let unitMatchInfo = '';
     if (queryUnit && bestMatch.item.unit) {
-      if (this.areUnitsCompatible(queryUnit, bestMatch.item.unit)) {
-        finalConfidence = Math.min(0.99, finalConfidence + 0.05);
+      const normalizedQueryUnit = this.normalizeUnit(queryUnit);
+      const normalizedItemUnit = this.normalizeUnit(bestMatch.item.unit);
+      
+      if (normalizedQueryUnit === normalizedItemUnit) {
+        finalConfidence = Math.min(0.99, finalConfidence * 1.15); // 15% boost for exact unit
+        unitMatchInfo = ' with exact unit match';
+      } else if (this.areUnitsCompatible(queryUnit, bestMatch.item.unit)) {
+        finalConfidence = Math.min(0.99, finalConfidence * 1.10); // 10% boost for compatible unit
         unitMatchInfo = ' with compatible unit';
       }
+    } else if (queryUnit && !bestMatch.item.unit) {
+      finalConfidence *= 0.95; // 5% penalty for missing unit
+      unitMatchInfo = ' (unit mismatch)';
     }
     
     return {
@@ -967,7 +1110,7 @@ export class MatchingService {
       /\b(CFT|cft|SFT|sft|RFT|rft|CUFT|SQFT)\b/i,
       /\b(BRASS|brass)\b/i, // Common in South Asian construction
       /\b(TRIP|trip|LOAD|load)\b/i, // For transportation
-      /(\d+(?:'|ft|foot|feet))\s*[xX×]\s*(\d+(?:'|ft|foot|feet))/i // Dimension patterns
+      /(\d+(?:'|ft|foot|feet))\s*[xXÃ—]\s*(\d+(?:'|ft|foot|feet))/i // Dimension patterns
     ];
     
     for (const pattern of unitPatterns) {
@@ -993,8 +1136,8 @@ export class MatchingService {
     // Normalize common construction abbreviations
     const replacements = new Map([
       // Dimensions
-      [/(\d+)\s*['"'"]\s*[xX×]\s*(\d+)\s*['"'"]?/g, '$1 x $2'], // 10' x 20' -> 10 x 20
-      [/(\d+)\s*mm\s*[xX×]\s*(\d+)\s*mm/gi, '$1mm x $2mm'],
+      [/(\d+)\s*['"'"]\s*[xXÃ—]\s*(\d+)\s*['"'"]?/g, '$1 x $2'], // 10' x 20' -> 10 x 20
+      [/(\d+)\s*mm\s*[xXÃ—]\s*(\d+)\s*mm/gi, '$1mm x $2mm'],
       [/\b(\d+)\s*['"'"]/g, '$1 feet'], // 10' -> 10 feet
       
       // Common typos and variations
@@ -1027,6 +1170,110 @@ export class MatchingService {
     });
     
     return normalized;
+  }
+
+  /**
+   * Normalize unit strings for better comparison
+   */
+  private normalizeUnit(unit: string): string {
+    if (!unit) return '';
+    
+    // Convert to uppercase and trim
+    let normalized = unit.toUpperCase().trim();
+    
+    // Remove common punctuation and extra spaces
+    normalized = normalized
+      .replace(/[.\-_]/g, '')  // Remove dots, dashes, underscores
+      .replace(/\s+/g, ' ')    // Multiple spaces to single space
+      .trim();
+    
+    // Common normalizations
+    const unitNormalizations: Record<string, string> = {
+      // Square meter variations
+      'SQ M': 'SQM',
+      'SQ MT': 'SQM',
+      'SQ MTR': 'SQM',
+      'SQ METER': 'SQM',
+      'SQ METRE': 'SQM',
+      'SQUARE METER': 'SQM',
+      'SQUARE METRE': 'SQM',
+      'SM': 'SQM',
+      
+      // Cubic meter variations
+      'CU M': 'CUM',
+      'CU MT': 'CUM',
+      'CU MTR': 'CUM',
+      'CU METER': 'CUM',
+      'CU METRE': 'CUM',
+      'CUBIC METER': 'CUM',
+      'CUBIC METRE': 'CUM',
+      'CM': 'CUM',
+      
+      // Linear meter variations
+      'MTR': 'M',
+      'METER': 'M',
+      'METRE': 'M',
+      'LM': 'M',
+      'RM': 'M',
+      'RMT': 'M',
+      'RUNNING METER': 'M',
+      'RUNNING METRE': 'M',
+      'LINEAR METER': 'M',
+      'LINEAR METRE': 'M',
+      
+      // Number/quantity variations
+      'NUMBER': 'NO',
+      'NOS': 'NO',
+      'NR': 'NO',
+      'EACH': 'NO',
+      'EA': 'NO',
+      'PC': 'NO',
+      'PCS': 'NO',
+      'PIECE': 'NO',
+      'PIECES': 'NO',
+      'UNIT': 'NO',
+      'QTY': 'NO',
+      
+      // Weight variations
+      'KILOGRAM': 'KG',
+      'KILO': 'KG',
+      'KGS': 'KG',
+      'METRIC TON': 'TON',
+      'METRIC TONNE': 'TON',
+      'TONNE': 'TON',
+      'MT': 'TON',
+      'QUINTAL': 'QTL',
+      
+      // Volume variations
+      'LITRE': 'L',
+      'LITER': 'L',
+      'LTR': 'L',
+      'LIT': 'L',
+      
+      // Imperial variations
+      'SQUARE FEET': 'SFT',
+      'SQUARE FOOT': 'SFT',
+      'SQ FT': 'SFT',
+      'SQFT': 'SFT',
+      'CUBIC FEET': 'CFT',
+      'CUBIC FOOT': 'CFT',
+      'CU FT': 'CFT',
+      'CUFT': 'CFT',
+      'RUNNING FEET': 'RFT',
+      'RUNNING FOOT': 'RFT',
+      
+      // Other
+      'BAGS': 'BAG',
+      'SETS': 'SET',
+      'PAIRS': 'PAIR',
+      '100CFT': 'BRASS',
+      'HUNDRED CUBIC FEET': 'BRASS',
+      'TRUCKLOAD': 'TRIP',
+      'LOAD': 'TRIP'
+    };
+    
+    // Apply normalization
+    return unitNormalizations[normalized] || normalized;
   }
 
   /**
@@ -1143,13 +1390,20 @@ export class MatchingService {
       // Calculate base fuzzy score
       scoreBreakdown.fuzzy = fuzz.token_set_ratio(description, item.description);
       
-      // Enhanced unit matching with compatibility check
+      // Enhanced unit matching with stronger weight (25% boost) 
       if (queryUnit && item.unit) {
-        if (this.areUnitsCompatible(queryUnit, item.unit)) {
-          scoreBreakdown.unit = 20;
+        const normalizedQueryUnit = this.normalizeUnit(queryUnit);
+        const normalizedItemUnit = this.normalizeUnit(item.unit);
+        
+        if (normalizedQueryUnit === normalizedItemUnit) {
+          scoreBreakdown.unit = 25; // Exact match after normalization - highest boost
+        } else if (this.areUnitsCompatible(queryUnit, item.unit)) {
+          scoreBreakdown.unit = 22; // Compatible units - very high boost
         } else if (queryUnit.toUpperCase() === item.unit.toUpperCase()) {
-          scoreBreakdown.unit = 25;
+          scoreBreakdown.unit = 25; // Raw exact match - highest boost
         }
+      } else if (queryUnit && !item.unit) {
+        scoreBreakdown.unit = -5; // Penalty for missing unit when query has unit
       }
       
       // Enhanced category matching

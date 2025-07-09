@@ -1,6 +1,6 @@
 // API client for Vercel deployment
 import axios, { AxiosInstance, InternalAxiosRequestConfig } from 'axios';
-import { useAuthStore } from '../stores/authStore';
+import { useAuthStore } from '../stores/auth.store';
 
 // Use relative URLs for Vercel deployment
 const API_BASE_URL = '/api';

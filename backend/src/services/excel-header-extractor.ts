@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Utility to extract embedded headers from description cells
  */
 

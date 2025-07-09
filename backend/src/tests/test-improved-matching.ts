@@ -1,4 +1,4 @@
-import { MatchingService } from '../services/matching.service.js';
+﻿import { MatchingService } from '../services/matching.service';
 
 async function testImprovedMatching() {
   console.log('\n=== TESTING IMPROVED MATCHING WITH CONTEXT ===\n');
@@ -43,7 +43,7 @@ async function testImprovedMatching() {
         testCase.contextHeaders
       );
       
-      console.log(`✓ Matched: "${result.matchedDescription}"`);
+      console.log(`âœ“ Matched: "${result.matchedDescription}"`);
       console.log(`  Unit: ${result.matchedUnit} (Input: ${testCase.unit})`);
       console.log(`  Confidence: ${(result.confidence * 100).toFixed(1)}%`);
       if (result.matchingDetails) {
@@ -51,7 +51,7 @@ async function testImprovedMatching() {
         console.log(`  Reasoning: ${result.matchingDetails.reasoning}`);
       }
     } catch (error) {
-      console.error(`✗ Error:`, error);
+      console.error(`âœ— Error:`, error);
     }
     
     console.log();
@@ -76,7 +76,7 @@ async function testImprovedMatching() {
   
   for (const test of unitTests) {
     const result = matchingServiceAny.areUnitsCompatible(test.unit1, test.unit2);
-    const status = result === test.expected ? '✓' : '✗';
+    const status = result === test.expected ? 'âœ“' : 'âœ—';
     console.log(`${status} ${test.unit1} <-> ${test.unit2}: ${result} (expected: ${test.expected})`);
   }
 }

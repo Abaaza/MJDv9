@@ -1,4 +1,4 @@
-export interface PriceItem {
+﻿export interface PriceItem {
   _id: string;
   id: string;
   code?: string;

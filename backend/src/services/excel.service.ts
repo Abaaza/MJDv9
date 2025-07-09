@@ -1,6 +1,6 @@
-import ExcelJS from 'exceljs';
+﻿import ExcelJS from 'exceljs';
 import { v4 as uuidv4 } from 'uuid';
-import { extractEmbeddedHeaders, isLikelyStandaloneHeader } from './excel-header-extractor.js';
+import { extractEmbeddedHeaders, isLikelyStandaloneHeader } from './excel-header-extractor';
 
 export interface ParsedBOQItem {
   rowNumber: number;

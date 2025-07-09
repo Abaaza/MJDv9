@@ -1,5 +1,5 @@
-import { Request, Response, NextFunction } from 'express';
-import { verifyAccessToken } from '../utils/jwt.js';
+﻿import { Request, Response, NextFunction } from 'express';
+import { verifyAccessToken } from '../utils/jwt';
 
 export function authenticate(req: Request, res: Response, next: NextFunction): void {
   try {

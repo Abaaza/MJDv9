@@ -1,4 +1,4 @@
-// Production-safe logger wrapper
+﻿// Production-safe logger wrapper
 const isDevelopment = process.env.NODE_ENV === 'development';
 
 export const logger = {

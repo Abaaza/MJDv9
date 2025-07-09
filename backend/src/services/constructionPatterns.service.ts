@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Construction-specific patterns and matching logic
  */
 
@@ -145,8 +145,8 @@ export class ConstructionPatternsService {
 
   // Common dimension patterns in construction
   private static dimensionPatterns = [
-    /\b(\d+(?:\.\d+)?)\s*[xX×]\s*(\d+(?:\.\d+)?)\s*[xX×]\s*(\d+(?:\.\d+)?)\s*(mm|cm|m|mt|mtr|meter|metre)?\b/i, // 3D dimensions
-    /\b(\d+(?:\.\d+)?)\s*[xX×]\s*(\d+(?:\.\d+)?)\s*(mm|cm|m|mt|mtr|meter|metre)?\b/i, // 2D dimensions
+    /\b(\d+(?:\.\d+)?)\s*[xXÃ—]\s*(\d+(?:\.\d+)?)\s*[xXÃ—]\s*(\d+(?:\.\d+)?)\s*(mm|cm|m|mt|mtr|meter|metre)?\b/i, // 3D dimensions
+    /\b(\d+(?:\.\d+)?)\s*[xXÃ—]\s*(\d+(?:\.\d+)?)\s*(mm|cm|m|mt|mtr|meter|metre)?\b/i, // 2D dimensions
     /\b(\d+(?:\.\d+)?)\s*(mm|cm|m|mt|mtr|meter|metre)\s*(?:thick|thk|thickness|dia|diameter|width|length|height|deep|depth)\b/i,
     /\b(?:thick|thk|thickness|dia|diameter|width|length|height|deep|depth)[:\s]+(\d+(?:\.\d+)?)\s*(mm|cm|m|mt|mtr|meter|metre)?\b/i
   ];

@@ -1,21 +1,17 @@
 import { ConvexHttpClient } from 'convex/browser';
-import { env } from './env.js';
+import dotenv from 'dotenv';
 
-let convexClient: ConvexHttpClient | null = null;
+dotenv.config();
 
-export function getConvexClient(): ConvexHttpClient {
-  if (!convexClient) {
-    const url = env.CONVEX_URL || process.env.NEXT_PUBLIC_CONVEX_URL || '';
-    if (!url) {
-      throw new Error('CONVEX_URL is not configured');
-    }
-    
-    // Create client with custom options for better network handling
-    convexClient = new ConvexHttpClient(url);
-    
-    // Log successful connection
-    console.log('[Convex] Client initialized with URL:', url.substring(0, 30) + '...');
-  }
-  return convexClient;
+const convexUrl = process.env.CONVEX_URL || process.env.NEXT_PUBLIC_CONVEX_URL;
+
+if (!convexUrl) {
+  throw new Error('CONVEX_URL or NEXT_PUBLIC_CONVEX_URL environment variable is not set');
 }
 
+// Create standard Convex client
+const convexClient = new ConvexHttpClient(convexUrl);
+
+// Export both as default and named export for compatibility
+export default convexClient;
+export const getConvexClient = () => convexClient;

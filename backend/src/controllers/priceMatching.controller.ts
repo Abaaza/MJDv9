@@ -1,13 +1,13 @@
-import { Request, Response } from 'express';
-import { getConvexClient } from '../config/convex.js';
-import { api } from '../../../convex/_generated/api.js';
-import { ExcelService } from '../services/excel.service.js';
-import { MatchingService } from '../services/matching.service.js';
-import { jobProcessor } from '../services/jobProcessor.service.js';
-import { toConvexId } from '../utils/convexId.js';
+﻿import { Request, Response } from 'express';
+import { getConvexClient } from '../config/convex';
+import { api } from '../../../convex/_generated/api';
+import { ExcelService } from '../services/excel.service';
+import { MatchingService } from '../services/matching.service';
+import { jobProcessor } from '../services/jobProcessor.service';
+import { toConvexId } from '../utils/convexId';
 import { v4 as uuidv4 } from 'uuid';
-import { fileStorage } from '../services/fileStorage.service.js';
-import { logActivity } from '../utils/activityLogger.js';
+import { fileStorage } from '../services/fileStorage.service';
+import { logActivity } from '../utils/activityLogger';
 
 const convex = getConvexClient();
 const excelService = new ExcelService();
@@ -17,7 +17,7 @@ const matchingService = MatchingService.getInstance();
 function sanitizeFieldName(name: string): string {
   // Replace non-ASCII and special characters with underscores
   return name.replace(/[^\x20-\x7E]/g, '_') // Non-ASCII characters
-    .replace(/[£$€¥¢]/g, '_')                // Currency symbols
+    .replace(/[Â£$â‚¬Â¥Â¢]/g, '_')                // Currency symbols
     .replace(/\s+/g, '_')                     // Spaces
     .replace(/[^a-zA-Z0-9_]/g, '_')         // Other special characters
     .replace(/_+/g, '_')                      // Multiple underscores
@@ -137,14 +137,13 @@ export async function uploadBOQ(req: Request, res: Response): Promise<void> {
       fileBuffer: [],
       itemCount: itemsWithQuantities.length, // Only count items with quantities
       matchingMethod: req.body.matchingMethod || 'LOCAL',
-      clientName: req.body.clientName || 'Default Client',
       clientId: req.body.clientId ? toConvexId<'clients'>(req.body.clientId) : undefined,
       projectId: projectId,
       projectName: req.body.projectName,
       headers: firstSheet?.headers || [],
       sheetName: firstSheet?.sheetName || 'Sheet1',
       // Use the fileId from storage instead
-      fileId: fileId,
+      originalFileId: fileId,
     });
 
     // Store parsed items
@@ -199,6 +198,7 @@ export async function uploadAndMatch(req: Request, res: Response): Promise<void>
   const requestId = uuidv4().substring(0, 8);
   console.log(`[UploadAndMatch-${requestId}] Starting upload and match process`);
   const startTime = Date.now();
+  let operationTimeout: NodeJS.Timeout | undefined;
   
   try {
     if (!req.file) {
@@ -425,7 +425,9 @@ export async function uploadAndMatch(req: Request, res: Response): Promise<void>
     console.error(`[${requestId}] Error stack:`, error.stack);
     
     // Clear the timeout on error
-    clearTimeout(operationTimeout!);
+    if (operationTimeout) {
+      clearTimeout(operationTimeout);
+    }
     
     if (!res.headersSent) {
       res.status(500).json({ error: error.message || 'Failed to upload and match BOQ' });
@@ -848,6 +850,7 @@ export async function autoSaveResult(req: Request, res: Response): Promise<void>
 
     // Update the result (autosave doesn't change isManuallyEdited)
     await convex.mutation(api.priceMatching.updateMatchResult, {
+      userId: toConvexId<'users'>(req.user.id),
       resultId: toConvexId<'matchResults'>(resultId),
       updates: {
         matchedDescription: updates.matchedDescription,
@@ -910,6 +913,7 @@ export async function runMatch(req: Request, res: Response): Promise<void> {
 
     // Update the result
     await convex.mutation(api.priceMatching.updateMatchResult, {
+      userId: toConvexId<'users'>(req.user.id),
       resultId: toConvexId<'matchResults'>(resultId),
       updates: {
         matchedItemId: matchResult.matchedItemId,
@@ -1098,3 +1102,5 @@ export async function stopAllJobs(req: Request, res: Response): Promise<void> {
     res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to stop all jobs' });
   }
 }
+
+

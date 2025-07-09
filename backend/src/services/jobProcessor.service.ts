@@ -1,8 +1,8 @@
-import { EventEmitter } from 'events';
-import { getConvexClient } from '../config/convex.js';
-import { api } from '../../../convex/_generated/api.js';
-import { MatchingService } from './matching.service.js';
-import { logStorage } from './logStorage.service.js';
+﻿import { EventEmitter } from 'events';
+import { getConvexClient } from '../config/convex';
+import { api } from '../../../convex/_generated/api';
+import { MatchingService } from './matching.service';
+import { logStorage } from './logStorage.service';
 
 interface ProcessingJob {
   jobId: string;
@@ -265,7 +265,7 @@ export class JobProcessorService extends EventEmitter {
         job.progressMessage = 'Preparing batches for AI processing...';
         this.emitProgress(job);
         
-        this.emitLog(jobId, 'info', `🤖 AI Method (${job.method}): Created ${totalBatches} batches of ${this.BATCH_SIZE} items each for optimal API performance`);
+        this.emitLog(jobId, 'info', `ðŸ¤– AI Method (${job.method}): Created ${totalBatches} batches of ${this.BATCH_SIZE} items each for optimal API performance`);
         
         job.progress = 10;
         job.progressMessage = `Starting AI processing of ${job.items.length} items in ${totalBatches} batches...`;
@@ -275,7 +275,7 @@ export class JobProcessorService extends EventEmitter {
         job.progressMessage = 'Starting LOCAL processing...';
         this.emitProgress(job);
         
-        this.emitLog(jobId, 'info', `⚡ LOCAL Method: Processing ${job.items.length} items efficiently (no API rate limits)`);
+        this.emitLog(jobId, 'info', `âš¡ LOCAL Method: Processing ${job.items.length} items efficiently (no API rate limits)`);
         
         job.progressMessage = `Processing ${job.items.length} items with LOCAL matching...`;
         this.emitProgress(job);
@@ -323,9 +323,9 @@ export class JobProcessorService extends EventEmitter {
         this.emitProgress(job);
         
         if (isAIMethod) {
-          this.emitLog(jobId, 'info', `🤖 Starting AI batch ${batchNumber}/${totalBatches} with ${batch.length} items`);
+          this.emitLog(jobId, 'info', `ðŸ¤– Starting AI batch ${batchNumber}/${totalBatches} with ${batch.length} items`);
         } else {
-          this.emitLog(jobId, 'info', `⚡ Processing items ${startIdx + 1}-${startIdx + batch.length}`);
+          this.emitLog(jobId, 'info', `âš¡ Processing items ${startIdx + 1}-${startIdx + batch.length}`);
         }
         
         const batchStartTime = Date.now();
@@ -349,11 +349,11 @@ export class JobProcessorService extends EventEmitter {
         
         if (isAIMethod) {
           this.emitLog(jobId, 'success', 
-            `🤖 AI Batch ${batchNumber}/${totalBatches} completed in ${(batchDuration/1000).toFixed(1)}s - ${batchSuccesses} matches, ${batchFailures} failures`
+            `ðŸ¤– AI Batch ${batchNumber}/${totalBatches} completed in ${(batchDuration/1000).toFixed(1)}s - ${batchSuccesses} matches, ${batchFailures} failures`
           );
         } else {
           this.emitLog(jobId, 'success', 
-            `⚡ Processed ${batch.length} items in ${(batchDuration/1000).toFixed(1)}s - ${batchSuccesses} matches, ${batchFailures} failures`
+            `âš¡ Processed ${batch.length} items in ${(batchDuration/1000).toFixed(1)}s - ${batchSuccesses} matches, ${batchFailures} failures`
           );
         }
         
@@ -398,7 +398,7 @@ export class JobProcessorService extends EventEmitter {
       
       // Emit final progress update before finalizing
       this.emitProgress(job);
-      this.emitLog(jobId, 'success', '✅ Job completed successfully!');
+      this.emitLog(jobId, 'success', 'âœ… Job completed successfully!');
       
       
       // Update Convex with final progress before finalization

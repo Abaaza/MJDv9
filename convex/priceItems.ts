@@ -138,6 +138,7 @@ export const getPaginated = query({
     paginationOpts: paginationOptsValidator,
     searchQuery: v.optional(v.string()),
     category: v.optional(v.string()),
+    subcategory: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     let query = ctx.db.query("priceItems").filter((q) => q.eq(q.field("isActive"), true));
@@ -145,6 +146,10 @@ export const getPaginated = query({
     // Apply filters if provided
     if (args.category) {
       query = query.filter((q) => q.eq(q.field("category"), args.category));
+    }
+    
+    if (args.subcategory) {
+      query = query.filter((q) => q.eq(q.field("subcategory"), args.subcategory));
     }
     
     return await query.paginate(args.paginationOpts);
@@ -327,6 +332,34 @@ export const getCategories = query({
     });
     
     return Array.from(categories).sort();
+  },
+});
+
+export const getCategorySubcategories = query({
+  handler: async (ctx) => {
+    const items = await ctx.db
+      .query("priceItems")
+      .filter((q) => q.eq(q.field("isActive"), true))
+      .collect();
+    
+    const categorySubcategories: Record<string, string[]> = {};
+    items.forEach(item => {
+      if (item.category && item.subcategory) {
+        if (!categorySubcategories[item.category]) {
+          categorySubcategories[item.category] = [];
+        }
+        if (!categorySubcategories[item.category].includes(item.subcategory)) {
+          categorySubcategories[item.category].push(item.subcategory);
+        }
+      }
+    });
+    
+    // Sort subcategories within each category
+    Object.keys(categorySubcategories).forEach(category => {
+      categorySubcategories[category].sort();
+    });
+    
+    return categorySubcategories;
   },
 });
 

@@ -1,4 +1,4 @@
-import { getConvexClient } from '../config/convex.js';
+﻿import { getConvexClient } from '../config/convex';
 
 interface RetryOptions {
   maxRetries?: number;

@@ -1,8 +1,8 @@
-# Compiled JavaScript files
+# Ignore compiled files
 *.js
 *.js.map
 *.d.ts
 *.d.ts.map
 
-# Keep the generated API files
+# Keep the _generated directory
 !_generated/**

@@ -15,9 +15,9 @@
     "build:frontend": "cd frontend && npm run build",
     "build:all": "cd backend && npm install --production=false && npm run build && cd ../frontend && npm install --production=false && npm run build",
     "build:production": "npm run build:convex && npm run build:all",
-    "vercel-build": "npm install && cd frontend && npm install && npm run build",
-    "build:frontend": "cd frontend && npm run build",
-    "install:all": "npm install && cd backend && npm install && cd ../frontend && npm install",
+    "build:azure": "npm run install:all && npm run build:backend && npm run build:frontend && npm run prepare:azure",
+    "prepare:azure": "mkdir -p backend/public && cp -r frontend/dist/* backend/public/",
+    "install:all": "cd backend && npm install && cd ../frontend && npm install && cd ..",
     "start": "cd backend && npm start"
   },
   "keywords": [

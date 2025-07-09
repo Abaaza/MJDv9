@@ -1,4 +1,4 @@
-import NodeCache from 'node-cache';
+﻿import NodeCache from 'node-cache';
 
 interface CacheOptions {
   stdTTL?: number; // Standard TTL in seconds

@@ -6,19 +6,28 @@ import morgan from 'morgan';
 import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
 import { createServer } from 'http';
-import { env, isDevelopment } from './config/env.js';
-import authRoutes from './routes/auth.routes.js';
-import dashboardRoutes from './routes/dashboard.routes.js';
-import priceMatchingRoutes from './routes/priceMatching.routes.js';
-import priceListRoutes from './routes/priceList.routes.js';
-import adminRoutes from './routes/admin.routes.js';
-import clientsRoutes from './routes/clients.routes.js';
-import projectsRoutes from './routes/projects.routes.js';
-import jobsRoutes from './routes/jobs.routes.js';
-import healthRoutes from './routes/health.routes.js';
-import { fileStorage } from './services/fileStorage.service.js';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { env, isDevelopment } from './config/env';
+import authRoutes from './routes/auth.routes';
+import dashboardRoutes from './routes/dashboard.routes';
+import priceMatchingRoutes from './routes/priceMatching.routes';
+import priceListRoutes from './routes/priceList.routes';
+import adminRoutes from './routes/admin.routes';
+import clientsRoutes from './routes/clients.routes';
+import projectsRoutes from './routes/projects.routes';
+import jobsRoutes from './routes/jobs.routes';
+import healthRoutes from './routes/health.routes';
+// import asyncJobsRoutes from './routes/asyncJobs.routes';
+import { fileStorage } from './services/fileStorage.service';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
+
+// Export for Lambda
+export { app };
 
 // Security middleware with enhanced configuration
 app.use(helmet({
@@ -42,22 +51,12 @@ app.use(helmet({
   },
 }));
 
-// CORS configuration with additional security
+// CORS configuration for serverless
 app.use(cors({
-  origin: (origin, callback) => {
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
-    
-    // Check if the origin is allowed
-    if (env.FRONTEND_URL === origin) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
+  origin: true, // Allow all origins - serverless.yml will handle CORS at API Gateway level
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
   exposedHeaders: ['X-Total-Count'],
   maxAge: 86400, // 24 hours
 }));
@@ -138,12 +137,26 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/clients', clientsRoutes);
 app.use('/api/projects', projectsRoutes);
 app.use('/api/jobs', jobsRoutes);
+// app.use('/api/async-jobs', asyncJobsRoutes);
 app.use('/api', healthRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
+
+// Serve frontend in production
+if (process.env.NODE_ENV === 'production') {
+  const publicPath = path.join(__dirname, '../../public');
+  app.use(express.static(publicPath));
+  
+  // Handle client-side routing - must be after API routes
+  app.get('*', (req, res) => {
+    if (!req.path.startsWith('/api')) {
+      res.sendFile(path.join(publicPath, 'index.html'));
+    }
+  });
+}
 
 // Error handling middleware
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -221,3 +234,4 @@ process.on('unhandledRejection', (reason, promise) => {
 
 // Export for Vercel serverless
 export default app;
+

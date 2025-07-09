@@ -1,5 +1,5 @@
-import { Id } from '../../../convex/_generated/dataModel.js';
-import { TableNames } from '../../../convex/_generated/dataModel.js';
+﻿import { Id } from '../../../convex/_generated/dataModel';
+import { TableNames } from '../../../convex/_generated/dataModel';
 
 /**
  * Safely cast a string to a Convex ID type

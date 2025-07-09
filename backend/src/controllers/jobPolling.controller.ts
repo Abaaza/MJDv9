@@ -1,12 +1,12 @@
-import { Request, Response } from 'express';
-import { getConvexClient } from '../config/convex.js';
-import { api } from '../../../convex/_generated/api.js';
-import { ExcelService } from '../services/excel.service.js';
-import { JobPollingService } from '../services/jobPolling.service.js';
-import { toConvexId } from '../utils/convexId.js';
-import { fileStorage } from '../services/fileStorage.service.js';
-import { logActivity } from '../utils/activityLogger.js';
-import { logStorage } from '../services/logStorage.service.js';
+﻿import { Request, Response } from 'express';
+import { getConvexClient } from '../config/convex';
+import { api } from '../../../convex/_generated/api';
+import { ExcelService } from '../services/excel.service';
+import { JobPollingService } from '../services/jobPolling.service';
+import { toConvexId } from '../utils/convexId';
+import { fileStorage } from '../services/fileStorage.service';
+import { logActivity } from '../utils/activityLogger';
+import { logStorage } from '../services/logStorage.service';
 
 const convex = getConvexClient();
 const excelService = new ExcelService();
@@ -15,7 +15,7 @@ const jobPollingService = new JobPollingService();
 // Helper function to sanitize field names for Convex
 function sanitizeFieldName(name: string): string {
   return name.replace(/[^\x20-\x7E]/g, '_')
-    .replace(/[£$€¥¢]/g, '_')
+    .replace(/[Â£$â‚¬Â¥Â¢]/g, '_')
     .replace(/\s+/g, '_')
     .replace(/[^a-zA-Z0-9_]/g, '_')
     .replace(/_+/g, '_')

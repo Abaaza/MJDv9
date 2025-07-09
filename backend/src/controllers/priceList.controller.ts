@@ -1,13 +1,13 @@
-import { Request, Response } from 'express';
-import { getConvexClient } from '../config/convex.js';
-import { api } from '../../../convex/_generated/api.js';
+﻿import { Request, Response } from 'express';
+import { getConvexClient } from '../config/convex';
+import { api } from '../../../convex/_generated/api';
 import { parse } from 'csv-parse/sync';
 import { stringify } from 'csv-stringify/sync';
 import * as XLSX from 'xlsx';
 import path from 'path';
-import { Id } from '../../../convex/_generated/dataModel.js';
-import { toConvexId } from '../utils/convexId.js';
-import { logActivity } from '../utils/activityLogger.js';
+import { Id } from '../../../convex/_generated/dataModel';
+import { toConvexId } from '../utils/convexId';
+import { logActivity } from '../utils/activityLogger';
 
 const convex = getConvexClient();
 
@@ -17,6 +17,24 @@ export async function getPriceListStats(req: Request, res: Response): Promise<vo
     
     // Extract unique categories
     const categories = [...new Set(items.map(item => item.category).filter(Boolean))];
+    
+    // Extract unique subcategories grouped by category
+    const categorySubcategories: Record<string, string[]> = {};
+    items.forEach(item => {
+      if (item.category && item.subcategory) {
+        if (!categorySubcategories[item.category]) {
+          categorySubcategories[item.category] = [];
+        }
+        if (!categorySubcategories[item.category].includes(item.subcategory)) {
+          categorySubcategories[item.category].push(item.subcategory);
+        }
+      }
+    });
+    
+    // Sort subcategories within each category
+    Object.keys(categorySubcategories).forEach(category => {
+      categorySubcategories[category].sort();
+    });
     
     // Count incomplete items (missing category, subcategory, rate, unit, or description)
     const incompleteItems = items.filter(item => {
@@ -31,6 +49,7 @@ export async function getPriceListStats(req: Request, res: Response): Promise<vo
     res.json({
       totalItems: items.length,
       categories: categories.sort(),
+      categorySubcategories,
       incompleteCount: incompleteItems.length,
       lastUpdated: new Date().toISOString()
     });

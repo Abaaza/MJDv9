@@ -1,4 +1,4 @@
-import axios, { AxiosInstance } from 'axios';
+﻿import axios, { AxiosInstance } from 'axios';
 import FormData from 'form-data';
 import fs from 'fs';
 import path from 'path';
@@ -79,16 +79,16 @@ class ComprehensiveTestSuite {
     };
 
     try {
-      console.log(`\n🔍 Testing: ${name}`);
+      console.log(`\nðŸ” Testing: ${name}`);
       const response = await testFn();
       result.status = 'pass';
       result.response = response?.data;
-      console.log(`✅ PASSED: ${name}`);
+      console.log(`âœ… PASSED: ${name}`);
       this.report.passed++;
     } catch (error: any) {
       result.status = 'fail';
       result.error = error.message || 'Unknown error';
-      console.log(`❌ FAILED: ${name} - ${result.error}`);
+      console.log(`âŒ FAILED: ${name} - ${result.error}`);
       this.report.failed++;
     }
 
@@ -156,7 +156,7 @@ class ComprehensiveTestSuite {
       const response = await this.api.post('/auth/login', credentials);
       // It's okay if login fails for non-existent user
       if (response.status === 401) {
-        console.log('  ℹ️  Login failed as expected for non-existent user');
+        console.log('  â„¹ï¸  Login failed as expected for non-existent user');
         return response;
       }
       
@@ -309,7 +309,7 @@ class ComprehensiveTestSuite {
       
       // Skip if no test file exists
       if (!fs.existsSync(testFilePath)) {
-        console.log('  ⚠️  Skipping: Test file not found');
+        console.log('  âš ï¸  Skipping: Test file not found');
         this.report.skipped++;
         this.report.totalTests--;
         return null;
@@ -345,7 +345,7 @@ class ComprehensiveTestSuite {
   async testGetJobStatus() {
     await this.runTest('Get Job Status', `/jobs/${this.testJobId}/status`, 'GET', async () => {
       if (!this.testJobId) {
-        console.log('  ⚠️  Skipping: No test job ID');
+        console.log('  âš ï¸  Skipping: No test job ID');
         this.report.skipped++;
         this.report.totalTests--;
         return null;
@@ -391,7 +391,7 @@ class ComprehensiveTestSuite {
   async testUpdatePriceItem() {
     await this.runTest('Update Price Item', `/price-list/${this.testPriceItemId}`, 'PUT', async () => {
       if (!this.testPriceItemId) {
-        console.log('  ⚠️  Skipping: No test price item ID');
+        console.log('  âš ï¸  Skipping: No test price item ID');
         this.report.skipped++;
         this.report.totalTests--;
         return null;
@@ -412,7 +412,7 @@ class ComprehensiveTestSuite {
   async testDeletePriceItem() {
     await this.runTest('Delete Price Item', `/price-list/${this.testPriceItemId}`, 'DELETE', async () => {
       if (!this.testPriceItemId) {
-        console.log('  ⚠️  Skipping: No test price item ID');
+        console.log('  âš ï¸  Skipping: No test price item ID');
         this.report.skipped++;
         this.report.totalTests--;
         return null;
@@ -443,22 +443,22 @@ class ComprehensiveTestSuite {
     output += '                    TEST REPORT\n';
     output += '='.repeat(60) + '\n\n';
 
-    output += `📅 Timestamp: ${report.timestamp}\n`;
-    output += `⏱️  Duration: ${(report.duration / 1000).toFixed(2)}s\n\n`;
+    output += `ðŸ“… Timestamp: ${report.timestamp}\n`;
+    output += `â±ï¸  Duration: ${(report.duration / 1000).toFixed(2)}s\n\n`;
 
-    output += '📊 SUMMARY\n';
+    output += 'ðŸ“Š SUMMARY\n';
     output += '-'.repeat(30) + '\n';
     output += `Total Tests:  ${report.totalTests}\n`;
-    output += `✅ Passed:     ${report.passed}\n`;
-    output += `❌ Failed:     ${report.failed}\n`;
-    output += `⚠️  Skipped:    ${report.skipped}\n`;
+    output += `âœ… Passed:     ${report.passed}\n`;
+    output += `âŒ Failed:     ${report.failed}\n`;
+    output += `âš ï¸  Skipped:    ${report.skipped}\n`;
     output += `Success Rate: ${successRate}%\n\n`;
 
-    output += '📋 DETAILED RESULTS\n';
+    output += 'ðŸ“‹ DETAILED RESULTS\n';
     output += '-'.repeat(60) + '\n';
 
     report.results.forEach((result) => {
-      const status = result.status === 'pass' ? '✅' : result.status === 'fail' ? '❌' : '⚠️';
+      const status = result.status === 'pass' ? 'âœ…' : result.status === 'fail' ? 'âŒ' : 'âš ï¸';
       output += `${status} ${result.name}\n`;
       output += `   Endpoint: ${result.method} ${result.endpoint}\n`;
       output += `   Duration: ${result.duration}ms\n`;
@@ -475,18 +475,18 @@ class ComprehensiveTestSuite {
     // Save report to file
     const reportPath = path.join(__dirname, `test-report-${Date.now()}.txt`);
     fs.writeFileSync(reportPath, output);
-    console.log(`\n📄 Report saved to: ${reportPath}`);
+    console.log(`\nðŸ“„ Report saved to: ${reportPath}`);
 
     return output;
   }
 
   // Run all tests
   async runAllTests() {
-    console.log('\n🚀 Starting Comprehensive Test Suite...\n');
+    console.log('\nðŸš€ Starting Comprehensive Test Suite...\n');
     const startTime = Date.now();
 
     // Authentication Tests
-    console.log('\n📦 Authentication Tests');
+    console.log('\nðŸ“¦ Authentication Tests');
     await this.testHealthCheck();
     await this.testDetailedHealthCheck();
     await this.testUserRegistration();
@@ -495,14 +495,14 @@ class ComprehensiveTestSuite {
     await this.testRefreshToken();
 
     // Client & Project Tests
-    console.log('\n📦 Client & Project Tests');
+    console.log('\nðŸ“¦ Client & Project Tests');
     await this.testCreateClient();
     await this.testGetAllClients();
     await this.testCreateProject();
     await this.testGetAllProjects();
 
     // Price List Tests
-    console.log('\n📦 Price List Tests');
+    console.log('\nðŸ“¦ Price List Tests');
     await this.testGetPriceListStats();
     await this.testCreatePriceItem();
     await this.testGetAllPriceItems();
@@ -510,19 +510,19 @@ class ComprehensiveTestSuite {
     await this.testUpdatePriceItem();
 
     // Price Matching Tests
-    console.log('\n📦 Price Matching Tests');
+    console.log('\nðŸ“¦ Price Matching Tests');
     await this.testUploadBOQ();
     await this.testGetUserJobs();
     await this.testGetJobStatus();
     await this.testLocalMatch();
 
     // Dashboard Tests
-    console.log('\n📦 Dashboard Tests');
+    console.log('\nðŸ“¦ Dashboard Tests');
     await this.testGetDashboardStats();
     await this.testGetRecentActivity();
 
     // Cleanup Tests
-    console.log('\n📦 Cleanup Tests');
+    console.log('\nðŸ“¦ Cleanup Tests');
     await this.testDeletePriceItem();
     await this.testLogout();
 
@@ -540,6 +540,6 @@ class ComprehensiveTestSuite {
 // Run tests
 const testSuite = new ComprehensiveTestSuite();
 testSuite.runAllTests().catch((error) => {
-  console.error('❌ Test suite failed:', error);
+  console.error('âŒ Test suite failed:', error);
   process.exit(1);
 });

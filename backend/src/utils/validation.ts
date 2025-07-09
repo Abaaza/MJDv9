@@ -1,4 +1,4 @@
-import { PriceItem } from '../types/priceItem.types.js';
+﻿import { PriceItem } from '../types/priceItem.types';
 
 export function validatePriceItem(item: any): item is PriceItem {
   return (

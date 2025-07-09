@@ -1,4 +1,4 @@
-import { ExcelService } from '../services/excel.service.js';
+﻿import { ExcelService } from '../services/excel.service';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs/promises';
@@ -43,9 +43,9 @@ async function testExcelParsing() {
       }
     }
     
-    console.log('\n✅ TESTFILE parsing: SUCCESS');
+    console.log('\nâœ… TESTFILE parsing: SUCCESS');
   } catch (error) {
-    console.error('\n❌ TESTFILE parsing: FAILED');
+    console.error('\nâŒ TESTFILE parsing: FAILED');
     console.error(error);
   }
   
@@ -79,9 +79,9 @@ async function testExcelParsing() {
       }
     }
     
-    console.log('\n✅ Testground parsing: SUCCESS');
+    console.log('\nâœ… Testground parsing: SUCCESS');
   } catch (error) {
-    console.error('\n❌ Testground parsing: FAILED');
+    console.error('\nâŒ Testground parsing: FAILED');
     console.error(error);
   }
   

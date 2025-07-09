@@ -1,14 +1,14 @@
-import FuzzySet from 'fuzzyset.js';
+﻿import FuzzySet from 'fuzzyset';
 import { CohereClient } from 'cohere-ai';
 import OpenAI from 'openai';
-import { getConvexClient } from '../config/convex.js';
-import { api } from '../../../convex/_generated/api.js';
-import { EnhancedMatchingService } from './enhancedMatching.service.js';
-import { matchingCache, CacheService } from './cache.service.js';
-import { priceListCache } from './priceListCache.service.js';
-import { PriceItem } from '../types/priceItem.types.js';
-import { withRetry } from '../utils/retry.js';
-import { projectLogger as logger } from '../utils/logger.js';
+import { getConvexClient } from '../config/convex';
+import { api } from '../../../convex/_generated/api';
+import { EnhancedMatchingService } from './enhancedMatching.service';
+import { matchingCache, CacheService } from './cache.service';
+import { priceListCache } from './priceListCache.service';
+import { PriceItem } from '../types/priceItem.types';
+import { withRetry } from '../utils/retry';
+import { projectLogger as logger } from '../utils/logger';
 
 interface MatchingResult {
   matchedItemId: string;

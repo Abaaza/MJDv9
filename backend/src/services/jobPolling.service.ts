@@ -1,8 +1,8 @@
-import { getConvexClient } from '../config/convex.js';
-import { api } from '../../../convex/_generated/api.js';
-import { Id } from '../../../convex/_generated/dataModel.js';
-import { toConvexId } from '../utils/convexId.js';
-import { MatchingService } from './matching.service.js';
+﻿import { getConvexClient } from '../config/convex';
+import { api } from '../../../convex/_generated/api';
+import { Id } from '../../../convex/_generated/dataModel';
+import { toConvexId } from '../utils/convexId';
+import { MatchingService } from './matching.service';
 
 interface JobStatus {
   jobId: string;
@@ -116,7 +116,7 @@ export class JobPollingService {
               });
               
               await this.addJobLog(jobId, 'info', 
-                `Matched: "${item.description}" → "${result.matchedDescription}" (${(result.confidence * 100).toFixed(1)}%)`
+                `Matched: "${item.description}" â†’ "${result.matchedDescription}" (${(result.confidence * 100).toFixed(1)}%)`
               );
             }
             

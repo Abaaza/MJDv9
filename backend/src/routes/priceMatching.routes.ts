@@ -1,6 +1,6 @@
-import { Router } from 'express';
-import { authenticate } from '../middleware/auth.js';
-import { uploadExcel } from '../middleware/upload.js';
+﻿import { Router } from 'express';
+import { authenticate } from '../middleware/auth';
+import { uploadExcel } from '../middleware/upload';
 import {
   uploadBOQ,
   startMatching,
@@ -18,7 +18,7 @@ import {
   deleteJob,
   getProcessorStatus,
   testLocalMatch,
-} from '../controllers/priceMatching.controller.js';
+} from '../controllers/priceMatching.controller';
 
 const router = Router();
 

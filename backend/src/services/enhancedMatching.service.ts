@@ -1,5 +1,5 @@
-import * as fuzzball from 'fuzzball';
-import { PriceItem } from '../types/priceItem.types.js';
+﻿import * as fuzzball from 'fuzzball';
+import { PriceItem } from '../types/priceItem.types';
 
 interface ConstructionAbbreviation {
   abbreviation: string;

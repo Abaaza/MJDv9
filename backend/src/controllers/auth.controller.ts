@@ -1,11 +1,10 @@
-import { Request, Response } from 'express';
+﻿import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
-import { getConvexClient } from '../config/convex.js';
-import { generateTokens, verifyRefreshToken } from '../utils/jwt.js';
-import { api } from '../../../convex/_generated/api.js';
-import type { LoginRequest, RegisterRequest } from '../types/auth.js';
-import { toConvexId } from '../utils/convexId.js';
-import { resilientQuery, resilientMutation } from '../utils/resilientConvex.js';
+import { getConvexClient } from '../config/convex';
+import { generateTokens, verifyRefreshToken } from '../utils/jwt';
+import { api } from '../../../convex/_generated/api';
+import type { LoginRequest, RegisterRequest } from '../types/auth';
+import { toConvexId } from '../utils/convexId';
 
 const convex = getConvexClient();
 
@@ -202,16 +201,9 @@ export async function getMe(req: Request, res: Response): Promise<void> {
       return;
     }
 
-    const user = await resilientQuery(
-      api.users.getById, 
-      { userId: req.user.id as any },
-      {
-        maxAttempts: 3,
-        onRetry: (error, attempt) => {
-          console.log(`Retrying getMe query (attempt ${attempt})`);
-        }
-      }
-    );
+    const user = await convex.query(api.users.getById, { 
+      userId: toConvexId<'users'>(req.user.id)
+    });
     
     if (!user) {
       res.status(404).json({ error: 'User not found' });

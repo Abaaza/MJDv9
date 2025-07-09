@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Utility for batching operations to improve performance and avoid rate limits
  */
 

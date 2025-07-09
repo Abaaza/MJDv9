@@ -1,7 +1,7 @@
-import { Request, Response } from 'express';
-import { getConvexClient } from '../config/convex.js';
-import { api } from '../../../convex/_generated/api.js';
-import { toConvexId } from '../utils/convexId.js';
+﻿import { Request, Response } from 'express';
+import { getConvexClient } from '../config/convex';
+import { api } from '../../../convex/_generated/api';
+import { toConvexId } from '../utils/convexId';
 
 const convex = getConvexClient();
 

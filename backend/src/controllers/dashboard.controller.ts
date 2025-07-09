@@ -1,9 +1,8 @@
-import { Request, Response } from 'express';
-import { getConvexClient } from '../config/convex.js';
-import { api } from '../../../convex/_generated/api.js';
-import { toConvexId } from '../utils/convexId.js';
-import { httpClient } from '../utils/httpClient.js';
-import { resilientQuery } from '../utils/resilientConvex.js';
+﻿import { Request, Response } from 'express';
+import { getConvexClient } from '../config/convex';
+import { api } from '../../../convex/_generated/api';
+import { toConvexId } from '../utils/convexId';
+import { httpClient } from '../utils/httpClient';
 
 const convex = getConvexClient();
 
@@ -89,11 +88,9 @@ export async function getSystemHealth(req: Request, res: Response): Promise<void
 
     // Check Cohere API
     try {
-      const cohereKey = await resilientQuery(
-        api.applicationSettings.getByKey, 
-        { key: 'COHERE_API_KEY' },
-        { maxAttempts: 2, delayMs: 500 }
-      ) as { value?: string } | null;
+      const cohereKey = await convex.query(api.applicationSettings.getByKey, { 
+        key: 'COHERE_API_KEY' 
+      }) as { value?: string } | null;
       if (cohereKey?.value) {
         const start = Date.now();
         await httpClient.post('https://api.cohere.ai/v1/embed', {
@@ -120,11 +117,9 @@ export async function getSystemHealth(req: Request, res: Response): Promise<void
 
     // Check OpenAI API
     try {
-      const openaiKey = await resilientQuery(
-        api.applicationSettings.getByKey, 
-        { key: 'OPENAI_API_KEY' },
-        { maxAttempts: 2, delayMs: 500 }
-      ) as { value?: string } | null;
+      const openaiKey = await convex.query(api.applicationSettings.getByKey, { 
+        key: 'OPENAI_API_KEY' 
+      }) as { value?: string } | null;
       if (openaiKey?.value) {
         const start = Date.now();
         await httpClient.get('https://api.openai.com/v1/models', {
@@ -150,11 +145,7 @@ export async function getSystemHealth(req: Request, res: Response): Promise<void
     try {
       const start = Date.now();
       // Simple query to check database connectivity
-      await resilientQuery(
-        api.applicationSettings.getAll,
-        undefined,
-        { maxAttempts: 2, delayMs: 500 }
-      );
+      await convex.query(api.applicationSettings.getAll, {});
       apiStatus.convex = { status: 'connected', responseTime: Date.now() - start };
     } catch (error) {
       console.error('Convex health check failed:', error);
@@ -275,3 +266,4 @@ export async function getActivityStats(req: Request, res: Response): Promise<voi
     res.status(500).json({ error: 'Failed to get activity stats' });
   }
 }
+

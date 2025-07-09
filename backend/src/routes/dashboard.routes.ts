@@ -1,6 +1,6 @@
-import { Router } from 'express';
-import { authenticate } from '../middleware/auth.js';
-import { getStats, getRecentActivity, getRecentJobs, getSystemHealth, getActivitySummary, getActivityStats } from '../controllers/dashboard.controller.js';
+﻿import { Router } from 'express';
+import { authenticate } from '../middleware/auth';
+import { getStats, getRecentActivity, getRecentJobs, getSystemHealth, getActivitySummary, getActivityStats } from '../controllers/dashboard.controller';
 
 const router = Router();
 

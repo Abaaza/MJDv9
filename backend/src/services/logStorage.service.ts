@@ -1,4 +1,4 @@
-interface JobLog {
+﻿interface JobLog {
   jobId: string;
   level: 'info' | 'success' | 'warning' | 'error';
   message: string;
@@ -43,10 +43,10 @@ class LogStorageService {
 
     // Log to console for debugging
     const icons = {
-      info: 'ℹ️',
-      success: '✅',
-      warning: '⚠️',
-      error: '❌'
+      info: 'â„¹ï¸',
+      success: 'âœ…',
+      warning: 'âš ï¸',
+      error: 'âŒ'
     };
     console.log(`[Job ${jobId}] ${icons[level]}  ${message}`);
   }

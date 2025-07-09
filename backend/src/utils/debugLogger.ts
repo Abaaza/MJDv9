@@ -1,4 +1,4 @@
-export class DebugLogger {
+﻿export class DebugLogger {
   private static instance: DebugLogger;
   private enabled: boolean = true;
 
@@ -39,7 +39,7 @@ export class DebugLogger {
     if (!this.enabled) return;
     
     const timestamp = new Date().toISOString();
-    const logMessage = `[${timestamp}] [${context}] ✓ ${message}`;
+    const logMessage = `[${timestamp}] [${context}] âœ“ ${message}`;
     
     console.log('\x1b[32m%s\x1b[0m', logMessage);
     if (data) {
@@ -51,7 +51,7 @@ export class DebugLogger {
     if (!this.enabled) return;
     
     const timestamp = new Date().toISOString();
-    const logMessage = `[${timestamp}] [${context}] ⚠ ${message}`;
+    const logMessage = `[${timestamp}] [${context}] âš  ${message}`;
     
     console.log('\x1b[33m%s\x1b[0m', logMessage);
     if (data) {

@@ -1,4 +1,4 @@
-export interface MatchingThresholds {
+﻿export interface MatchingThresholds {
   minConfidence: {
     local: number;
     cohere: number;

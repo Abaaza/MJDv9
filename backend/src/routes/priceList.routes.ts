@@ -1,6 +1,6 @@
-import { Router } from 'express';
-import { authenticate, requireAdmin } from '../middleware/auth.js';
-import { uploadCSV } from '../middleware/upload.js';
+﻿import { Router } from 'express';
+import { authenticate, requireAdmin } from '../middleware/auth';
+import { uploadCSV } from '../middleware/upload';
 import {
   getAllPriceItems,
   getPriceListStats,
@@ -12,7 +12,7 @@ import {
   deleteAllPriceItems,
   getImportStatus,
   searchPriceItems,
-} from '../controllers/priceList.controller.js';
+} from '../controllers/priceList.controller';
 
 const router = Router();
 

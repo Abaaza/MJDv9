@@ -1,8 +1,8 @@
-import { Request, Response } from 'express';
-import { getConvexClient } from '../config/convex.js';
-import { api } from '../../../convex/_generated/api.js';
-import { logActivity } from '../utils/activityLogger.js';
-import { toConvexId } from '../utils/convexId.js';
+﻿import { Request, Response } from 'express';
+import { getConvexClient } from '../config/convex';
+import { api } from '../../../convex/_generated/api';
+import { logActivity } from '../utils/activityLogger';
+import { toConvexId } from '../utils/convexId';
 
 const convex = getConvexClient();
 
@@ -110,11 +110,11 @@ export async function deleteClient(req: Request, res: Response): Promise<void> {
         _id: id as any,
         isActive: false,
       });
-      console.log('✅ Client marked as inactive');
+      console.log('âœ… Client marked as inactive');
       
       res.json({ message: 'Client deleted successfully' });
     } catch (updateError: any) {
-      console.error('❌ Error:', updateError.message);
+      console.error('âŒ Error:', updateError.message);
       
       // Check if it's a Convex ID format error
       if (updateError.message?.includes('Invalid argument') || 

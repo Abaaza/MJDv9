@@ -1,12 +1,12 @@
-import { Router } from 'express';
-import { authenticate } from '../middleware/auth.js';
+﻿import { Router } from 'express';
+import { authenticate } from '../middleware/auth';
 import { 
   uploadAndProcessBOQ, 
   getJobStatus, 
   getJobLogs, 
   cancelJob 
-} from '../controllers/jobPolling.controller.js';
-import { uploadExcel } from '../middleware/upload.js';
+} from '../controllers/jobPolling.controller';
+import { uploadExcel } from '../middleware/upload';
 
 const router = Router();
 

@@ -341,3 +341,69 @@ export const getRunningJobs = query({
     return runningJobs;
   },
 });
+
+export const addParsedItem = mutation({
+  args: {
+    jobId: v.id("aiMatchingJobs"),
+    rowNumber: v.number(),
+    description: v.string(),
+    quantity: v.optional(v.number()),
+    unit: v.optional(v.string()),
+    originalRowData: v.any(),
+    contextHeaders: v.optional(v.array(v.string())),
+  },
+  handler: async (ctx, args) => {
+    // Store parsed items in a separate table or as part of the job
+    // For now, we'll store them as match results with pending status
+    await ctx.db.insert("matchResults", {
+      jobId: args.jobId,
+      rowNumber: args.rowNumber,
+      originalDescription: args.description,
+      originalQuantity: args.quantity,
+      originalUnit: args.unit,
+      originalRowData: args.originalRowData,
+      confidence: 0,
+      matchMethod: "pending",
+    });
+  },
+});
+
+export const getParsedItems = query({
+  args: {
+    jobId: v.id("aiMatchingJobs"),
+  },
+  handler: async (ctx, args) => {
+    // Get all match results for this job that are pending
+    const items = await ctx.db
+      .query("matchResults")
+      .withIndex("by_job", (q) => q.eq("jobId", args.jobId))
+      .filter((q) => q.eq(q.field("matchMethod"), "pending"))
+      .collect();
+    
+    return items.map(item => ({
+      rowNumber: item.rowNumber,
+      description: item.originalDescription,
+      quantity: item.originalQuantity,
+      unit: item.originalUnit,
+      originalData: item.originalRowData,
+      contextHeaders: [],
+    }));
+  },
+});
+
+export const deleteJobResults = mutation({
+  args: {
+    jobId: v.id("aiMatchingJobs"),
+  },
+  handler: async (ctx, args) => {
+    // Delete all match results for this job
+    const results = await ctx.db
+      .query("matchResults")
+      .withIndex("by_job", (q) => q.eq("jobId", args.jobId))
+      .collect();
+    
+    for (const result of results) {
+      await ctx.db.delete(result._id);
+    }
+  },
+});

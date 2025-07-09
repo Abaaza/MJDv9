@@ -1,4 +1,4 @@
-export class LRUCache<T> {
+﻿export class LRUCache<T> {
   private cache: Map<string, { value: T; expiry: number }>;
   private readonly maxSize: number;
   private readonly ttl: number;

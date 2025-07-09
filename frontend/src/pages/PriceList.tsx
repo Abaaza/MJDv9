@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
 import { 
@@ -70,6 +70,7 @@ export default function PriceList() {
   const { formatPrice } = useCurrency();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [selectedSubcategory, setSelectedSubcategory] = useState<string>('all');
   const [showIncompleteOnly, setShowIncompleteOnly] = useState(false);
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [importJobId, setImportJobId] = useState<string | null>(null);
@@ -105,12 +106,16 @@ export default function PriceList() {
   });
 
   // Fetch price items
-  const { data: priceItems, isLoading } = useQuery<PriceItem[]>({
+  const { data: priceItems, isLoading, error, refetch } = useQuery<PriceItem[]>({
     queryKey: ['price-items'],
     queryFn: async () => {
       const response = await api.get('/price-list');
       return response.data;
     },
+    retry: 3,
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 10 * 60 * 1000, // 10 minutes
   });
 
   // Fetch stats including categories
@@ -122,24 +127,72 @@ export default function PriceList() {
     },
   });
 
+  // Get subcategories for selected category
+  const availableSubcategories = React.useMemo(() => {
+    if (!priceItems || (priceItems as PriceItem[]).length === 0) return [];
+    
+    const subcategories = new Set<string>();
+    
+    (priceItems as PriceItem[]).forEach((item: PriceItem) => {
+      // If category is selected, only include subcategories from that category
+      if (selectedCategory !== 'all' && item.category !== selectedCategory) {
+        return;
+      }
+      
+      // Add subcategory if it exists
+      if (item.subcategory && typeof item.subcategory === 'string') {
+        subcategories.add(item.subcategory);
+      }
+    });
+    
+    const result = Array.from(subcategories).sort();
+    console.log('[Filter Debug] Available subcategories for category', selectedCategory, ':', result.length);
+    return result;
+  }, [priceItems, selectedCategory]);
+
 
   // Filter and sort items
-  const filteredItems = (priceItems || [])
-    .filter(item => {
-      const matchesSearch = !searchTerm || 
-        item.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.category?.toLowerCase().includes(searchTerm.toLowerCase());
+  const filteredItems = React.useMemo(() => {
+    if (!priceItems || (priceItems as PriceItem[]).length === 0) return [];
+    
+    const filtered = (priceItems as PriceItem[]).filter((item: PriceItem) => {
+      // Search filter
+      if (searchTerm && searchTerm.trim() !== '') {
+        const searchLower = searchTerm.toLowerCase();
+        const matchesSearch = 
+          (item.description && item.description.toLowerCase().includes(searchLower)) ||
+          (item.code && item.code.toLowerCase().includes(searchLower)) ||
+          (item.category && item.category.toLowerCase().includes(searchLower)) ||
+          (item.subcategory && item.subcategory.toLowerCase().includes(searchLower));
+        
+        if (!matchesSearch) return false;
+      }
       
-      const matchesCategory = selectedCategory === 'all' || 
-        item.category === selectedCategory;
+      // Category filter
+      if (selectedCategory !== 'all' && item.category !== selectedCategory) {
+        return false;
+      }
       
-      const isIncomplete = !item.category || !item.subcategory || !item.rate || !item.unit || !item.description;
-      const matchesIncompleteFilter = !showIncompleteOnly || isIncomplete;
+      // Subcategory filter
+      if (selectedSubcategory !== 'all' && item.subcategory !== selectedSubcategory) {
+        return false;
+      }
       
-      return matchesSearch && matchesCategory && matchesIncompleteFilter;
-    })
-    .sort((a, b) => {
+      // Incomplete filter
+      if (showIncompleteOnly) {
+        const isIncomplete = !item.category || !item.subcategory || !item.rate || item.rate === 0 || !item.unit || !item.description;
+        if (!isIncomplete) return false;
+      }
+      
+      return true;
+    });
+    
+    console.log('[Filter Debug] Filtered items:', filtered.length, 'of', priceItems.length, 
+      '| Category:', selectedCategory, '| Subcategory:', selectedSubcategory);
+    
+    return filtered;
+  }, [priceItems, searchTerm, selectedCategory, selectedSubcategory, showIncompleteOnly])
+    .sort((a: PriceItem, b: PriceItem) => {
       let aVal = a[sortField] || '';
       let bVal = b[sortField] || '';
       
@@ -509,7 +562,7 @@ export default function PriceList() {
             <Upload className="h-4 w-4 mr-2" />
             Import
           </Button>
-          {priceItems && priceItems.length > 0 && (
+          {priceItems && (priceItems as PriceItem[]).length > 0 && (
             <Button 
               variant="destructive" 
               className="w-full sm:w-auto"
@@ -636,6 +689,7 @@ export default function PriceList() {
                 value={selectedCategory}
                 onChange={(e) => {
                   setSelectedCategory(e.target.value);
+                  setSelectedSubcategory('all'); // Reset subcategory when category changes
                   setCurrentPage(1);
                 }}
                 className="px-4 py-2 border rounded-md bg-background"
@@ -644,6 +698,22 @@ export default function PriceList() {
                 {stats?.categories?.map((category: string) => (
                   <option key={category} value={category}>
                     {category}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={selectedSubcategory}
+                onChange={(e) => {
+                  setSelectedSubcategory(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="px-4 py-2 border rounded-md bg-background"
+                disabled={selectedCategory === 'all' && availableSubcategories.length === 0}
+              >
+                <option value="all">All Subcategories</option>
+                {availableSubcategories.map((subcategory) => (
+                  <option key={subcategory} value={subcategory}>
+                    {subcategory}
                   </option>
                 ))}
               </select>
@@ -663,9 +733,16 @@ export default function PriceList() {
                 </label>
               </div>
             </div>
-            {selectedCategory !== 'all' && (
+            {(selectedCategory !== 'all' || selectedSubcategory !== 'all') && (
               <div className="text-sm text-muted-foreground">
-                Showing items in category: <span className="font-medium">{selectedCategory}</span>
+                Showing items in: 
+                {selectedCategory !== 'all' && (
+                  <span className="font-medium"> {selectedCategory}</span>
+                )}
+                {selectedCategory !== 'all' && selectedSubcategory !== 'all' && ' > '}
+                {selectedSubcategory !== 'all' && (
+                  <span className="font-medium">{selectedSubcategory}</span>
+                )}
               </div>
             )}
           </div>
@@ -729,7 +806,19 @@ export default function PriceList() {
           <CardTitle>Price Items</CardTitle>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {error ? (
+            <div className="flex flex-col items-center justify-center py-16 space-y-4">
+              <XCircle className="h-12 w-12 text-red-500" />
+              <p className="text-lg font-medium">Failed to load price items</p>
+              <p className="text-sm text-muted-foreground">
+                {error instanceof Error ? error.message : 'Connection error occurred'}
+              </p>
+              <Button onClick={() => refetch()} variant="outline">
+                <Loader2 className="h-4 w-4 mr-2" />
+                Retry
+              </Button>
+            </div>
+          ) : isLoading ? (
             <div className="flex flex-col items-center justify-center py-16 space-y-4">
               <Loader2 className="h-12 w-12 animate-spin text-primary" />
               <p className="text-muted-foreground text-lg font-medium">Loading price items...</p>
@@ -786,7 +875,7 @@ export default function PriceList() {
                     </tr>
                   </thead>
                   <tbody>
-                    {paginatedItems.map((item) => {
+                    {paginatedItems.map((item: PriceItem) => {
                       const isIncomplete = !item.category || !item.subcategory || !item.rate || !item.unit || !item.description;
                       
                       return (
@@ -850,7 +939,7 @@ export default function PriceList() {
 
               {/* Mobile Cards */}
               <div className="md:hidden space-y-4">
-                {paginatedItems.map((item) => {
+                {paginatedItems.map((item: PriceItem) => {
                   const isIncomplete = !item.category || !item.subcategory || !item.rate || !item.unit || !item.description;
                   
                   return (

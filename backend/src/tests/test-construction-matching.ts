@@ -1,5 +1,5 @@
-import { MatchingService } from '../services/matching.service.js';
-import { ConstructionPatternsService } from '../services/constructionPatterns.service.js';
+﻿import { MatchingService } from '../services/matching.service';
+import { ConstructionPatternsService } from '../services/constructionPatterns.service';
 
 async function testConstructionMatching() {
   console.log('\n=== TESTING CONSTRUCTION-SPECIFIC MATCHING ===\n');
@@ -73,14 +73,14 @@ async function testConstructionMatching() {
         testCase.contextHeaders
       );
       
-      console.log(`✓ Matched: "${result.matchedDescription}"`);
+      console.log(`âœ“ Matched: "${result.matchedDescription}"`);
       console.log(`  Unit: ${result.matchedUnit} (Input: ${testCase.unit})`);
       console.log(`  Confidence: ${(result.confidence * 100).toFixed(1)}%`);
       if (result.matchingDetails) {
         console.log(`  Scores:`, result.matchingDetails.scores);
       }
     } catch (error) {
-      console.error(`✗ Error:`, error);
+      console.error(`âœ— Error:`, error);
     }
   }
   
@@ -103,7 +103,7 @@ async function testConstructionMatching() {
   
   for (const test of unitTests) {
     const unit = matchingServiceAny.extractUnit(test);
-    console.log(`"${test}" → Unit: ${unit || 'Not found'}`);
+    console.log(`"${test}" â†’ Unit: ${unit || 'Not found'}`);
   }
   
   // Test preprocessing
@@ -120,7 +120,7 @@ async function testConstructionMatching() {
   
   for (const test of preprocessTests) {
     const processed = matchingServiceAny.preprocessDescription(test);
-    console.log(`"${test}" → "${processed}"`);
+    console.log(`"${test}" â†’ "${processed}"`);
   }
 }
 

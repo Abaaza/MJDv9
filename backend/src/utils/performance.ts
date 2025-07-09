@@ -1,4 +1,4 @@
-export class PerformanceMonitor {
+﻿export class PerformanceMonitor {
   private static timers: Map<string, number> = new Map();
   
   static start(label: string): void {
@@ -16,7 +16,7 @@ export class PerformanceMonitor {
     this.timers.delete(label);
     
     if (warnThresholdMs && duration > warnThresholdMs) {
-      console.warn(`⚠️  Performance warning: ${label} took ${duration}ms (threshold: ${warnThresholdMs}ms)`);
+      console.warn(`âš ï¸  Performance warning: ${label} took ${duration}ms (threshold: ${warnThresholdMs}ms)`);
     }
     
     return duration;
@@ -31,7 +31,7 @@ export class PerformanceMonitor {
     try {
       const result = await fn();
       const duration = this.end(label, warnThresholdMs);
-      console.log(`⏱️  ${label}: ${duration}ms`);
+      console.log(`â±ï¸  ${label}: ${duration}ms`);
       return result;
     } catch (error) {
       this.end(label);

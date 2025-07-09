@@ -1,6 +1,6 @@
-import { Router } from 'express';
-import { authenticate } from '../middleware/auth.js';
-import { uploadExcel } from '../middleware/upload.js';
+﻿import { Router } from 'express';
+import { authenticate } from '../middleware/auth';
+import { uploadExcel } from '../middleware/upload';
 import {
   uploadForProject,
   uploadAndMatchForProject,
@@ -8,7 +8,7 @@ import {
   getProjectJobs,
   linkJobToProject,
   unlinkJobFromProject
-} from '../controllers/projects.controller.js';
+} from '../controllers/projects.controller';
 
 const router = Router();
 

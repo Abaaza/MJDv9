@@ -516,7 +516,7 @@ export function LocalMatchResultsModal({ jobId, onClose }: LocalMatchResultsModa
               </CardTitle>
               <div className="flex flex-wrap items-center gap-2">
                 <Button
-                  size="sm"
+                  className="h-8"
                   variant="outline"
                   onClick={handleDownloadResults}
                   className="text-xs sm:text-sm"
@@ -526,7 +526,7 @@ export function LocalMatchResultsModal({ jobId, onClose }: LocalMatchResultsModa
                   <span className="sm:hidden">Export</span>
                 </Button>
                 <Button
-                  size="sm"
+                  className="h-8"
                   variant="outline"
                   onClick={() => setShowDiscountModal(true)}
                   className="text-xs sm:text-sm"
@@ -545,7 +545,7 @@ export function LocalMatchResultsModal({ jobId, onClose }: LocalMatchResultsModa
                   />
                 </div>
                 {onClose && (
-                  <Button size="sm" variant="ghost" onClick={onClose} className="p-2">
+                  <Button className="h-8" variant="ghost" onClick={onClose} className="p-2">
                     <X className="h-4 w-4" />
                   </Button>
                 )}
@@ -711,14 +711,14 @@ export function LocalMatchResultsModal({ jobId, onClose }: LocalMatchResultsModa
                                   {editingResultId === result._id ? (
                                     <>
                                       <Button
-                                        size="sm"
+                                        className="h-8"
                                         variant="ghost"
                                         onClick={() => handleSaveEdit(result._id)}
                                       >
                                         <Save className="h-4 w-4" />
                                       </Button>
                                       <Button
-                                        size="sm"
+                                        className="h-8"
                                         variant="ghost"
                                         onClick={handleCancelEdit}
                                       >
@@ -727,7 +727,7 @@ export function LocalMatchResultsModal({ jobId, onClose }: LocalMatchResultsModa
                                     </>
                                   ) : (
                                     <Button
-                                      size="sm"
+                                      className="h-8"
                                       variant="ghost"
                                       onClick={() => handleEdit(result)}
                                     >
@@ -828,7 +828,7 @@ export function LocalMatchResultsModal({ jobId, onClose }: LocalMatchResultsModa
                                       <div>
                                         <label className="text-xs text-gray-500">Unit</label>
                                         <Input
-                                          size="sm"
+                                          className="h-8"
                                           value={editValues.matchedUnit || ''}
                                           onChange={(e) => setEditValues({...editValues, matchedUnit: e.target.value})}
                                           className="text-sm"
@@ -837,7 +837,7 @@ export function LocalMatchResultsModal({ jobId, onClose }: LocalMatchResultsModa
                                       <div>
                                         <label className="text-xs text-gray-500">Rate</label>
                                         <Input
-                                          size="sm"
+                                          className="h-8"
                                           type="number"
                                           value={editValues.matchedRate || 0}
                                           onChange={(e) => setEditValues({...editValues, matchedRate: parseFloat(e.target.value) || 0})}
@@ -848,7 +848,7 @@ export function LocalMatchResultsModal({ jobId, onClose }: LocalMatchResultsModa
                                     <div>
                                       <label className="text-xs text-gray-500">Quantity</label>
                                       <Input
-                                        size="sm"
+                                        className="h-8"
                                         type="number"
                                         value={editValues.originalQuantity || 0}
                                         onChange={(e) => setEditValues({...editValues, originalQuantity: parseFloat(e.target.value) || 0})}
@@ -857,7 +857,7 @@ export function LocalMatchResultsModal({ jobId, onClose }: LocalMatchResultsModa
                                     </div>
                                     <div className="flex gap-2">
                                       <Button
-                                        size="sm"
+                                        className="h-8"
                                         onClick={() => handleSaveEdit(result._id)}
                                         className="flex-1 text-xs"
                                       >
@@ -865,7 +865,7 @@ export function LocalMatchResultsModal({ jobId, onClose }: LocalMatchResultsModa
                                         Save
                                       </Button>
                                       <Button
-                                        size="sm"
+                                        className="h-8"
                                         variant="outline"
                                         onClick={handleCancelEdit}
                                         className="flex-1 text-xs"
@@ -909,7 +909,7 @@ export function LocalMatchResultsModal({ jobId, onClose }: LocalMatchResultsModa
                                 {/* Edit Button */}
                                 {editingResultId !== result._id && (
                                   <Button
-                                    size="sm"
+                                    className="h-8"
                                     variant="outline"
                                     onClick={() => handleEdit(result)}
                                     className="w-full text-xs"
