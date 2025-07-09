@@ -18,6 +18,9 @@ export default defineConfig(({ mode }) => {
       // Ensure environment variables are replaced during build
       'import.meta.env.VITE_API_URL': JSON.stringify(env.VITE_API_URL || 'http://localhost:5000/api'),
       'import.meta.env.VITE_CONVEX_URL': JSON.stringify(env.VITE_CONVEX_URL || 'https://trustworthy-badger-677.convex.cloud'),
+    },
+    optimizeDeps: {
+      exclude: ['convex/_generated/api']
     }
   }
 })

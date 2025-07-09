@@ -7,8 +7,13 @@ applications:
             - nvm install 20
             - nvm use 20
             - node --version
+            - ls -la
+            - ls -la convex/
             - cd frontend
             - npm install
+            - ln -s ../convex convex
+            - echo "VITE_CONVEX_URL=https://trustworthy-badger-677.convex.cloud" > .env.production
+            - echo "VITE_API_URL=https://mjd-boq-backend.azurewebsites.net/api" >> .env.production
         build:
           commands:
             - npm run build
