@@ -1,5 +1,5 @@
 ﻿import { getConvexClient } from '../config/convex';
-import { api } from '../../../convex/_generated/api';
+import { api } from '../lib/convex-api';
 import { PriceItem } from '../types/priceItem.types';
 import { CohereClient } from 'cohere-ai';
 import OpenAI from 'openai';

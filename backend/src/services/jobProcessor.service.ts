@@ -1,6 +1,6 @@
 ﻿import { EventEmitter } from 'events';
 import { getConvexClient } from '../config/convex';
-import { api } from '../../../convex/_generated/api';
+import { api } from '../lib/convex-api';
 import { MatchingService } from './matching.service';
 import { logStorage } from './logStorage.service';
 

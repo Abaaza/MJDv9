@@ -2,7 +2,7 @@
 import bcrypt from 'bcryptjs';
 import { getConvexClient } from '../config/convex';
 import { generateTokens, verifyRefreshToken } from '../utils/jwt';
-import { api } from '../../../convex/_generated/api';
+import { api } from '../lib/convex-api';
 import type { LoginRequest, RegisterRequest } from '../types/auth';
 import { toConvexId } from '../utils/convexId';
 
@@ -43,6 +43,10 @@ export async function register(req: Request<{}, {}, RegisterRequest>, res: Respo
 
 export async function login(req: Request<{}, {}, LoginRequest>, res: Response): Promise<void> {
   try {
+    console.log('[Auth] Login request received');
+    console.log('[Auth] Request body:', req.body);
+    console.log('[Auth] Content-Type:', req.headers['content-type']);
+    
     const { email, password } = req.body;
 
     // Get user

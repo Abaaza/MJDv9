@@ -1,7 +1,7 @@
 ﻿import NodeCache from 'node-cache';
 import { PriceItem } from '../types/priceItem.types';
 import { getConvexClient } from '../config/convex';
-import { api } from '../../../convex/_generated/api';
+import { api } from '../lib/convex-api';
 import { withRetry } from '../utils/retry';
 import { projectLogger as logger } from '../utils/logger';
 

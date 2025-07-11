@@ -1,6 +1,6 @@
 ﻿import { Request, Response } from 'express';
 import { getConvexClient } from '../config/convex';
-import { api } from '../../../convex/_generated/api';
+import { api } from '../lib/convex-api';
 import { ExcelService } from '../services/excel.service';
 import { MatchingService } from '../services/matching.service';
 import { jobProcessor } from '../services/jobProcessor.service';

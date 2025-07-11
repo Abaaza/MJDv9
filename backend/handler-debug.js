@@ -12,16 +12,24 @@ try {
         const serverModule = require('./dist/server.js');
         app = serverModule.app;
         console.log('App loaded from dist/server.js');
+        console.log('App type:', typeof app);
+        console.log('App keys:', app ? Object.keys(app).slice(0, 10) : 'app is null/undefined');
     } catch (e) {
         console.error('Failed to load from dist/server.js:', e.message);
-        try {
-            const serverModule = require('./dist/backend/src/server.js');
-            app = serverModule.app;
-            console.log('App loaded from dist/backend/src/server.js');
-        } catch (e2) {
-            console.error('Failed to load from dist/backend/src/server.js:', e2.message);
-            throw new Error('Could not load server app');
+        console.error('Error stack:', e.stack);
+        
+        // Check what files exist
+        const fs = require('fs');
+        const path = require('path');
+        
+        console.log('Current directory:', __dirname);
+        console.log('Files in current directory:', fs.readdirSync(__dirname).slice(0, 10));
+        
+        if (fs.existsSync(path.join(__dirname, 'dist'))) {
+            console.log('Files in dist:', fs.readdirSync(path.join(__dirname, 'dist')).slice(0, 10));
         }
+        
+        throw new Error('Could not load server app: ' + e.message);
     }
     
     if (!app) {

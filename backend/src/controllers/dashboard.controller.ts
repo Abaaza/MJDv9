@@ -1,6 +1,6 @@
 ﻿import { Request, Response } from 'express';
 import { getConvexClient } from '../config/convex';
-import { api } from '../../../convex/_generated/api';
+import { api } from '../lib/convex-api';
 import { toConvexId } from '../utils/convexId';
 import { httpClient } from '../utils/httpClient';
 

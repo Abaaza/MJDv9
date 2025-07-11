@@ -7,7 +7,6 @@ import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
 import { createServer } from 'http';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { env, isDevelopment } from './config/env';
 import authRoutes from './routes/auth.routes';
 import dashboardRoutes from './routes/dashboard.routes';
@@ -21,8 +20,9 @@ import healthRoutes from './routes/health.routes';
 // import asyncJobsRoutes from './routes/asyncJobs.routes';
 import { fileStorage } from './services/fileStorage.service';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// __dirname is available in CommonJS after compilation
+// For TypeScript, we'll handle it conditionally
+declare const __dirname: string;
 
 const app = express();
 
@@ -61,10 +61,30 @@ app.use(cors({
   maxAge: 86400, // 24 hours
 }));
 
+// Debug middleware for Lambda
+app.use((req, res, next) => {
+  console.log('[Debug] Raw request info:');
+  console.log('[Debug] Method:', req.method);
+  console.log('[Debug] URL:', req.url);
+  console.log('[Debug] Headers:', req.headers);
+  console.log('[Debug] Body (before parsing):', req.body);
+  next();
+});
+
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
+
+// Debug middleware after body parsing
+app.use((req, res, next) => {
+  if (req.method === 'POST' && req.url.includes('/auth/login')) {
+    console.log('[Debug] After body parsing:');
+    console.log('[Debug] Body:', req.body);
+    console.log('[Debug] Body type:', typeof req.body);
+  }
+  next();
+});
 
 // Compression
 app.use(compression());
@@ -146,17 +166,18 @@ app.get('/health', (req, res) => {
 });
 
 // Serve frontend in production
-if (process.env.NODE_ENV === 'production') {
-  const publicPath = path.join(__dirname, '../../public');
-  app.use(express.static(publicPath));
-  
-  // Handle client-side routing - must be after API routes
-  app.get('*', (req, res) => {
-    if (!req.path.startsWith('/api')) {
-      res.sendFile(path.join(publicPath, 'index.html'));
-    }
-  });
-}
+// NOTE: Disabled for Lambda deployment - frontend should be served separately
+// if (process.env.NODE_ENV === 'production') {
+//   const publicPath = path.join(__dirname, '../../public');
+//   app.use(express.static(publicPath));
+//   
+//   // Handle client-side routing - must be after API routes
+//   app.get('/*', (req, res) => {
+//     if (!req.path.startsWith('/api')) {
+//       res.sendFile(path.join(publicPath, 'index.html'));
+//     }
+//   });
+// }
 
 // Error handling middleware
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {

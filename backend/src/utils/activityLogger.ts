@@ -1,5 +1,5 @@
 ﻿import { getConvexClient } from '../config/convex';
-import { api } from '../../../convex/_generated/api';
+import { api } from '../lib/convex-api';
 import { toConvexId } from './convexId';
 import type { Request } from 'express';
 

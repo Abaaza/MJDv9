@@ -12,7 +12,7 @@ applications:
             - npm install convex
             - cp -r ../convex .
             - echo "VITE_CONVEX_URL=https://trustworthy-badger-677.convex.cloud" > .env.production
-            - echo "VITE_API_URL=https://mjd-boq-backend.azurewebsites.net/api" >> .env.production
+            - echo "VITE_API_URL=https://ls4380art0.execute-api.us-east-1.amazonaws.com/api" >> .env.production
         build:
           commands:
             - npm run build

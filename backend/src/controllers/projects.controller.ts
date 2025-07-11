@@ -2,8 +2,8 @@
 import { v4 as uuidv4 } from 'uuid';
 import { ExcelService } from '../services/excel.service';
 import { getConvexClient } from '../config/convex';
-import { api } from '../../../convex/_generated/api';
-import { Id } from '../../../convex/_generated/dataModel';
+import { api } from '../lib/convex-api';
+import { Id } from '../lib/convex-api';
 import { toConvexId } from '../utils/convexId';
 import { MatchingService } from '../services/matching.service';
 import { processBatch } from '../utils/batch';

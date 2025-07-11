@@ -1,11 +1,11 @@
 ﻿import { Request, Response } from 'express';
 import { getConvexClient } from '../config/convex';
-import { api } from '../../../convex/_generated/api';
+import { api } from '../lib/convex-api';
 import { parse } from 'csv-parse/sync';
 import { stringify } from 'csv-stringify/sync';
 import * as XLSX from 'xlsx';
 import path from 'path';
-import { Id } from '../../../convex/_generated/dataModel';
+import { Id } from '../lib/convex-api';
 import { toConvexId } from '../utils/convexId';
 import { logActivity } from '../utils/activityLogger';
 

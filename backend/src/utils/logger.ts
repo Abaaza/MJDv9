@@ -1,7 +1,7 @@
 ﻿import winston from 'winston';
 import path from 'path';
 
-const logDir = process.env.LOG_DIR || 'logs';
+const logDir = process.env.LOG_DIR || (process.env.AWS_LAMBDA_FUNCTION_NAME ? '/tmp/logs' : 'logs');
 
 // Define log levels
 const levels = {

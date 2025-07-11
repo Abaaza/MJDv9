@@ -2,7 +2,7 @@
 import { CohereClient } from 'cohere-ai';
 import OpenAI from 'openai';
 import { getConvexClient } from '../config/convex';
-import { api } from '../../../convex/_generated/api';
+import { api } from '../lib/convex-api';
 import { EnhancedMatchingService } from './enhancedMatching.service';
 import { matchingCache, CacheService } from './cache.service';
 import { priceListCache } from './priceListCache.service';

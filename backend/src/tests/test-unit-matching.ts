@@ -1,6 +1,6 @@
 import { MatchingService } from '../services/matching.service';
 import { getConvexClient } from '../config/convex';
-import { api } from '../../../convex/_generated/api';
+import { api } from '../lib/convex-api';
 
 /**
  * Test script to verify enhanced unit matching logic

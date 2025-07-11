@@ -1,6 +1,6 @@
 ﻿import { Router } from 'express';
 import { getConvexClient } from '../config/convex';
-import { api } from '../../../convex/_generated/api';
+import { api } from '../lib/convex-api';
 
 const router = Router();
 
