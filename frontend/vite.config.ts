@@ -12,7 +12,7 @@ export default defineConfig(({ mode }) => {
     resolve: {
       alias: {
         '@': fileURLToPath(new URL('./src', import.meta.url)),
-        '../../../convex/_generated/api': fileURLToPath(new URL('./convex/_generated/api', import.meta.url))
+        '../../convex/_generated/api': fileURLToPath(new URL('../convex/_generated/api', import.meta.url))
       },
     },
     define: {

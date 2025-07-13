@@ -64,12 +64,23 @@ export function useJobPolling() {
         }
       }));
       
-      // Update logs
+      // Update logs - merge new logs with existing ones
       if (status.logs && status.logs.length > 0) {
-        setJobLogs(prev => ({
-          ...prev,
-          [jobId]: status.logs.slice(-100) // Keep last 100 logs
-        }));
+        setJobLogs(prev => {
+          const existingLogs = prev[jobId] || [];
+          const existingTimestamps = new Set(existingLogs.map(log => log.timestamp));
+          
+          // Only add new logs that we haven't seen before
+          const newLogs = status.logs.filter(log => !existingTimestamps.has(log.timestamp));
+          
+          // Merge and keep only last 100 logs
+          const mergedLogs = [...existingLogs, ...newLogs].slice(-100);
+          
+          return {
+            ...prev,
+            [jobId]: mergedLogs
+          };
+        });
       }
       
       // Check for status changes

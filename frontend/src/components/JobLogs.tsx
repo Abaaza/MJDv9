@@ -24,7 +24,7 @@ interface JobLogsProps {
 }
 
 export function JobLogs({ logs, className, title = "Processing Logs", jobStatus, startTime, matchingMethod }: JobLogsProps) {
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
   const [elapsedTime, setElapsedTime] = useState('00:00');
   const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null);
   const isAIMethod = matchingMethod && ['COHERE', 'OPENAI', 'HYBRID', 'HYBRID_CATEGORY', 'ADVANCED'].includes(matchingMethod);
@@ -50,8 +50,12 @@ export function JobLogs({ logs, className, title = "Processing Logs", jobStatus,
 
   // Auto-scroll to bottom when new logs arrive
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    if (scrollAreaRef.current) {
+      // Find the viewport element inside ScrollArea
+      const viewport = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
+      if (viewport) {
+        viewport.scrollTop = viewport.scrollHeight;
+      }
     }
   }, [logs]);
 
@@ -239,7 +243,7 @@ export function JobLogs({ logs, className, title = "Processing Logs", jobStatus,
         </div>
       </CardHeader>
       <CardContent className="p-0">
-        <ScrollArea className="h-[300px] w-full" ref={scrollRef}>
+        <ScrollArea className="h-[300px] w-full" ref={scrollAreaRef}>
           <div className="p-4 space-y-2">
             {logs.map((log, index) => {
               const isBatchLog = log.message.includes('batch') || log.message.includes('Batch');

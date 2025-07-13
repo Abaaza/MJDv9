@@ -6,6 +6,7 @@ import {
   getAllUsers,
   approveUser,
   setUserRole,
+  getSystemStats,
 } from '../controllers/admin.controller';
 
 const router = Router();
@@ -22,5 +23,8 @@ router.post('/settings', updateSetting);
 router.get('/users', getAllUsers);
 router.post('/users/:userId/approve', approveUser);
 router.post('/users/:userId/role', setUserRole);
+
+// System
+router.get('/system/stats', getSystemStats);
 
 export default router;

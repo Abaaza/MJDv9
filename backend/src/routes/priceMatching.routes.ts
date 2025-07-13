@@ -17,6 +17,7 @@ import {
   uploadAndMatch,
   deleteJob,
   getProcessorStatus,
+  getMatchingMethods,
   testLocalMatch,
 } from '../controllers/priceMatching.controller';
 
@@ -72,6 +73,9 @@ router.delete('/:jobId', deleteJob);
 
 // Get processor status
 router.get('/processor/status', getProcessorStatus);
+
+// Get available matching methods
+router.get('/matching-methods', getMatchingMethods);
 
 // Test local match for single item (instant test)
 router.post('/test/local', testLocalMatch);

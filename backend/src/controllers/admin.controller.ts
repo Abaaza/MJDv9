@@ -2,6 +2,8 @@
 import { getConvexClient } from '../config/convex';
 import { api } from '../lib/convex-api';
 import { toConvexId } from '../utils/convexId';
+import { jobProcessor } from '../services/jobProcessor.service';
+import os from 'os';
 
 const convex = getConvexClient();
 
@@ -111,5 +113,55 @@ export async function setUserRole(req: Request, res: Response): Promise<void> {
   } catch (error) {
     console.error('Set user role error:', error);
     res.status(500).json({ error: 'Failed to update user role' });
+  }
+}
+
+export async function getSystemStats(req: Request, res: Response): Promise<void> {
+  try {
+    // Get database stats
+    const [users, jobs, priceItems, matchResults] = await Promise.all([
+      convex.query(api.users.getAll),
+      convex.query(api.priceMatching.getAllJobs),
+      convex.query(api.priceItems.getAll),
+      convex.query(api.matchResults.getAll),
+    ]);
+
+    // Get processor status
+    const processorStatus = jobProcessor.getQueueStatus();
+
+    // Get system info
+    const systemInfo = {
+      platform: os.platform(),
+      arch: os.arch(),
+      cpus: os.cpus().length,
+      totalMemory: Math.round(os.totalmem() / 1024 / 1024 / 1024) + ' GB',
+      freeMemory: Math.round(os.freemem() / 1024 / 1024 / 1024) + ' GB',
+      uptime: Math.round(process.uptime() / 60) + ' minutes',
+    };
+
+    // Calculate job stats
+    const jobStats = {
+      total: jobs.length,
+      completed: jobs.filter((j: any) => j.status === 'completed').length,
+      failed: jobs.filter((j: any) => j.status === 'failed').length,
+      processing: jobs.filter((j: any) => j.status === 'processing').length,
+      pending: jobs.filter((j: any) => j.status === 'pending').length,
+    };
+
+    res.json({
+      database: {
+        users: users.length,
+        jobs: jobs.length,
+        priceItems: priceItems.length,
+        matchResults: matchResults.length,
+      },
+      jobs: jobStats,
+      processor: processorStatus,
+      system: systemInfo,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error('Get system stats error:', error);
+    res.status(500).json({ error: 'Failed to get system stats' });
   }
 }

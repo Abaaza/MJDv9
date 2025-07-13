@@ -3,6 +3,7 @@ import { getConvexClient } from '../config/convex';
 import { api } from '../lib/convex-api';
 import { MatchingService } from './matching.service';
 import { logStorage } from './logStorage.service';
+import { ConvexBatchProcessor } from '../utils/convexBatch';
 
 interface ProcessingJob {
   jobId: string;
@@ -29,11 +30,13 @@ export class JobProcessorService extends EventEmitter {
   // Batch configuration
   private readonly BATCH_SIZE = 10;
   private readonly UPDATE_INTERVAL = 5000; // 5 seconds
-  private readonly CONVEX_BATCH_SIZE = 25; // Update Convex every 25 items
+  private readonly CONVEX_BATCH_SIZE = 50; // Update Convex every 50 items
   
   // Rate limiting
   private lastConvexUpdate = 0;
-  private readonly MIN_UPDATE_INTERVAL = 2000; // Minimum 2 seconds between Convex updates
+  private readonly MIN_UPDATE_INTERVAL = 5000; // Minimum 5 seconds between Convex updates
+  private readonly CONVEX_MUTATION_DELAY = 100; // 100ms between individual mutations
+  private readonly CONVEX_BATCH_DELAY = 2000; // 2 seconds between batches
 
   constructor() {
     super();
@@ -241,7 +244,7 @@ export class JobProcessorService extends EventEmitter {
     });
 
     try {
-      // Step 1: Load price database (0-5%)
+      // Step 1: Load price database (0-15%)
       console.log(`[JobProcessor] ${jobId}: Loading price database...`);
       job.progress = 1;
       job.progressMessage = 'Loading price database...';
@@ -251,27 +254,27 @@ export class JobProcessorService extends EventEmitter {
       const priceItems = await this.convex.query(api.priceItems.getActive);
       console.log(`[JobProcessor] ${jobId}: Loaded ${priceItems?.length || 0} price items`);
       
-      job.progress = 5;
+      job.progress = 15;
       job.progressMessage = `Loaded ${priceItems.length} price items`;
       this.emitProgress(job);
       this.emitLog(jobId, 'success', `Successfully loaded ${priceItems.length} price items`);
       
-      // Step 2: Prepare batches (5-10%)
+      // Step 2: Prepare batches (15-25%)
       const isAIMethod = ['COHERE', 'OPENAI'].includes(job.method);
       const totalBatches = Math.ceil(job.items.length / this.BATCH_SIZE);
       
       if (isAIMethod) {
-        job.progress = 7;
+        job.progress = 20;
         job.progressMessage = 'Preparing batches for AI processing...';
         this.emitProgress(job);
         
         this.emitLog(jobId, 'info', `ðŸ¤– AI Method (${job.method}): Created ${totalBatches} batches of ${this.BATCH_SIZE} items each for optimal API performance`);
         
-        job.progress = 10;
+        job.progress = 25;
         job.progressMessage = `Starting AI processing of ${job.items.length} items in ${totalBatches} batches...`;
         this.emitProgress(job);
       } else {
-        job.progress = 10;
+        job.progress = 25;
         job.progressMessage = 'Starting LOCAL processing...';
         this.emitProgress(job);
         
@@ -287,7 +290,7 @@ export class JobProcessorService extends EventEmitter {
       await this.convex.mutation(api.priceMatching.updateJobStatus, {
         jobId: jobId as any,
         status: 'matching' as any,
-        progress: 10,
+        progress: 25,
         progressMessage: job.progressMessage,
       });
       this.emitProgress(job);
@@ -314,9 +317,9 @@ export class JobProcessorService extends EventEmitter {
         const batch = job.items.slice(startIdx, startIdx + this.BATCH_SIZE);
         const batchNumber = batchIndex + 1;
         
-        // Calculate realistic progress (10-90%) based on actual items to match
+        // Calculate realistic progress (25-95%) based on actual items to match
         const itemsToMatchSoFar = processedCount - contextHeaderCount;
-        const progressPercentage = 10 + Math.round((itemsToMatchSoFar / job.itemCount) * 80);
+        const progressPercentage = 25 + Math.round((itemsToMatchSoFar / job.itemCount) * 70);
         job.progress = progressPercentage;
         job.progressMessage = `Processing batch ${batchNumber}/${totalBatches} (${itemsToMatchSoFar}/${job.itemCount} items)`;
         
@@ -373,6 +376,11 @@ export class JobProcessorService extends EventEmitter {
           this.emitLog(jobId, 'info', `Saving ${unsavedResults.length} results to database (items ${savedResultsCount + 1}-${results.length})`);
           await this.batchUpdateConvex(jobId, job, unsavedResults);
           savedResultsCount = results.length; // Update saved count
+          
+          // Add delay after batch save to avoid rate limits
+          if (processedCount < job.itemCount) {
+            await new Promise(resolve => setTimeout(resolve, this.CONVEX_BATCH_DELAY));
+          }
         }
 
         // Dynamic delay based on processing speed
@@ -627,7 +635,7 @@ export class JobProcessorService extends EventEmitter {
       console.log(`[JobProcessor] Updating Convex for job ${jobId}...`);
       console.log(`[JobProcessor] Saving ${results.length} match results to database`);
       
-      // Update job status
+      // Update job status first
       await this.convex.mutation(api.priceMatching.updateJobStatus, {
         jobId: jobId as any,
         status: 'matching' as any,
@@ -635,32 +643,26 @@ export class JobProcessorService extends EventEmitter {
         progressMessage: job.progressMessage,
       });
       
+      // Small delay after status update
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
       // Update matched count separately
       await this.convex.mutation(api.priceMatching.updateMatchedCount, {
         jobId: jobId as any,
         matchedCount: job.matchedCount,
       });
-
-      // Batch create match results (including context headers for display)
-      let savedCount = 0;
-      for (const result of results) {
-        try {
-          if (result.matchMethod === 'CONTEXT') {
-            console.log(`[JobProcessor] Saving context header for row ${result.rowNumber}`);
-          } else {
-            console.log(`[JobProcessor] Saving result for row ${result.rowNumber}: ${result.matchedDescription ? 'MATCHED' : 'NO MATCH'}`);
-          }
-          
-          await this.convex.mutation(api.priceMatching.createMatchResult, result);
-          savedCount++;
-          // Small delay between mutations
-          await new Promise(resolve => setTimeout(resolve, 50));
-        } catch (error) {
-          console.error(`[JobProcessor] Failed to save result for row ${result.rowNumber}:`, error);
-        }
-      }
       
-      console.log(`[JobProcessor] Successfully saved ${savedCount}/${results.length} results to database`);
+      // Small delay after count update
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      // Use batch processor for saving results
+      const batchResult = await ConvexBatchProcessor.saveMatchResults(results);
+      
+      console.log(`[JobProcessor] Batch save complete: ${batchResult.saved} saved, ${batchResult.failed} failed`);
+      
+      if (batchResult.failed > 0) {
+        this.emitLog(jobId, 'warning', `Failed to save ${batchResult.failed} results due to rate limits`);
+      }
 
       this.lastConvexUpdate = Date.now();
     } catch (error: any) {

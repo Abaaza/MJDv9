@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs';
 import { getConvexClient } from '../src/config/convex.js';
-import { api } from '../../convex/_generated/api.js';
+import { api } from '../../../convex/_generated/api.js';
 import dotenv from 'dotenv';
 
 dotenv.config();

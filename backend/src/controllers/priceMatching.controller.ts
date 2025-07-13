@@ -8,6 +8,7 @@ import { toConvexId } from '../utils/convexId';
 import { v4 as uuidv4 } from 'uuid';
 import { fileStorage } from '../services/fileStorage.service';
 import { logActivity } from '../utils/activityLogger';
+import { AsyncJobInvoker } from '../utils/asyncJobInvoker';
 
 const convex = getConvexClient();
 const excelService = new ExcelService();
@@ -387,8 +388,31 @@ export async function uploadAndMatch(req: Request, res: Response): Promise<void>
     console.log(`[${requestId}] Step 5: Adding job to processor queue...`);
     const processorStartTime = Date.now();
     
-    // Add job to processor queue with all parsed items
-    await jobProcessor.addJob(jobId.toString(), userId.toString(), preparedItems, matchingMethod);
+    // Check if job should be processed asynchronously
+    if (AsyncJobInvoker.shouldProcessAsync(preparedItems.length)) {
+      console.log(`[${requestId}] Large job detected (${preparedItems.length} items), using async processing`);
+      
+      // Update job status to indicate async processing
+      await convex.mutation(api.priceMatching.updateJobStatus, {
+        jobId: jobId,
+        status: 'pending' as any,
+        progress: 0,
+        progressMessage: 'Job queued for processing (large file)'
+      });
+      
+      // Send to async processor
+      await AsyncJobInvoker.sendToQueue({
+        jobId: jobId.toString(),
+        userId: userId.toString(),
+        items: preparedItems,
+        method: matchingMethod
+      });
+      
+      console.log(`[${requestId}] Job sent to async queue`);
+    } else {
+      // Process synchronously for small jobs
+      await jobProcessor.addJob(jobId.toString(), userId.toString(), preparedItems, matchingMethod);
+    }
     
     const processorEndTime = Date.now();
     console.log(`[${requestId}] Step 5 Complete: Adding to processor took ${processorEndTime - processorStartTime}ms`);
@@ -512,7 +536,23 @@ export async function startMatching(req: Request, res: Response): Promise<void> 
       method: matchingMethod
     });
     
-    await jobProcessor.addJob(jobId, req.user.id.toString(), parsedItems, matchingMethod);
+    // Check if job should be processed asynchronously
+    if (AsyncJobInvoker.shouldProcessAsync(parsedItems.length)) {
+      console.log(`[StartMatching-${requestId}] Large job detected (${parsedItems.length} items), using async processing`);
+      
+      // Send to async processor
+      await AsyncJobInvoker.sendToQueue({
+        jobId: jobId,
+        userId: req.user.id.toString(),
+        items: parsedItems,
+        method: matchingMethod
+      });
+      
+      console.log(`[StartMatching-${requestId}] Job sent to async queue`);
+    } else {
+      // Process synchronously for small jobs
+      await jobProcessor.addJob(jobId, req.user.id.toString(), parsedItems, matchingMethod);
+    }
     
     console.log(`[StartMatching-${requestId}] Job added successfully to processor`);
     console.log(`[StartMatching-${requestId}] Processor status after:`, jobProcessor.getQueueStatus());
@@ -982,11 +1022,41 @@ export async function getProcessorStatus(req: Request, res: Response): Promise<v
       return;
     }
 
+    // In Lambda environment, return a static status since background processing doesn't work
+    if (process.env.AWS_LAMBDA_FUNCTION_NAME) {
+      res.json({
+        queueLength: 0,
+        isProcessing: false,
+        activeJobs: 0,
+        completedJobs: 0,
+        message: 'Background processing not available in Lambda environment'
+      });
+      return;
+    }
+
     const status = jobProcessor.getQueueStatus();
     res.json(status);
   } catch (error) {
     console.error('Get processor status error:', error);
     res.status(500).json({ error: 'Failed to get processor status' });
+  }
+}
+
+export async function getMatchingMethods(req: Request, res: Response): Promise<void> {
+  try {
+    const methods = [
+      { value: 'LOCAL', label: 'Local Matching', description: 'Fast fuzzy string matching' },
+      { value: 'LOCAL_UNIT', label: 'Local + Unit', description: 'Fuzzy matching with unit awareness' },
+      { value: 'COHERE', label: 'Cohere AI', description: 'AI-powered semantic matching (requires API key)' },
+      { value: 'OPENAI', label: 'OpenAI', description: 'GPT-powered matching (requires API key)' },
+      { value: 'HYBRID', label: 'Hybrid', description: 'Combines all methods for best results' },
+      { value: 'HYBRID_CATEGORY', label: 'Hybrid + Category', description: 'Category-aware hybrid matching' },
+      { value: 'ADVANCED', label: 'Advanced', description: 'Multi-stage pattern recognition' }
+    ];
+    res.json(methods);
+  } catch (error) {
+    console.error('Get matching methods error:', error);
+    res.status(500).json({ error: 'Failed to get matching methods' });
   }
 }
 
