@@ -4,6 +4,8 @@ import { api } from '../lib/convex-api';
 import { MatchingService } from './matching.service';
 import { logStorage } from './logStorage.service';
 import { ConvexBatchProcessor } from '../utils/convexBatch';
+import { PerformanceLogger } from '../utils/performanceLogger';
+import { getMatchingConfig } from '../config/matching.config';
 
 interface ProcessingJob {
   jobId: string;
@@ -98,8 +100,20 @@ export class JobProcessorService extends EventEmitter {
   }
 
   async cancelJob(jobId: string): Promise<boolean> {
+    console.log(`[JobProcessor] Attempting to cancel job: ${jobId}`);
     const job = this.jobs.get(jobId);
-    if (!job) return false;
+    if (!job) {
+      console.log(`[JobProcessor] Job ${jobId} not found in memory`);
+      return false;
+    }
+
+    console.log(`[JobProcessor] Job ${jobId} current status: ${job.status}`);
+    
+    // Check if job is already in a final state
+    if (job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled') {
+      console.log(`[JobProcessor] Job ${jobId} already in final state: ${job.status}`);
+      return false;
+    }
 
     // Check if job is currently running before marking as cancelled
     const wasRunning = job.status === 'processing' || job.status === 'parsing' || job.status === 'matching';
@@ -111,15 +125,21 @@ export class JobProcessorService extends EventEmitter {
     this.emitLog(jobId, 'warning', 'Job cancelled by user');
     
     // Update Convex status
-    await this.updateConvexStatus(jobId, {
-      status: 'failed' as any,
-      error: 'Job cancelled by user',
-    });
+    try {
+      await this.updateConvexStatus(jobId, {
+        status: 'failed' as any,
+        error: 'Job cancelled by user',
+      });
+      console.log(`[JobProcessor] Job ${jobId} status updated in Convex`);
+    } catch (error) {
+      console.error(`[JobProcessor] Failed to update Convex status for job ${jobId}:`, error);
+    }
 
     // Remove from queue if still pending
     const queueIndex = this.processingQueue.indexOf(jobId);
     if (queueIndex > -1) {
       this.processingQueue.splice(queueIndex, 1);
+      console.log(`[JobProcessor] Job ${jobId} removed from processing queue`);
     }
     
     // If was currently processing, it will be stopped in the next iteration
@@ -127,35 +147,47 @@ export class JobProcessorService extends EventEmitter {
       this.emitLog(jobId, 'info', 'Stopping running job...');
     }
     
+    console.log(`[JobProcessor] Job ${jobId} successfully cancelled`);
     return true;
   }
 
   async cancelAllJobs(): Promise<number> {
-    let cancelledCount = 0;
+    console.log(`[JobProcessor] CancelAllJobs called`);
+    console.log(`[JobProcessor] Current queue length: ${this.processingQueue.length}`);
+    console.log(`[JobProcessor] Total jobs in memory: ${this.jobs.size}`);
     
-    // Cancel all jobs in queue
-    const queuedJobs = [...this.processingQueue];
-    for (const jobId of queuedJobs) {
-      if (await this.cancelJob(jobId)) {
-        cancelledCount++;
+    let cancelledCount = 0;
+    const jobsToCancel: string[] = [];
+    
+    // Collect all jobs that need cancellation
+    for (const [jobId, job] of this.jobs.entries()) {
+      if (job.status !== 'completed' && job.status !== 'failed' && job.status !== 'cancelled') {
+        jobsToCancel.push(jobId);
+        console.log(`[JobProcessor] Job ${jobId} (status: ${job.status}) will be cancelled`);
       }
     }
     
-    // Cancel all active jobs
-    for (const [jobId, job] of this.jobs.entries()) {
-      if (job.status !== 'completed' && job.status !== 'failed' && job.status !== 'cancelled') {
-        if (await this.cancelJob(jobId)) {
-          cancelledCount++;
-        }
+    console.log(`[JobProcessor] Found ${jobsToCancel.length} jobs to cancel`);
+    
+    // Cancel each job
+    for (const jobId of jobsToCancel) {
+      const cancelled = await this.cancelJob(jobId);
+      if (cancelled) {
+        cancelledCount++;
+      } else {
+        console.log(`[JobProcessor] Failed to cancel job ${jobId}`);
       }
     }
     
     // Clear the processing queue
     this.processingQueue = [];
+    console.log(`[JobProcessor] Processing queue cleared`);
     
     // Reset processing flag to allow new jobs
     this.isProcessing = false;
+    console.log(`[JobProcessor] Processing flag reset`);
     
+    console.log(`[JobProcessor] CancelAllJobs completed. Cancelled ${cancelledCount} jobs`);
     return cancelledCount;
   }
 
@@ -221,6 +253,10 @@ export class JobProcessorService extends EventEmitter {
     }
     
     console.log(`[JobProcessor] Starting to process job ${jobId}`);
+    const config = getMatchingConfig();
+    
+    // Start performance tracking
+    PerformanceLogger.startTimer(`${jobId}-total`);
 
     this.isProcessing = true;
     job.status = 'parsing';
@@ -307,7 +343,12 @@ export class JobProcessorService extends EventEmitter {
       for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
         // Check if job was cancelled (need to re-fetch from map in case it was updated)
         const currentJob = this.jobs.get(jobId);
-        if (currentJob && currentJob.status === 'cancelled') {
+        if (!currentJob) {
+          console.log(`[JobProcessor] ${jobId}: Job no longer exists, stopping processing`);
+          break;
+        }
+        
+        if (currentJob.status === 'cancelled') {
           console.log(`[JobProcessor] ${jobId}: Job cancelled, stopping processing`);
           this.emitLog(jobId, 'warning', 'Job cancelled by user');
           break;
@@ -483,8 +524,9 @@ export class JobProcessorService extends EventEmitter {
     }
 
     for (let i = 0; i < batch.length; i++) {
-      // Check if job was cancelled before processing each item
-      if (job.status === 'cancelled') {
+      // Check if job was cancelled before processing each item (re-fetch from map)
+      const currentJob = this.jobs.get(job.jobId);
+      if (!currentJob || currentJob.status === 'cancelled') {
         this.emitLog(job.jobId, 'warning', 'Job cancelled, stopping batch processing');
         break;
       }
@@ -741,12 +783,36 @@ export class JobProcessorService extends EventEmitter {
 
   // Get queue status
   getQueueStatus() {
+    const jobs = Array.from(this.jobs.values());
     return {
       queueLength: this.processingQueue.length,
       isProcessing: this.isProcessing,
-      activeJobs: Array.from(this.jobs.values()).filter(j => j.status === 'processing').length,
-      completedJobs: Array.from(this.jobs.values()).filter(j => j.status === 'completed').length,
+      activeJobs: jobs.filter(j => j.status === 'processing').length,
+      completedJobs: jobs.filter(j => j.status === 'completed').length,
+      pendingJobs: jobs.filter(j => j.status === 'pending').length,
+      parsingJobs: jobs.filter(j => j.status === 'parsing').length,
+      matchingJobs: jobs.filter(j => j.status === 'matching').length,
+      failedJobs: jobs.filter(j => j.status === 'failed').length,
+      cancelledJobs: jobs.filter(j => j.status === 'cancelled').length,
+      totalJobs: this.jobs.size,
     };
+  }
+  
+  // Get all running jobs
+  getRunningJobs(): Array<{ jobId: string; status: string; progress: number }> {
+    const runningJobs: Array<{ jobId: string; status: string; progress: number }> = [];
+    
+    for (const [jobId, job] of this.jobs.entries()) {
+      if (job.status !== 'completed' && job.status !== 'failed' && job.status !== 'cancelled') {
+        runningJobs.push({
+          jobId,
+          status: job.status,
+          progress: job.progress
+        });
+      }
+    }
+    
+    return runningJobs;
   }
   
   // Pre-generate embeddings for all price items

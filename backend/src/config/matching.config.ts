@@ -38,6 +38,21 @@ export interface MatchingConfig {
     delayMs: number;
     backoffMultiplier: number;
   };
+  performance: {
+    maxItemsPerJob: number;
+    maxConcurrentMatches: number;
+    itemProcessingTimeout: number;
+    batchProcessingDelay: number;
+    adaptiveBatchSize: boolean;
+    minBatchSize: number;
+    maxBatchSize: number;
+    enableDetailedLogging: boolean;
+  };
+  limits: {
+    maxReturnedMatches: number;
+    maxContextHeaders: number;
+    maxDescriptionLength: number;
+  };
 }
 
 // Default configuration
@@ -49,7 +64,7 @@ export const defaultMatchingConfig: MatchingConfig = {
       openai: 0.1,  // Lowered from 0.5
       default: 0.1  // Lowered from 0.5
     },
-    unitMatchBonus: 10,
+    unitMatchBonus: 20,  // Increased from 10 to give more weight to unit matching
     categoryMatchBonus: 15,
     contextMatchBonus: 5,
     codeMatchScore: 95,
@@ -76,6 +91,21 @@ export const defaultMatchingConfig: MatchingConfig = {
     maxAttempts: 3,
     delayMs: 1000,
     backoffMultiplier: 2
+  },
+  performance: {
+    maxItemsPerJob: 10000,
+    maxConcurrentMatches: 10,
+    itemProcessingTimeout: 5000,
+    batchProcessingDelay: 100,
+    adaptiveBatchSize: true,
+    minBatchSize: 5,
+    maxBatchSize: 20,
+    enableDetailedLogging: true
+  },
+  limits: {
+    maxReturnedMatches: 5,
+    maxContextHeaders: 10,
+    maxDescriptionLength: 500
   }
 };
 

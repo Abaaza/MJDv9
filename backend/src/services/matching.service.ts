@@ -357,20 +357,28 @@ export class MatchingService {
       ];
       scoreBreakdown.fuzzy = Math.max(...fuzzyScores);
       
-      // Enhanced unit matching with stronger weight (25% boost)
+      // Enhanced unit matching with stronger weight (35% boost for exact match)
       if (queryUnit && item.unit) {
         const normalizedQueryUnit = this.normalizeUnit(queryUnit);
         const normalizedItemUnit = this.normalizeUnit(item.unit);
         
         if (normalizedQueryUnit === normalizedItemUnit) {
-          scoreBreakdown.unit = 25; // Exact match after normalization - highest boost
+          scoreBreakdown.unit = 35; // Exact match after normalization - highest boost (increased from 25)
         } else if (this.areUnitsCompatible(queryUnit, item.unit)) {
-          scoreBreakdown.unit = 22; // Compatible units - very high boost
+          scoreBreakdown.unit = 32; // Compatible units - very high boost (increased from 22)
         } else if (queryUnit.toUpperCase() === item.unit.toUpperCase()) {
-          scoreBreakdown.unit = 25; // Raw exact match - highest boost
+          scoreBreakdown.unit = 35; // Raw exact match - highest boost (increased from 25)
+        } else {
+          // Partial unit match bonus
+          const unitSimilarity = fuzz.ratio(normalizedQueryUnit, normalizedItemUnit);
+          if (unitSimilarity > 70) {
+            scoreBreakdown.unit = 15; // Partial match bonus
+          }
         }
       } else if (queryUnit && !item.unit) {
-        scoreBreakdown.unit = -5; // Penalty for missing unit when query has unit
+        scoreBreakdown.unit = -10; // Stronger penalty for missing unit when query has unit
+      } else if (!queryUnit && item.unit) {
+        scoreBreakdown.unit = -5; // Small penalty when item has unit but query doesn't
       }
       
       // Enhanced category + subcategory matching as a combined unit
@@ -642,21 +650,33 @@ export class MatchingService {
         const normalizedAUnit = a.item.unit ? this.normalizeUnit(a.item.unit) : '';
         const normalizedBUnit = b.item.unit ? this.normalizeUnit(b.item.unit) : '';
         
-        // 25% boost for exact unit match
+        // 35% boost for exact unit match (increased from 25%)
         if (normalizedAUnit === normalizedQueryUnit) {
-          aScore *= 1.25;
+          aScore *= 1.35;
         } else if (this.areUnitsCompatible(queryUnit, a.item.unit)) {
-          aScore *= 1.20; // 20% boost for compatible units
+          aScore *= 1.30; // 30% boost for compatible units (increased from 20%)
         } else if (!a.item.unit) {
-          aScore *= 0.95; // 5% penalty for missing unit
+          aScore *= 0.90; // 10% penalty for missing unit (increased from 5%)
+        } else {
+          // Partial unit match bonus
+          const unitSimilarity = fuzz.ratio(normalizedQueryUnit, normalizedAUnit);
+          if (unitSimilarity > 70) {
+            aScore *= 1.15; // 15% boost for partial match
+          }
         }
         
         if (normalizedBUnit === normalizedQueryUnit) {
-          bScore *= 1.25;
+          bScore *= 1.35;
         } else if (this.areUnitsCompatible(queryUnit, b.item.unit)) {
-          bScore *= 1.20;
+          bScore *= 1.30;
         } else if (!b.item.unit) {
-          bScore *= 0.95;
+          bScore *= 0.90;
+        } else {
+          // Partial unit match bonus
+          const unitSimilarity = fuzz.ratio(normalizedQueryUnit, normalizedBUnit);
+          if (unitSimilarity > 70) {
+            bScore *= 1.15; // 15% boost for partial match
+          }
         }
       }
       
@@ -673,14 +693,21 @@ export class MatchingService {
       const normalizedItemUnit = this.normalizeUnit(bestMatch.item.unit);
       
       if (normalizedQueryUnit === normalizedItemUnit) {
-        finalConfidence = Math.min(0.99, finalConfidence * 1.15); // 15% boost for exact unit
+        finalConfidence = Math.min(0.99, finalConfidence * 1.25); // 25% boost for exact unit (increased from 15%)
         unitMatchInfo = ' with exact unit match';
       } else if (this.areUnitsCompatible(queryUnit, bestMatch.item.unit)) {
-        finalConfidence = Math.min(0.99, finalConfidence * 1.10); // 10% boost for compatible unit
+        finalConfidence = Math.min(0.99, finalConfidence * 1.20); // 20% boost for compatible unit (increased from 10%)
         unitMatchInfo = ' with compatible unit';
+      } else {
+        // Partial unit match bonus
+        const unitSimilarity = fuzz.ratio(normalizedQueryUnit, normalizedItemUnit);
+        if (unitSimilarity > 70) {
+          finalConfidence = Math.min(0.99, finalConfidence * 1.10); // 10% boost for partial match
+          unitMatchInfo = ' with partial unit match';
+        }
       }
     } else if (queryUnit && !bestMatch.item.unit) {
-      finalConfidence *= 0.95; // 5% penalty for missing unit
+      finalConfidence *= 0.90; // 10% penalty for missing unit (increased from 5%)
       unitMatchInfo = ' (unit mismatch)';
     }
     
@@ -834,21 +861,33 @@ export class MatchingService {
         const normalizedAUnit = a.item.unit ? this.normalizeUnit(a.item.unit) : '';
         const normalizedBUnit = b.item.unit ? this.normalizeUnit(b.item.unit) : '';
         
-        // 25% boost for exact unit match
+        // 35% boost for exact unit match (increased from 25%)
         if (normalizedAUnit === normalizedQueryUnit) {
-          aScore *= 1.25;
+          aScore *= 1.35;
         } else if (this.areUnitsCompatible(queryUnit, a.item.unit)) {
-          aScore *= 1.20; // 20% boost for compatible units
+          aScore *= 1.30; // 30% boost for compatible units (increased from 20%)
         } else if (!a.item.unit) {
-          aScore *= 0.95; // 5% penalty for missing unit
+          aScore *= 0.90; // 10% penalty for missing unit (increased from 5%)
+        } else {
+          // Partial unit match bonus
+          const unitSimilarity = fuzz.ratio(normalizedQueryUnit, normalizedAUnit);
+          if (unitSimilarity > 70) {
+            aScore *= 1.15; // 15% boost for partial match
+          }
         }
         
         if (normalizedBUnit === normalizedQueryUnit) {
-          bScore *= 1.25;
+          bScore *= 1.35;
         } else if (this.areUnitsCompatible(queryUnit, b.item.unit)) {
-          bScore *= 1.20;
+          bScore *= 1.30;
         } else if (!b.item.unit) {
-          bScore *= 0.95;
+          bScore *= 0.90;
+        } else {
+          // Partial unit match bonus
+          const unitSimilarity = fuzz.ratio(normalizedQueryUnit, normalizedBUnit);
+          if (unitSimilarity > 70) {
+            bScore *= 1.15; // 15% boost for partial match
+          }
         }
       }
       
@@ -865,14 +904,21 @@ export class MatchingService {
       const normalizedItemUnit = this.normalizeUnit(bestMatch.item.unit);
       
       if (normalizedQueryUnit === normalizedItemUnit) {
-        finalConfidence = Math.min(0.99, finalConfidence * 1.15); // 15% boost for exact unit
+        finalConfidence = Math.min(0.99, finalConfidence * 1.25); // 25% boost for exact unit (increased from 15%)
         unitMatchInfo = ' with exact unit match';
       } else if (this.areUnitsCompatible(queryUnit, bestMatch.item.unit)) {
-        finalConfidence = Math.min(0.99, finalConfidence * 1.10); // 10% boost for compatible unit
+        finalConfidence = Math.min(0.99, finalConfidence * 1.20); // 20% boost for compatible unit (increased from 10%)
         unitMatchInfo = ' with compatible unit';
+      } else {
+        // Partial unit match bonus
+        const unitSimilarity = fuzz.ratio(normalizedQueryUnit, normalizedItemUnit);
+        if (unitSimilarity > 70) {
+          finalConfidence = Math.min(0.99, finalConfidence * 1.10); // 10% boost for partial match
+          unitMatchInfo = ' with partial unit match';
+        }
       }
     } else if (queryUnit && !bestMatch.item.unit) {
-      finalConfidence *= 0.95; // 5% penalty for missing unit
+      finalConfidence *= 0.90; // 10% penalty for missing unit (increased from 5%)
       unitMatchInfo = ' (unit mismatch)';
     }
     
@@ -1100,6 +1146,26 @@ export class MatchingService {
   }
 
   private extractUnit(description: string): string | undefined {
+    // First, try to extract units in parentheses or after common indicators
+    const unitIndicators = [
+      /\(([^)]+)\)$/,  // Unit at end in parentheses
+      /\bin\s+(\w+)$/i,  // "in UNIT" at end
+      /\bper\s+(\w+)$/i,  // "per UNIT" at end
+      /\b@\s*(\w+)$/i,  // "@ UNIT" at end
+    ];
+    
+    for (const pattern of unitIndicators) {
+      const match = description.match(pattern);
+      if (match && match[1].length <= 10) { // Units are typically short
+        const potentialUnit = match[1].toUpperCase();
+        // Validate it's a known unit
+        if (this.isKnownUnit(potentialUnit)) {
+          return potentialUnit;
+        }
+      }
+    }
+    
+    // Comprehensive unit patterns
     const unitPatterns = [
       /\b(M3|M2|M|ITEM|NO|m3|m2|m|item|no|nr|nos)\b/i,
       /\b(SQM|sqm|CUM|cum|LM|lm|RM|rm|M1|m1|rmt)\b/i,
@@ -1110,6 +1176,10 @@ export class MatchingService {
       /\b(CFT|cft|SFT|sft|RFT|rft|CUFT|SQFT)\b/i,
       /\b(BRASS|brass)\b/i, // Common in South Asian construction
       /\b(TRIP|trip|LOAD|load)\b/i, // For transportation
+      /\b(SQ\.M|SQ\.FT|CU\.M|CU\.FT)\b/i, // With dots
+      /\b(SQUARE\s*METER|SQUARE\s*METRE|CUBIC\s*METER|CUBIC\s*METRE)\b/i,
+      /\b(SQUARE\s*FEET|SQUARE\s*FOOT|CUBIC\s*FEET|CUBIC\s*FOOT)\b/i,
+      /\b(RUNNING\s*METER|RUNNING\s*METRE|RUNNING\s*FEET|RUNNING\s*FOOT)\b/i,
       /(\d+(?:'|ft|foot|feet))\s*[xXÃ—]\s*(\d+(?:'|ft|foot|feet))/i // Dimension patterns
     ];
     
@@ -1120,11 +1190,27 @@ export class MatchingService {
         if (match[1].toLowerCase() === 'mt' && /metric\s+ton/i.test(description)) {
           return 'TON';
         }
-        return match[1].toUpperCase();
+        // Normalize the unit before returning
+        return this.normalizeUnit(match[1]);
       }
     }
     
     return undefined;
+  }
+  
+  private isKnownUnit(unit: string): boolean {
+    const knownUnits = [
+      'M', 'M2', 'M3', 'SQM', 'CUM', 'LM', 'RM', 'RMT',
+      'NO', 'NOS', 'EA', 'PC', 'PCS', 'UNIT', 'ITEM',
+      'KG', 'TON', 'MT', 'QTL', 'QUINTAL',
+      'L', 'LTR', 'LITER', 'LITRE',
+      'BAG', 'SET', 'PAIR',
+      'CFT', 'SFT', 'RFT', 'CUFT', 'SQFT',
+      'BRASS', 'TRIP', 'LOAD'
+    ];
+    
+    const normalized = this.normalizeUnit(unit);
+    return knownUnits.includes(normalized) || knownUnits.includes(unit);
   }
 
   /**
@@ -1282,6 +1368,14 @@ export class MatchingService {
   private areUnitsCompatible(unit1: string | undefined, unit2: string | undefined): boolean {
     if (!unit1 || !unit2) return false;
     
+    // First normalize both units
+    const norm1 = this.normalizeUnit(unit1);
+    const norm2 = this.normalizeUnit(unit2);
+    
+    // Check normalized match
+    if (norm1 === norm2) return true;
+    
+    // Also check raw uppercase match
     const u1 = unit1.toUpperCase().trim();
     const u2 = unit2.toUpperCase().trim();
     
@@ -1291,37 +1385,48 @@ export class MatchingService {
     // Define unit equivalence groups
     const unitGroups = [
       // Linear measurements
-      ['M', 'M1', 'LM', 'RM', 'RMT', 'METER', 'METRE', 'MTR'],
+      ['M', 'M1', 'LM', 'RM', 'RMT', 'METER', 'METRE', 'MTR', 'LINEAR METER', 'LINEAR METRE', 'RUNNING METER', 'RUNNING METRE'],
       // Area measurements
-      ['M2', 'SQM', 'SQ.M', 'SQUARE METER', 'SQUARE METRE', 'SM'],
+      ['M2', 'SQM', 'SQ.M', 'SQUARE METER', 'SQUARE METRE', 'SM', 'SQ M', 'SQ MT', 'SQ MTR', 'SQMTR'],
       // Volume measurements
-      ['M3', 'CUM', 'CU.M', 'CUBIC METER', 'CUBIC METRE', 'CM'],
+      ['M3', 'CUM', 'CU.M', 'CUBIC METER', 'CUBIC METRE', 'CM', 'CU M', 'CU MT', 'CU MTR', 'CUMTR'],
       // Count/quantity
-      ['NO', 'NR', 'NOS', 'NUMBER', 'ITEM', 'EACH', 'EA', 'PC', 'PCS', 'UNIT', 'QTY'],
+      ['NO', 'NR', 'NOS', 'NUMBER', 'ITEM', 'EACH', 'EA', 'PC', 'PCS', 'PIECE', 'PIECES', 'UNIT', 'QTY', 'QUANTITY'],
       // Weight - small
-      ['KG', 'KILOGRAM', 'KILO'],
+      ['KG', 'KILOGRAM', 'KILO', 'KGS'],
       // Weight - large
-      ['TON', 'TONNE', 'MT', 'METRIC TON', 'METRIC TONNE'],
-      ['QTL', 'QUINTAL'], // 100kg
+      ['TON', 'TONNE', 'MT', 'METRIC TON', 'METRIC TONNE', 'TONS', 'TONNES'],
+      ['QTL', 'QUINTAL', 'QUINTALS'], // 100kg
       // Volume - liquid
-      ['L', 'LTR', 'LITER', 'LITRE', 'LIT'],
+      ['L', 'LTR', 'LITER', 'LITRE', 'LIT', 'LTRS', 'LITERS', 'LITRES'],
       // Area - imperial
-      ['SFT', 'SQFT', 'SQ.FT', 'SQUARE FEET', 'SQUARE FOOT'],
+      ['SFT', 'SQFT', 'SQ.FT', 'SQUARE FEET', 'SQUARE FOOT', 'SQ FT', 'SQFEET'],
       // Volume - imperial
-      ['CFT', 'CUFT', 'CU.FT', 'CUBIC FEET', 'CUBIC FOOT'],
-      // Running measurements
-      ['RFT', 'RUNNING FEET', 'RUNNING FOOT'],
+      ['CFT', 'CUFT', 'CU.FT', 'CUBIC FEET', 'CUBIC FOOT', 'CU FT', 'CUFEET'],
+      // Running measurements - imperial
+      ['RFT', 'RUNNING FEET', 'RUNNING FOOT', 'R FT', 'RUN FT', 'RUN FEET'],
       // Special construction units
       ['BAG', 'BAGS'], // Cement bags
-      ['BRASS', '100CFT'], // 100 cubic feet
-      ['TRIP', 'LOAD', 'TRUCKLOAD'],
+      ['BRASS', '100CFT', 'HUNDRED CUBIC FEET'], // 100 cubic feet
+      ['TRIP', 'LOAD', 'TRUCKLOAD', 'TRIPS', 'LOADS'],
       ['SET', 'SETS'],
       ['PAIR', 'PAIRS']
     ];
     
-    // Check if both units belong to the same group
+    // Check if both units belong to the same group (use normalized versions)
     for (const group of unitGroups) {
-      if (group.includes(u1) && group.includes(u2)) {
+      const hasNorm1 = group.some(g => g === norm1 || g === u1);
+      const hasNorm2 = group.some(g => g === norm2 || g === u2);
+      
+      if (hasNorm1 && hasNorm2) {
+        return true;
+      }
+    }
+    
+    // Additional fuzzy matching for very similar units
+    if (norm1 && norm2) {
+      const similarity = fuzz.ratio(norm1, norm2);
+      if (similarity > 85) { // 85% similarity threshold
         return true;
       }
     }

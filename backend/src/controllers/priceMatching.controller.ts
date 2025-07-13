@@ -816,6 +816,8 @@ export async function exportResults(req: Request, res: Response): Promise<void> 
 export async function stopJob(req: Request, res: Response): Promise<void> {
   try {
     const { jobId } = req.params;
+    console.log(`[StopJob] Request to stop job: ${jobId}`);
+    console.log(`[StopJob] User: ${req.user?.id}, Role: ${req.user?.role}`);
 
     if (!req.user) {
       res.status(401).json({ error: 'Not authenticated' });
@@ -823,37 +825,71 @@ export async function stopJob(req: Request, res: Response): Promise<void> {
     }
 
     // Get the job to check ownership
-    const job = await convex.query(api.priceMatching.getJob, { jobId: toConvexId<'aiMatchingJobs'>(jobId) });
+    console.log(`[StopJob] Checking job ownership...`);
+    let job;
+    try {
+      job = await convex.query(api.priceMatching.getJob, { jobId: toConvexId<'aiMatchingJobs'>(jobId) });
+    } catch (queryError) {
+      console.error(`[StopJob] Error querying job:`, queryError);
+      res.status(500).json({ error: 'Failed to query job status' });
+      return;
+    }
+    
     if (!job) {
+      console.log(`[StopJob] Job not found in database: ${jobId}`);
       res.status(404).json({ error: 'Job not found' });
       return;
     }
 
-    if (job.userId !== req.user.id && req.user.role !== 'admin') {
+    console.log(`[StopJob] Job found - Owner: ${job.userId}, Status: ${job.status}`);
+    
+    // Allow admin or job owner to stop the job
+    if (job.userId !== req.user.id && req.user.role !== 'Admin') {
+      console.log(`[StopJob] Access denied - User ${req.user.id} is not owner or admin`);
       res.status(403).json({ error: 'Access denied' });
       return;
     }
 
+    // Check if job is already completed or failed
+    if (job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled') {
+      console.log(`[StopJob] Job already in final state: ${job.status}`);
+      res.status(400).json({ error: `Job is already ${job.status}` });
+      return;
+    }
+
     // Cancel the job in the processor
+    console.log(`[StopJob] Attempting to cancel job in processor...`);
     const cancelled = await jobProcessor.cancelJob(jobId);
+    console.log(`[StopJob] Processor cancellation result: ${cancelled}`);
     
     if (cancelled) {
       // Update job status in database
-      await convex.mutation(api.priceMatching.updateJobStatus, {
-        jobId: toConvexId<'aiMatchingJobs'>(jobId),
-        status: 'failed',
-        error: 'Job cancelled by user',
-      });
+      try {
+        await convex.mutation(api.priceMatching.updateJobStatus, {
+          jobId: toConvexId<'aiMatchingJobs'>(jobId),
+          status: 'failed',
+          error: 'Job cancelled by user',
+        });
+        console.log(`[StopJob] Job status updated in database`);
+      } catch (updateError) {
+        console.error(`[StopJob] Error updating job status:`, updateError);
+      }
 
       // Log activity
-      await logActivity(req, 'stop_job', 'aiMatchingJobs', jobId, 'Stopped matching job');
+      try {
+        await logActivity(req, 'stop_job', 'aiMatchingJobs', jobId, 'Stopped matching job');
+      } catch (logError) {
+        console.error(`[StopJob] Error logging activity:`, logError);
+      }
 
       res.json({ success: true, message: 'Job stopped' });
     } else {
-      res.status(400).json({ error: 'Job not found or already completed' });
+      console.log(`[StopJob] Job not found in processor or already completed`);
+      res.status(400).json({ error: 'Job not found in processor or already completed' });
     }
   } catch (error) {
-    console.error('Stop job error:', error);
+    console.error('[StopJob] Unexpected error:', error);
+    console.error('[StopJob] Error stack:', error instanceof Error ? error.stack : 'No stack trace');
     res.status(500).json({ error: 'Failed to stop job' });
   }
 }
@@ -1129,6 +1165,13 @@ export async function stopAllJobs(req: Request, res: Response): Promise<void> {
     // Only allow admins or the user to stop their own jobs
     // For now, let's allow any authenticated user to stop all running jobs
     console.log(`[StopAllJobs] User ${req.user.id} requested to stop all running jobs`);
+
+    // First, check processor status
+    const processorStatus = jobProcessor.getQueueStatus();
+    console.log(`[StopAllJobs] Processor status:`, processorStatus);
+    
+    const processorRunningJobs = jobProcessor.getRunningJobs();
+    console.log(`[StopAllJobs] Running jobs in processor:`, processorRunningJobs);
 
     // Get all running jobs from Convex
     const runningJobs = await convex.query(api.priceMatching.getRunningJobs, {});

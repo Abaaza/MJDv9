@@ -15,19 +15,25 @@ const ALLOWED_MIME_TYPES = {
 
 // File filter with MIME type validation
 const fileFilter = (req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
-  const allowedExtensions = ['.xlsx', '.xls'];
+  const allowedExtensions = ['.xlsx', '.xls', '.csv']; // Added CSV support
   const ext = path.extname(file.originalname).toLowerCase();
   
   // Check file extension
   if (!allowedExtensions.includes(ext)) {
-    cb(new Error('Only Excel files (.xlsx, .xls) are allowed'));
+    cb(new Error('Only Excel files (.xlsx, .xls) and CSV files (.csv) are allowed'));
     return;
   }
   
   // Validate MIME type
-  const allowedMimeTypes = ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel'];
+  const allowedMimeTypes = [
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.ms-excel',
+    'text/csv',
+    'application/csv'
+  ];
+  
   if (!allowedMimeTypes.includes(file.mimetype)) {
-    cb(new Error('Invalid file type. Only Excel files are allowed'));
+    cb(new Error('Invalid file type. Only Excel and CSV files are allowed'));
     return;
   }
   

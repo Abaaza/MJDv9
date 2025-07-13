@@ -1,7 +1,7 @@
 {
-  "name": "mjd-price-matcher",
+  "name": "the-fencing-people-price-matcher",
   "version": "1.0.0",
-  "description": "MJD Price Matcher - AI-powered price matching system",
+  "description": "The Fencing People Price Matcher - AI-powered price matching system",
   "type": "module",
   "private": true,
   "scripts": {
