@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { authenticateToken } from '../middleware/auth';
+import { authenticate } from '../middleware/auth';
 import {
   getJobPerformanceMetrics,
   getSystemMetrics,
@@ -10,7 +10,7 @@ import {
 const router = Router();
 
 // All monitoring routes require authentication
-router.use(authenticateToken);
+router.use(authenticate);
 
 // Job-specific metrics
 router.get('/jobs/:jobId/performance', getJobPerformanceMetrics);
