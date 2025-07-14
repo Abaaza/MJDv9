@@ -71,15 +71,23 @@ export class MatchingService {
   }
 
   /**
-   * Simple text for embedding - just description + category + unit
+   * Simple text for embedding - description + combined category context + unit
    */
   private createSimpleText(item: PriceItem): string {
     const parts = [item.description];
     
+    // Treat category + subcategory as a single contextual unit
     if (item.category && item.subcategory) {
+      // Add both as a combined context for stronger signal
       parts.push(`${item.category} ${item.subcategory}`);
+      // Also add them separately for flexibility
+      parts.push(item.category);
+      parts.push(item.subcategory);
     } else if (item.category) {
       parts.push(item.category);
+    } else if (item.subcategory) {
+      // Even if no category, use subcategory
+      parts.push(item.subcategory);
     }
     
     if (item.unit) {
@@ -224,7 +232,7 @@ export class MatchingService {
   }
 
   /**
-   * LOCAL MATCH - Simple fuzzy matching
+   * LOCAL MATCH - Simple fuzzy matching with category+subcategory as unit
    */
   private async localMatch(
     description: string, 
@@ -249,12 +257,30 @@ export class MatchingService {
         }
       }
       
-      // Category bonus (simple: match = +10)
+      // Category+Subcategory combined bonus (treat as single unit)
       let categoryBonus = 0;
-      if (targetCategory && item.category?.toLowerCase().includes(targetCategory)) {
-        categoryBonus = 10;
-        if (targetSubcategory && item.subcategory?.toLowerCase().includes(targetSubcategory)) {
-          categoryBonus = 15;
+      if (targetCategory || targetSubcategory) {
+        const itemCategory = item.category?.toLowerCase() || '';
+        const itemSubcategory = item.subcategory?.toLowerCase() || '';
+        
+        // Perfect match: both category AND subcategory match
+        if (targetCategory && targetSubcategory &&
+            itemCategory.includes(targetCategory) && 
+            itemSubcategory.includes(targetSubcategory)) {
+          categoryBonus = 25; // High bonus for complete context match
+        }
+        // Good match: subcategory matches (since it has more context)
+        else if (targetSubcategory && itemSubcategory.includes(targetSubcategory)) {
+          categoryBonus = 18; // Prioritize subcategory matches
+        }
+        // Partial match: only category matches
+        else if (targetCategory && itemCategory.includes(targetCategory)) {
+          categoryBonus = 10; // Lower bonus for just category
+        }
+        // Cross-match: check if target appears in either field
+        else if ((targetCategory && itemSubcategory.includes(targetCategory)) ||
+                 (targetSubcategory && itemCategory.includes(targetSubcategory))) {
+          categoryBonus = 8; // Small bonus for cross-matches
         }
       }
       
@@ -292,10 +318,15 @@ export class MatchingService {
 
     const queryUnit = this.extractUnit(description);
     
-    // Simple query text
+    // Enhanced query text with category+subcategory context
     let queryText = description;
     if (contextHeaders && contextHeaders.length > 0) {
-      queryText = `${contextHeaders.join(' ')} ${description}`;
+      // Join category and subcategory as a single context
+      const categoryContext = contextHeaders.slice(0, 2).join(' ');
+      queryText = `${categoryContext} ${description}`;
+      // Also add individual parts for better matching
+      if (contextHeaders[0]) queryText += ` ${contextHeaders[0]}`;
+      if (contextHeaders[1]) queryText += ` ${contextHeaders[1]}`;
     }
 
     // Get or generate query embedding
@@ -400,10 +431,15 @@ export class MatchingService {
 
     const queryUnit = this.extractUnit(description);
     
-    // Simple query text
+    // Enhanced query text with category+subcategory context
     let queryText = description;
     if (contextHeaders && contextHeaders.length > 0) {
-      queryText = `${contextHeaders.join(' ')} ${description}`;
+      // Join category and subcategory as a single context
+      const categoryContext = contextHeaders.slice(0, 2).join(' ');
+      queryText = `${categoryContext} ${description}`;
+      // Also add individual parts for better matching
+      if (contextHeaders[0]) queryText += ` ${contextHeaders[0]}`;
+      if (contextHeaders[1]) queryText += ` ${contextHeaders[1]}`;
     }
 
     // Get query embedding
@@ -483,7 +519,7 @@ export class MatchingService {
    * Generate embeddings for BOQ items (for price list)
    */
   async generateBOQEmbeddings(
-    items: Array<{ description: string; category?: string; unit?: string }>,
+    items: Array<{ description: string; category?: string; subcategory?: string; unit?: string }>,
     provider: 'cohere' | 'openai'
   ): Promise<Map<string, number[]>> {
     await this.ensureClientsInitialized();
@@ -491,7 +527,22 @@ export class MatchingService {
 
     if (provider === 'cohere' && this.cohereClient) {
       try {
-        const texts = items.map(item => this.createSimpleText(item as any));
+        // Create enhanced texts with category+subcategory emphasis
+        const texts = items.map(item => {
+          const parts = [item.description];
+          if (item.category && item.subcategory) {
+            // Emphasize the combined context
+            parts.push(`${item.category} ${item.subcategory}`);
+            parts.push(`${item.subcategory} ${item.category}`); // Reverse order too
+          } else if (item.category) {
+            parts.push(item.category);
+          } else if (item.subcategory) {
+            parts.push(item.subcategory);
+          }
+          if (item.unit) parts.push(item.unit);
+          return parts.join(' ');
+        });
+        
         const response = await this.cohereClient.embed({
           texts,
           model: 'embed-english-v3.0',
@@ -506,7 +557,22 @@ export class MatchingService {
       }
     } else if (provider === 'openai' && this.openaiClient) {
       try {
-        const texts = items.map(item => this.createSimpleText(item as any));
+        // Create enhanced texts with category+subcategory emphasis
+        const texts = items.map(item => {
+          const parts = [item.description];
+          if (item.category && item.subcategory) {
+            // Emphasize the combined context
+            parts.push(`${item.category} ${item.subcategory}`);
+            parts.push(`${item.subcategory} ${item.category}`); // Reverse order too
+          } else if (item.category) {
+            parts.push(item.category);
+          } else if (item.subcategory) {
+            parts.push(item.subcategory);
+          }
+          if (item.unit) parts.push(item.unit);
+          return parts.join(' ');
+        });
+        
         const response = await this.openaiClient.embeddings.create({
           input: texts,
           model: 'text-embedding-3-small',

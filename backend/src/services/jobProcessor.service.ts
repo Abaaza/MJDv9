@@ -353,9 +353,10 @@ export class JobProcessorService extends EventEmitter {
         const batch = job.items.slice(startIdx, startIdx + this.BATCH_SIZE);
         const batchNumber = batchIndex + 1;
         
-        // Calculate realistic progress (25-95%) based on actual items to match
+        // Calculate realistic progress (25-90%) based on actual items to match
         const itemsToMatchSoFar = processedCount - contextHeaderCount;
-        const progressPercentage = 25 + Math.round((itemsToMatchSoFar / job.itemCount) * 70);
+        // Use 65 instead of 70 to cap at 90% instead of 95%
+        const progressPercentage = Math.min(90, 25 + Math.round((itemsToMatchSoFar / job.itemCount) * 65));
         job.progress = progressPercentage;
         job.progressMessage = `Processing batch ${batchNumber}/${totalBatches} (${itemsToMatchSoFar}/${job.itemCount} items)`;
         
@@ -424,10 +425,26 @@ export class JobProcessorService extends EventEmitter {
         await new Promise(resolve => setTimeout(resolve, delay));
       }
 
-      // Final update (90-100%)
-      job.progress = 95;
-      job.progressMessage = 'Finalizing results...';
+      // Ensure smooth progress transition (cap at 95% during processing)
+      if (job.progress > 95) {
+        job.progress = 95;
+      }
+      
+      // Save any remaining results before finalizing
+      const finalUnsavedResults = results.slice(savedResultsCount);
+      if (finalUnsavedResults.length > 0) {
+        job.progressMessage = `Saving final ${finalUnsavedResults.length} results...`;
+        this.emitProgress(job);
+        this.emitLog(jobId, 'info', `Saving final ${finalUnsavedResults.length} results to database`);
+        await this.batchUpdateConvex(jobId, job, finalUnsavedResults);
+        savedResultsCount = results.length;
+      }
+      
+      // Progress to 98% - Calculating final statistics
+      job.progress = 98;
+      job.progressMessage = 'Calculating final statistics...';
       this.emitProgress(job);
+      
       const itemsToMatch = processedCount - contextHeaderCount;
       this.emitLog(jobId, 'info', `Processing complete. Total: ${processedCount} items (${itemsToMatch} with quantities, ${contextHeaderCount} context headers)`);
       this.emitLog(jobId, 'info', `Matching results: ${successCount} successful matches, ${failureCount} failures`);
@@ -436,6 +453,7 @@ export class JobProcessorService extends EventEmitter {
       const matchRate = itemsToMatch > 0 ? Math.round((successCount / itemsToMatch) * 100) : 0;
       this.emitLog(jobId, 'info', `Match rate: ${matchRate}% (${successCount}/${itemsToMatch} items with quantities)`);
       
+      // Progress to 100% - Completed
       job.status = 'completed';
       job.progress = 100;
       job.progressMessage = `Completed: ${successCount} matches out of ${itemsToMatch} items (${matchRate}% success rate)`;
