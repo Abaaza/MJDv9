@@ -42,18 +42,18 @@ export interface ProjectMetadata {
 
 export class ExcelService {
   async parseExcelFile(buffer: Buffer, fileName: string = 'unknown.xlsx'): Promise<ExcelParseResult> {
-    console.log(`\n[ExcelService] === EXCEL PARSING START ===`);
-    console.log(`[ExcelService] File: ${fileName}`);
-    console.log(`[ExcelService] Buffer size: ${buffer?.length || 0} bytes (${((buffer?.length || 0) / 1024 / 1024).toFixed(2)} MB)`);
+    // Console log removed for performance
+    // Console log removed for performance
+    // Console log removed for performance
     
     try {
       if (!buffer || buffer.length === 0) {
-        console.error(`[ExcelService] ERROR: Empty file buffer provided`);
+        // Console log removed for performance
         throw new Error('Empty file buffer provided');
       }
       
       if (buffer.length > 50 * 1024 * 1024) { // 50MB limit
-        console.error(`[ExcelService] ERROR: File size exceeds 50MB limit`);
+        // Console log removed for performance
         throw new Error('File size exceeds 50MB limit');
       }
       
@@ -62,11 +62,11 @@ export class ExcelService {
       await workbook.xlsx.load(buffer);
       const loadEndTime = Date.now();
       
-      console.log(`[ExcelService] Workbook loaded in ${loadEndTime - loadStartTime}ms`);
-      console.log(`[ExcelService] Number of worksheets: ${workbook.worksheets.length}`);
+      // Console log removed for performance
+      // Console log removed for performance
       
       if (workbook.worksheets.length === 0) {
-        console.error(`[ExcelService] ERROR: No worksheets found in Excel file`);
+        // Console log removed for performance
         throw new Error('No worksheets found in Excel file');
       }
 
@@ -77,19 +77,19 @@ export class ExcelService {
     const sheetSignatures = new Map<string, string>();
 
     // Process all worksheets
-    console.log(`[ExcelService] Processing ${workbook.worksheets.length} worksheets...`);
+    // Console log removed for performance
     
     for (let index = 0; index < workbook.worksheets.length; index++) {
       const worksheet = workbook.worksheets[index];
-      console.log(`\n[ExcelService] Processing worksheet ${index + 1}/${workbook.worksheets.length}: "${worksheet.name}"`);
-      console.log(`[ExcelService] Worksheet dimensions: ${worksheet.rowCount} rows x ${worksheet.columnCount} columns`);
+      // Console log removed for performance
+      // Console log removed for performance
       
       const parseStartTime = Date.now();
       const sheetResult = await this.parseWorksheet(worksheet);
       const parseEndTime = Date.now();
       
-      console.log(`[ExcelService] Worksheet "${worksheet.name}" parsed in ${parseEndTime - parseStartTime}ms`);
-      console.log(`[ExcelService] Found ${sheetResult.items.length} items, ${sheetResult.totalRows} total rows`);
+      // Console log removed for performance
+      // Console log removed for performance
       
       if (sheetResult.items.length > 0) {
         // Create a signature for this sheet based on first few items
@@ -98,17 +98,17 @@ export class ExcelService {
         // Check if we've seen this data before
         const existingSheet = sheetSignatures.get(signature);
         if (existingSheet) {
-          console.log(`[ExcelService] WARNING: Sheet "${worksheet.name}" appears to be a duplicate of "${existingSheet}"`);
-          console.log(`[ExcelService] Skipping duplicate sheet to avoid repeated items`);
+          // Console log removed for performance
+          // Console log removed for performance
         } else {
           // New unique sheet - add it
           sheetSignatures.set(signature, worksheet.name);
           sheets.push(sheetResult);
           totalItems += sheetResult.items.length;
-          console.log(`[ExcelService] Added ${sheetResult.items.length} items from sheet "${worksheet.name}"`);
+          // Console log removed for performance
         }
       } else {
-        console.log(`[ExcelService] Skipping sheet "${worksheet.name}" (no items found)`);
+        // Console log removed for performance
       }
     }
 
@@ -116,14 +116,14 @@ export class ExcelService {
       throw new Error('No valid data found in any worksheet');
     }
 
-    console.log(`\n[ExcelService] === EXCEL PARSING COMPLETE ===`);
-    console.log(`[ExcelService] Total sheets with data: ${sheets.length}`);
-    console.log(`[ExcelService] Total items found: ${totalItems}`);
-    console.log(`[ExcelService] Summary by sheet:`);
+    // Console log removed for performance
+    // Console log removed for performance
+    // Console log removed for performance
+    // Console log removed for performance
     sheets.forEach((sheet, idx) => {
-      console.log(`[ExcelService]   ${idx + 1}. "${sheet.sheetName}": ${sheet.items.length} items`);
+      // Console log removed for performance
     });
-    console.log(`[ExcelService] ===============================\n`);
+    // Console log removed for performance
 
     return {
       sheets,
@@ -131,7 +131,7 @@ export class ExcelService {
       totalItems,
     };
     } catch (error) {
-      console.error(`[ExcelService] ERROR during Excel parsing:`, error);
+      // Console log removed for performance
       if (error instanceof Error) {
         throw new Error(`Failed to parse Excel file: ${error.message}`);
       }
@@ -140,7 +140,7 @@ export class ExcelService {
   }
 
   private async parseWorksheet(worksheet: ExcelJS.Worksheet): Promise<SheetParseResult> {
-    console.log(`[ExcelService]   [Sheet: ${worksheet.name}] Starting worksheet parse...`);
+    // Console log removed for performance
     
     const headers: string[] = [];
     const items: ParsedBOQItem[] = [];
@@ -150,7 +150,7 @@ export class ExcelService {
     let headerRowNumber = 1;
     let headerRow: ExcelJS.Row | null = null;
     
-    console.log(`[ExcelService]   [Sheet: ${worksheet.name}] Searching for header row (checking first 25 rows)...`);
+    // Console log removed for performance
     
     // Special check for Testground format - look for rows with patterns like "F l a g s"
     let testgroundHeaderRow = -1;
@@ -192,8 +192,8 @@ export class ExcelService {
           testgroundHeaderRow = i;
           headerRow = row;
           headerRowNumber = i;
-          console.log(`[ExcelService]   [Sheet: ${worksheet.name}] Found Testground-style header at row ${i}`);
-          console.log(`[ExcelService]   [Sheet: ${worksheet.name}] Pattern: F l a g s with Description, Quantity, Unit columns`);
+          // Console log removed for performance
+          // Console log removed for performance
           break;
         }
       }
@@ -216,8 +216,8 @@ export class ExcelService {
           headerRow = row;
           headerRowNumber = i;
           
-          console.log(`[ExcelService]   [Sheet: ${worksheet.name}] Found standard header row at row ${i}`);
-          console.log(`[ExcelService]   [Sheet: ${worksheet.name}] Has Description: ${hasDescKeyword}, Quantity: ${hasQtyKeyword}, Unit: ${hasUnitKeyword}`);
+          // Console log removed for performance
+          // Console log removed for performance
           break;
         }
       }
@@ -235,7 +235,7 @@ export class ExcelService {
         if (filledCells >= 4) {
           headerRow = row;
           headerRowNumber = i;
-          console.log(`[ExcelService]   [Sheet: ${worksheet.name}] Using fallback header at row ${i} (${filledCells} filled cells)`);
+          // Console log removed for performance
           break;
         }
       }
@@ -255,12 +255,12 @@ export class ExcelService {
       }
       
       if (contextRows.length > 0) {
-        console.log(`[ExcelService]   [Sheet: ${worksheet.name}] Found ${contextRows.length} context rows above header`);
+        // Console log removed for performance
       }
     }
     
     if (!headerRow) {
-      console.log(`[ExcelService]   [Sheet: ${worksheet.name}] WARNING: No header row found, skipping sheet`);
+      // Console log removed for performance
       return { items: [], totalRows: 0, headers: [], sheetName: worksheet.name, contextRows: [] };
     }
     
@@ -276,10 +276,10 @@ export class ExcelService {
     const quantityColIndex = this.findQuantityColumn(headers);
     const unitColIndex = this.findUnitColumn(headers);
     
-    console.log(`[ExcelService]   [Sheet: ${worksheet.name}] Column detection:`);
-    console.log(`[ExcelService]   [Sheet: ${worksheet.name}]   - Description: ${descriptionColIndex >= 0 ? `Column ${descriptionColIndex + 1} ("${headers[descriptionColIndex]}")` : 'NOT FOUND'}`);
-    console.log(`[ExcelService]   [Sheet: ${worksheet.name}]   - Quantity: ${quantityColIndex >= 0 ? `Column ${quantityColIndex + 1} ("${headers[quantityColIndex]}")` : 'NOT FOUND'}`);
-    console.log(`[ExcelService]   [Sheet: ${worksheet.name}]   - Unit: ${unitColIndex >= 0 ? `Column ${unitColIndex + 1} ("${headers[unitColIndex]}")` : 'NOT FOUND'}`);
+    // Console log removed for performance
+    // Console log removed for performance
+    // Console log removed for performance
+    // Console log removed for performance
 
     // Parse data rows
     let totalRows = 0;
@@ -295,10 +295,10 @@ export class ExcelService {
         const qtyCell = quantityColIndex >= 0 ? row.getCell(quantityColIndex + 1) : null;
         const unitCell = unitColIndex >= 0 ? row.getCell(unitColIndex + 1) : null;
         
-        console.log(`[ExcelService]   [Sheet: ${worksheet.name}] Row ${rowNumber} analysis:`);
-        console.log(`    Description (Col ${descriptionColIndex + 1}): "${descCell?.value || 'EMPTY'}"`);
-        console.log(`    Quantity (Col ${quantityColIndex + 1}): "${qtyCell?.value || 'EMPTY'}" (type: ${typeof qtyCell?.value})`);
-        console.log(`    Unit (Col ${unitColIndex + 1}): "${unitCell?.value || 'EMPTY'}"`);
+        // Console log removed for performance
+        // Console log removed for performance
+        // Console log removed for performance
+        // Console log removed for performance
       }
       
       // Check if this is a context/category row
@@ -463,7 +463,7 @@ export class ExcelService {
           const { headers: embeddedHeaders, actualDescription } = extractEmbeddedHeaders(description);
           
           if (embeddedHeaders.length > 0) {
-            console.log(`[ExcelService]   [Sheet: ${worksheet.name}] Row ${rowNumber} contains ${embeddedHeaders.length} embedded headers`);
+            // Console log removed for performance
             
             // First, add each embedded header as a separate context header item
             embeddedHeaders.forEach((header, index) => {
@@ -501,9 +501,9 @@ export class ExcelService {
         
         if (!hasQuantity && !hasUnit) {
           // This is likely a context header
-          console.log(`[ExcelService]   [Sheet: ${worksheet.name}] Row ${rowNumber} identified as context header: "${description.substring(0, 50)}..."`);
+          // Console log removed for performance
         } else if (hasQuantity) {
-          console.log(`[ExcelService]   [Sheet: ${worksheet.name}] Row ${rowNumber} has quantity ${quantity} ${unit || 'NO_UNIT'}: "${description.substring(0, 50)}..."`);
+          // Console log removed for performance
         }
         
         items.push({
@@ -540,10 +540,10 @@ export class ExcelService {
       preserveOriginal?: boolean; // New flag to preserve original format
     }
   ): Promise<Buffer> {
-    console.log(`[ExcelService] Creating Excel with results...`);
-    console.log(`[ExcelService] Match results count: ${matchResults?.length || 0}`);
-    console.log(`[ExcelService] Has original buffer: ${!!originalBuffer}`);
-    console.log(`[ExcelService] Metadata:`, metadata);
+    // Console log removed for performance
+    // Console log removed for performance
+    // Console log removed for performance
+    // Console log removed for performance
     
     try {
       const workbook = new ExcelJS.Workbook();
@@ -553,13 +553,13 @@ export class ExcelService {
         try {
           await workbook.xlsx.load(originalBuffer);
         } catch (error) {
-          console.warn('Failed to load original Excel file, creating new one');
+          // Console log removed for performance
         }
       }
       
       // If preserveOriginal flag is set, only update rate column in original file
       if (metadata?.preserveOriginal && originalBuffer && workbook.worksheets.length > 0) {
-        console.log('[ExcelService] Preserving original Excel format - only updating rate column');
+        // Console log removed for performance
         
         // Create a map of results by row number for quick lookup
         const resultsByRow = new Map();
@@ -569,7 +569,7 @@ export class ExcelService {
         
         // Iterate through all worksheets
         workbook.worksheets.forEach(worksheet => {
-          console.log(`[ExcelService] Processing worksheet: ${worksheet.name}`);
+          // Console log removed for performance
           
           // Find the rate column - look for headers containing 'rate', 'price', 'cost', etc.
           let rateColumnIndex = -1;
@@ -585,7 +585,7 @@ export class ExcelService {
               if (cellValue.includes('rate') || cellValue.includes('price') || cellValue.includes('cost')) {
                 rateColumnIndex = colNumber;
                 foundRateCol = true;
-                console.log(`[ExcelService] Found rate column at column ${colNumber} (${cellValue}) in row ${rowNum}`);
+                // Console log removed for performance
               }
             });
             
@@ -594,7 +594,7 @@ export class ExcelService {
           
           // If no rate column found, skip this worksheet
           if (rateColumnIndex === -1) {
-            console.log(`[ExcelService] No rate column found in worksheet ${worksheet.name}, skipping`);
+            // Console log removed for performance
             return;
           }
           
@@ -608,7 +608,7 @@ export class ExcelService {
               
               // Skip context headers - don't update their rate cells
               if (isContextHeader) {
-                console.log(`[ExcelService] Skipping rate update for context header at row ${rowNumber}`);
+                // Console log removed for performance
                 return;
               }
               
@@ -631,7 +631,7 @@ export class ExcelService {
               if (originalBorder) rateCell.border = originalBorder;
               if (originalAlignment) rateCell.alignment = originalAlignment;
               
-              console.log(`[ExcelService] Updated rate for row ${rowNumber}: ${result.matchedRate}`);
+              // Console log removed for performance
             }
           });
         });
@@ -639,7 +639,7 @@ export class ExcelService {
         // Return the buffer without any other modifications
         const buffer = await workbook.xlsx.writeBuffer();
         const resultBuffer = Buffer.from(buffer);
-        console.log(`[ExcelService] Excel file created with preserved format, size: ${resultBuffer.length} bytes`);
+        // Console log removed for performance
         return resultBuffer;
       }
       
@@ -701,7 +701,7 @@ export class ExcelService {
       }
 
       // Group results by sheet name
-      console.log(`[ExcelService] Grouping results by sheet...`);
+      // Console log removed for performance
       const resultsBySheet = matchResults.reduce((acc, result) => {
         const sheetName = result.sheetName || workbook.worksheets[0]?.name || 'Sheet1';
         if (!acc[sheetName]) acc[sheetName] = [];
@@ -709,8 +709,7 @@ export class ExcelService {
         return acc;
       }, {} as Record<string, any[]>);
       
-      console.log(`[ExcelService] Results grouped into ${Object.keys(resultsBySheet).length} sheets:`, 
-        Object.entries(resultsBySheet).map(([sheet, results]) => `${sheet}: ${(results as any[]).length} items`));
+      // Console log removed for performance
 
       // Process each worksheet that has results
       for (const [sheetName, sheetResults] of Object.entries(resultsBySheet) as [string, any[]][]) {
@@ -939,14 +938,14 @@ export class ExcelService {
     const originalValue = value;
     
     if (value === null || value === undefined || value === '') {
-      console.log(`[parseNumber] Rejected null/undefined/empty value: ${value}`);
+      // Console log removed for performance
       return undefined;
     }
     
     if (typeof value === 'number') {
       const result = value > 0 ? value : undefined;
       if (!result) {
-        console.log(`[parseNumber] Rejected non-positive number: ${value}`);
+        // Console log removed for performance
       }
       return result;
     }
@@ -954,23 +953,23 @@ export class ExcelService {
     if (typeof value === 'string') {
       const trimmed = value.trim();
       if (trimmed === '' || trimmed === '-' || trimmed.toLowerCase() === 'n/a') {
-        console.log(`[parseNumber] Rejected string value: "${originalValue}"`);
+        // Console log removed for performance
         return undefined;
       }
       
       const parsed = parseFloat(trimmed.replace(/,/g, ''));
       if (isNaN(parsed)) {
-        console.log(`[parseNumber] Failed to parse string as number: "${originalValue}"`);
+        // Console log removed for performance
         return undefined;
       }
       if (parsed <= 0) {
-        console.log(`[parseNumber] Rejected non-positive parsed value: ${parsed} from "${originalValue}"`);
+        // Console log removed for performance
         return undefined;
       }
       return parsed;
     }
     
-    console.log(`[parseNumber] Rejected unknown type: ${typeof value}, value: ${value}`);
+    // Console log removed for performance
     return undefined;
   }
   
@@ -1017,9 +1016,9 @@ export class ExcelService {
       itemCount: number;
     }
   ): Promise<Buffer> {
-    console.log(`[ExcelService] Exporting match results...`);
-    console.log(`[ExcelService] Match results count: ${matchResults?.length || 0}`);
-    console.log(`[ExcelService] Job metadata:`, jobMetadata);
+    // Console log removed for performance
+    // Console log removed for performance
+    // Console log removed for performance
     
     // Use the createExcelWithResults method with preserveOriginal flag
     return this.createExcelWithResults(originalBuffer, matchResults, {

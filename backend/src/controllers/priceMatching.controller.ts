@@ -51,7 +51,7 @@ export async function getUserJobs(req: Request, res: Response): Promise<void> {
 
     res.json(jobs);
   } catch (error) {
-    console.error('Get user jobs error:', error);
+    // Console log removed for performance
     res.status(500).json({ error: 'Failed to get jobs' });
   }
 }
@@ -68,13 +68,13 @@ export async function getAllJobs(req: Request, res: Response): Promise<void> {
 
     res.json(jobs);
   } catch (error) {
-    console.error('Get all jobs error:', error);
+    // Console log removed for performance
     res.status(500).json({ error: 'Failed to get all jobs' });
   }
 }
 
 export async function uploadBOQ(req: Request, res: Response): Promise<void> {
-  console.log('[UploadBOQ] Request received');
+  // Console log removed for performance
   try {
     if (!req.file) {
       res.status(400).json({ error: 'No file uploaded' });
@@ -86,7 +86,7 @@ export async function uploadBOQ(req: Request, res: Response): Promise<void> {
       return;
     }
 
-    console.log('[UploadBOQ] Parsing Excel file:', req.file.originalname);
+    // Console log removed for performance
     // Parse the Excel file
     const parseResult = await excelService.parseExcelFile(req.file.buffer, req.file.originalname);
 
@@ -97,7 +97,7 @@ export async function uploadBOQ(req: Request, res: Response): Promise<void> {
     
     // Store the original file for later use in export
     const fileId = await fileStorage.saveFile(req.file.buffer, req.file.originalname);
-    console.log(`[UploadBOQ] Stored original Excel file with ID: ${fileId}`);
+    // Console log removed for performance
     
     // Get items from all sheets
     const allItems = parseResult.sheets.flatMap(sheet => sheet.items);
@@ -110,16 +110,12 @@ export async function uploadBOQ(req: Request, res: Response): Promise<void> {
       item.quantity > 0
     );
 
-    console.log('[UploadBOQ] Parsed items:', {
-      totalItems: allItems.length,
-      itemsWithQuantities: itemsWithQuantities.length,
-      sheets: parseResult.sheets.length
-    });
+    // Console log removed for performance
 
     // Create a project if projectName is provided
     let projectId;
     if (req.body.projectName && req.body.clientId) {
-      console.log('[UploadBOQ] Creating project:', req.body.projectName);
+      // Console log removed for performance
       projectId = await convex.mutation(api.projects.create, {
         name: req.body.projectName,
         clientId: toConvexId<'clients'>(req.body.clientId),
@@ -127,7 +123,7 @@ export async function uploadBOQ(req: Request, res: Response): Promise<void> {
         status: 'active' as const,
         userId: toConvexId<'users'>(req.user.id),
       });
-      console.log('[UploadBOQ] Project created with ID:', projectId);
+      // Console log removed for performance
     }
 
     // Create a matching job
@@ -166,7 +162,7 @@ export async function uploadBOQ(req: Request, res: Response): Promise<void> {
       storedItems.push(storedItem);
     }
 
-    console.log('[UploadBOQ] Created job:', jobId, 'with', storedItems.length, 'items');
+    // Console log removed for performance
 
     // Log activity
     await logActivity(req, 'upload_boq', 'aiMatchingJobs', jobId.toString(), `Uploaded ${req.file.originalname} with ${itemsWithQuantities.length} items`);
@@ -190,14 +186,14 @@ export async function uploadBOQ(req: Request, res: Response): Promise<void> {
       }).map((item, index) => ({ ...item, index: index + 1 })),
     });
   } catch (error) {
-    console.error('[UploadBOQ] Error:', error);
+    // Console log removed for performance
     res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to upload BOQ' });
   }
 }
 
 export async function uploadAndMatch(req: Request, res: Response): Promise<void> {
   const requestId = uuidv4().substring(0, 8);
-  console.log(`[UploadAndMatch-${requestId}] Starting upload and match process`);
+  // Console log removed for performance
   const startTime = Date.now();
   let operationTimeout: NodeJS.Timeout | undefined;
   
@@ -215,13 +211,7 @@ export async function uploadAndMatch(req: Request, res: Response): Promise<void>
     const { matchingMethod = 'LOCAL', clientName = 'Default Client', clientId, projectName } = req.body;
     const userId = req.user.id;
 
-    console.log(`[${requestId}] Parameters:`, {
-      fileName: req.file.originalname,
-      fileSize: req.file.size,
-      matchingMethod,
-      clientName,
-      userId
-    });
+    // Console log removed for performance
 
     // Helper function to generate detailed preview items
     function generatePreviewItems(items: any[]): any[] {
@@ -263,7 +253,7 @@ export async function uploadAndMatch(req: Request, res: Response): Promise<void>
       });
     }
 
-    console.log(`[${requestId}] Step 0: Validating matching method...`);
+    // Console log removed for performance
     if (!['LOCAL', 'COHERE', 'OPENAI'].includes(matchingMethod)) {
       res.status(400).json({ error: 'Invalid matching method' });
       return;
@@ -271,13 +261,13 @@ export async function uploadAndMatch(req: Request, res: Response): Promise<void>
     
     // Add a timeout for the entire operation
     const operationTimeout = setTimeout(() => {
-      console.error(`[${requestId}] Operation timeout after 2 minutes`);
+      // Console log removed for performance
       if (!res.headersSent) {
         res.status(504).json({ error: 'Operation timeout. Please try uploading a smaller file or contact support.' });
       }
     }, 120000); // 2 minute timeout
 
-    console.log(`[${requestId}] Step 1: Starting Excel file parsing...`);
+    // Console log removed for performance
     const parseStartTime = Date.now();
     
     // Parse the Excel file
@@ -285,20 +275,11 @@ export async function uploadAndMatch(req: Request, res: Response): Promise<void>
     
     // Store the original file for later use in export
     const fileId = await fileStorage.saveFile(req.file.buffer, req.file.originalname);
-    console.log(`[${requestId}] Stored original Excel file with ID: ${fileId}`);
+    // Console log removed for performance
     
     const parseEndTime = Date.now();
-    console.log(`[${requestId}] Step 1 Complete: Excel parsing took ${parseEndTime - parseStartTime}ms`);
-    console.log(`[${requestId}] Parse result:`, { 
-      sheetsCount: parseResult.sheets.length,
-      totalItems: parseResult.totalItems,
-      fileName: parseResult.fileName,
-      sheets: parseResult.sheets.map(s => ({
-        name: s.sheetName,
-        items: s.items.length,
-        headers: s.headers
-      }))
-    });
+    // Console log removed for performance
+    // Console log removed for performance
 
     if (parseResult.totalItems === 0) {
       res.status(400).json({ error: 'No valid items found in the Excel file' });
@@ -322,18 +303,18 @@ export async function uploadAndMatch(req: Request, res: Response): Promise<void>
       item.quantity === 0
     );
     
-    console.log(`[${requestId}] Step 2: Item analysis...`);
-    console.log(`[${requestId}] Total items: ${allItems.length}`);
-    console.log(`[${requestId}] Items with quantities (will be matched): ${itemsWithQuantities.length}`);
-    console.log(`[${requestId}] Items without quantities (context headers): ${itemsWithoutQuantities.length}`);
+    // Console log removed for performance
+    // Console log removed for performance
+    // Console log removed for performance
+    // Console log removed for performance
 
-    console.log(`[${requestId}] Step 3: Creating project and job in database...`);
+    // Console log removed for performance
     const jobCreateStartTime = Date.now();
     
     // Create a project if projectName is provided
     let projectId;
     if (projectName && clientId) {
-      console.log(`[${requestId}] Creating project: ${projectName} for client: ${clientId}`);
+      // Console log removed for performance
       projectId = await convex.mutation(api.projects.create, {
         name: projectName,
         clientId: toConvexId<'clients'>(clientId),
@@ -341,7 +322,7 @@ export async function uploadAndMatch(req: Request, res: Response): Promise<void>
         status: 'active' as const,
         userId: toConvexId<'users'>(userId),
       });
-      console.log(`[${requestId}] Project created with ID: ${projectId}`);
+      // Console log removed for performance
     }
     
     // Create a matching job
@@ -359,12 +340,12 @@ export async function uploadAndMatch(req: Request, res: Response): Promise<void>
       originalFileId: fileId,
     });
 
-    console.log(`[${requestId}] Job created with ID: ${jobId}`);
+    // Console log removed for performance
     
     const jobCreateEndTime = Date.now();
-    console.log(`[${requestId}] Step 3 Complete: Job creation took ${jobCreateEndTime - jobCreateStartTime}ms`);
+    // Console log removed for performance
 
-    console.log(`[${requestId}] Step 4: Preparing items for processing...`);
+    // Console log removed for performance
     const prepareItemsStartTime = Date.now();
     
     // Prepare items for processing (no need to store in Convex)
@@ -383,14 +364,14 @@ export async function uploadAndMatch(req: Request, res: Response): Promise<void>
     });
 
     const prepareItemsEndTime = Date.now();
-    console.log(`[${requestId}] Step 4 Complete: Preparing items took ${prepareItemsEndTime - prepareItemsStartTime}ms`);
+    // Console log removed for performance
 
-    console.log(`[${requestId}] Step 5: Adding job to processor queue...`);
+    // Console log removed for performance
     const processorStartTime = Date.now();
     
     // Check if job should be processed asynchronously
     if (AsyncJobInvoker.shouldProcessAsync(preparedItems.length)) {
-      console.log(`[${requestId}] Large job detected (${preparedItems.length} items), using async processing`);
+      // Console log removed for performance
       
       // Update job status to indicate async processing
       await convex.mutation(api.priceMatching.updateJobStatus, {
@@ -408,14 +389,14 @@ export async function uploadAndMatch(req: Request, res: Response): Promise<void>
         method: matchingMethod
       });
       
-      console.log(`[${requestId}] Job sent to async queue`);
+      // Console log removed for performance
     } else {
       // Process synchronously for small jobs
       await jobProcessor.addJob(jobId.toString(), userId.toString(), preparedItems, matchingMethod);
     }
     
     const processorEndTime = Date.now();
-    console.log(`[${requestId}] Step 5 Complete: Adding to processor took ${processorEndTime - processorStartTime}ms`);
+    // Console log removed for performance
 
     // Log activity
     await logActivity(req, 'upload_and_match', 'aiMatchingJobs', jobId.toString(), 
@@ -423,14 +404,8 @@ export async function uploadAndMatch(req: Request, res: Response): Promise<void>
     );
 
     const totalEndTime = Date.now();
-    console.log(`[${requestId}] Total operation time: ${totalEndTime - startTime}ms`);
-    console.log(`[${requestId}] Breakdown:`, {
-      parsing: parseEndTime - parseStartTime,
-      jobCreation: jobCreateEndTime - jobCreateStartTime,
-      itemPreparation: prepareItemsEndTime - prepareItemsStartTime,
-      processorQueue: processorEndTime - processorStartTime,
-      total: totalEndTime - startTime
-    });
+    // Console log removed for performance
+    // Console log removed for performance
 
     // Clear the timeout since we're done
     clearTimeout(operationTimeout);
@@ -445,8 +420,8 @@ export async function uploadAndMatch(req: Request, res: Response): Promise<void>
       startTime: Date.now(),
     });
   } catch (error: any) {
-    console.error(`[${requestId}] Upload and match error:`, error);
-    console.error(`[${requestId}] Error stack:`, error.stack);
+    // Console log removed for performance
+    // Console log removed for performance
     
     // Clear the timeout on error
     if (operationTimeout) {
@@ -461,12 +436,12 @@ export async function uploadAndMatch(req: Request, res: Response): Promise<void>
 
 export async function startMatching(req: Request, res: Response): Promise<void> {
   const requestId = uuidv4();
-  console.log(`\n[StartMatching-${requestId}] ========== START MATCHING REQUEST ==========`);
-  console.log(`[StartMatching-${requestId}] Time: ${new Date().toISOString()}`);
-  console.log(`[StartMatching-${requestId}] User: ${req.user?.email || 'Unknown'} (ID: ${req.user?.id})`);
-  console.log(`[StartMatching-${requestId}] Job ID: ${req.params.jobId}`);
-  console.log(`[StartMatching-${requestId}] Method: ${req.body.matchingMethod}`);
-  console.log(`[StartMatching-${requestId}] Full request body:`, JSON.stringify(req.body, null, 2));
+  // Console log removed for performance
+  // Console log removed for performance
+  // Console log removed for performance
+  // Console log removed for performance
+  // Console log removed for performance
+  // Console log removed for performance
   
   try {
     const { jobId } = req.params;
@@ -478,10 +453,10 @@ export async function startMatching(req: Request, res: Response): Promise<void> 
     }
 
     // Get the job
-    console.log('[StartMatching] Fetching job from Convex:', jobId);
+    // Console log removed for performance
     const job = await convex.query(api.priceMatching.getJob, { jobId: toConvexId<'aiMatchingJobs'>(jobId) });
     if (!job) {
-      console.error('[StartMatching] Job not found:', jobId);
+      // Console log removed for performance
       res.status(404).json({ error: 'Job not found' });
       return;
     }
@@ -491,54 +466,39 @@ export async function startMatching(req: Request, res: Response): Promise<void> 
       return;
     }
 
-    console.log('[StartMatching] Job found:', {
-      jobId,
-      userId: job.userId,
-      itemCount: job.itemCount,
-      status: job.status
-    });
+    // Console log removed for performance
 
     // Get parsed items from the job
-    console.log(`[StartMatching-${requestId}] Fetching parsed items from database...`);
+    // Console log removed for performance
     const parsedItems = await convex.query(api.priceMatching.getParsedItems, {
       jobId: toConvexId<'aiMatchingJobs'>(jobId),
     });
     
-    console.log(`[StartMatching-${requestId}] Found ${parsedItems.length} parsed items`);
+    // Console log removed for performance
     if (parsedItems.length > 0) {
       const itemsWithQty = parsedItems.filter(item => item.quantity && item.quantity > 0).length;
       const contextHeaders = parsedItems.filter(item => !item.quantity || item.quantity === 0).length;
-      console.log(`[StartMatching-${requestId}] Items breakdown:`);
-      console.log(`[StartMatching-${requestId}]   - Items with quantity: ${itemsWithQty}`);
-      console.log(`[StartMatching-${requestId}]   - Context headers: ${contextHeaders}`);
-      console.log(`[StartMatching-${requestId}] First 3 items:`, parsedItems.slice(0, 3).map(item => ({
-        row: item.rowNumber,
-        desc: item.description.substring(0, 50) + '...',
-        qty: item.quantity,
-        unit: item.unit
-      })));
+      // Console log removed for performance
+      // Console log removed for performance
+      // Console log removed for performance
+      // Console log removed for performance
     }
 
     if (parsedItems.length === 0) {
-      console.error('[StartMatching] No parsed items found for job:', jobId);
+      // Console log removed for performance
       res.status(400).json({ error: 'No items found for this job' });
       return;
     }
 
     // Add job to processor queue
-    console.log(`[StartMatching-${requestId}] Checking processor status before adding job...`);
-    console.log(`[StartMatching-${requestId}] Processor status:`, jobProcessor.getQueueStatus());
+    // Console log removed for performance
+    // Console log removed for performance
     
-    console.log(`[StartMatching-${requestId}] Adding job to processor queue:`, {
-      jobId,
-      userId: req.user.id,
-      itemCount: parsedItems.length,
-      method: matchingMethod
-    });
+    // Console log removed for performance
     
     // Check if job should be processed asynchronously
     if (AsyncJobInvoker.shouldProcessAsync(parsedItems.length)) {
-      console.log(`[StartMatching-${requestId}] Large job detected (${parsedItems.length} items), using async processing`);
+      // Console log removed for performance
       
       // Send to async processor
       await AsyncJobInvoker.sendToQueue({
@@ -548,15 +508,15 @@ export async function startMatching(req: Request, res: Response): Promise<void> 
         method: matchingMethod
       });
       
-      console.log(`[StartMatching-${requestId}] Job sent to async queue`);
+      // Console log removed for performance
     } else {
       // Process synchronously for small jobs
       await jobProcessor.addJob(jobId, req.user.id.toString(), parsedItems, matchingMethod);
     }
     
-    console.log(`[StartMatching-${requestId}] Job added successfully to processor`);
-    console.log(`[StartMatching-${requestId}] Processor status after:`, jobProcessor.getQueueStatus());
-    console.log(`[StartMatching-${requestId}] ========== REQUEST COMPLETE ==========\n`);
+    // Console log removed for performance
+    // Console log removed for performance
+    // Console log removed for performance
 
     res.json({
       success: true,
@@ -564,13 +524,13 @@ export async function startMatching(req: Request, res: Response): Promise<void> 
       jobId,
     });
   } catch (error) {
-    console.error('[StartMatching] Error:', error);
+    // Console log removed for performance
     res.status(500).json({ error: 'Failed to start matching' });
   }
 }
 
 export async function getJobStatus(req: Request, res: Response): Promise<void> {
-  console.log('[GetJobStatus] Request for job:', req.params.jobId);
+  // Console log removed for performance
   try {
     const { jobId } = req.params;
 
@@ -581,12 +541,7 @@ export async function getJobStatus(req: Request, res: Response): Promise<void> {
 
     // First check in-memory status from job processor
     const inMemoryJob = jobProcessor.getJobStatus(jobId);
-    console.log('[GetJobStatus] In-memory job status:', inMemoryJob ? {
-      status: inMemoryJob.status,
-      progress: inMemoryJob.progress,
-      matchedCount: inMemoryJob.matchedCount,
-      progressMessage: inMemoryJob.progressMessage
-    } : 'Not found in memory');
+    // Console log removed for performance
     
     const job = await convex.query(api.priceMatching.getJob, { jobId: toConvexId<'aiMatchingJobs'>(jobId) });
     if (!job) {
@@ -594,12 +549,7 @@ export async function getJobStatus(req: Request, res: Response): Promise<void> {
       return;
     }
 
-    console.log('[GetJobStatus] Database job status:', {
-      status: job.status,
-      progress: job.progress,
-      matchedCount: job.matchedCount,
-      progressMessage: job.progressMessage
-    });
+    // Console log removed for performance
 
     if (job.userId !== req.user.id && req.user.role !== 'admin') {
       res.status(403).json({ error: 'Access denied' });
@@ -620,22 +570,17 @@ export async function getJobStatus(req: Request, res: Response): Promise<void> {
       completedAt: job.completedAt,
     };
 
-    console.log('[GetJobStatus] Merged status:', {
-      status: status.status,
-      progress: status.progress,
-      matchedCount: status.matchedCount,
-      progressMessage: status.progressMessage
-    });
+    // Console log removed for performance
 
     res.json(status);
   } catch (error) {
-    console.error('[GetJobStatus] Error:', error);
+    // Console log removed for performance
     res.status(500).json({ error: 'Failed to get job status' });
   }
 }
 
 export async function getMatchResults(req: Request, res: Response): Promise<void> {
-  console.log('[GetMatchResults] Request for job:', req.params.jobId);
+  // Console log removed for performance
   try {
     const { jobId } = req.params;
 
@@ -661,30 +606,30 @@ export async function getMatchResults(req: Request, res: Response): Promise<void
       jobId: toConvexId<'aiMatchingJobs'>(jobId),
     });
 
-    console.log('[GetMatchResults] Found results:', results.length);
+    // Console log removed for performance
 
     res.json(results);
   } catch (error) {
-    console.error('[GetMatchResults] Error:', error);
+    // Console log removed for performance
     res.status(500).json({ error: 'Failed to get match results' });
   }
 }
 
 export async function updateMatchResult(req: Request, res: Response): Promise<void> {
-  console.log('[UpdateMatchResult] Request received for resultId:', req.params.resultId);
-  console.log('[UpdateMatchResult] Updates:', req.body);
+  // Console log removed for performance
+  // Console log removed for performance
   
   try {
     const { resultId } = req.params;
     const updates = req.body;
 
     if (!req.user) {
-      console.error('[UpdateMatchResult] No user in request');
+      // Console log removed for performance
       res.status(401).json({ error: 'Not authenticated' });
       return;
     }
 
-    console.log('[UpdateMatchResult] User:', req.user.id);
+    // Console log removed for performance
 
     // Get the result to check ownership
     const result = await convex.query(api.priceMatching.getMatchResult, {
@@ -692,12 +637,12 @@ export async function updateMatchResult(req: Request, res: Response): Promise<vo
     });
 
     if (!result) {
-      console.error('[UpdateMatchResult] Result not found:', resultId);
+      // Console log removed for performance
       res.status(404).json({ error: 'Result not found' });
       return;
     }
 
-    console.log('[UpdateMatchResult] Found result, jobId:', result.jobId);
+    // Console log removed for performance
 
     // Get the job to check ownership
     const job = await convex.query(api.priceMatching.getJob, {
@@ -705,13 +650,13 @@ export async function updateMatchResult(req: Request, res: Response): Promise<vo
     });
 
     if (!job || (job.userId !== req.user.id && req.user.role !== 'admin')) {
-      console.error('[UpdateMatchResult] Access denied. Job:', job ? 'exists' : 'not found', 'userId:', job?.userId, 'requestUserId:', req.user.id);
+      // Console log removed for performance
       res.status(403).json({ error: 'Access denied' });
       return;
     }
 
-    console.log('[UpdateMatchResult] Updating result with mutation...');
-    console.log('[UpdateMatchResult] User ID to convert:', req.user.id);
+    // Console log removed for performance
+    // Console log removed for performance
 
     try {
       // Update the result
@@ -731,14 +676,9 @@ export async function updateMatchResult(req: Request, res: Response): Promise<vo
         userId: toConvexId<'users'>(req.user.id),
       });
 
-      console.log('[UpdateMatchResult] Mutation completed successfully');
+      // Console log removed for performance
     } catch (mutationError) {
-      console.error('[UpdateMatchResult] Mutation error:', {
-        error: mutationError,
-        resultId,
-        userId: req.user.id,
-        updates
-      });
+      // Console log removed for performance
       throw mutationError;
     }
 
@@ -747,11 +687,7 @@ export async function updateMatchResult(req: Request, res: Response): Promise<vo
 
     res.json({ success: true });
   } catch (error) {
-    console.error('[UpdateMatchResult] Error details:', {
-      error: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : undefined,
-      fullError: error
-    });
+    // Console log removed for performance
     res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to update match result' });
   }
 }
@@ -808,7 +744,7 @@ export async function exportResults(req: Request, res: Response): Promise<void> 
     res.setHeader('Content-Disposition', `attachment; filename="matched_${job.fileName}"`);
     res.send(exportBuffer);
   } catch (error) {
-    console.error('Export results error:', error);
+    // Console log removed for performance
     res.status(500).json({ error: 'Failed to export results' });
   }
 }
@@ -816,8 +752,8 @@ export async function exportResults(req: Request, res: Response): Promise<void> 
 export async function stopJob(req: Request, res: Response): Promise<void> {
   try {
     const { jobId } = req.params;
-    console.log(`[StopJob] Request to stop job: ${jobId}`);
-    console.log(`[StopJob] User: ${req.user?.id}, Role: ${req.user?.role}`);
+    // Console log removed for performance
+    // Console log removed for performance
 
     if (!req.user) {
       res.status(401).json({ error: 'Not authenticated' });
@@ -825,42 +761,42 @@ export async function stopJob(req: Request, res: Response): Promise<void> {
     }
 
     // Get the job to check ownership
-    console.log(`[StopJob] Checking job ownership...`);
+    // Console log removed for performance
     let job;
     try {
       job = await convex.query(api.priceMatching.getJob, { jobId: toConvexId<'aiMatchingJobs'>(jobId) });
     } catch (queryError) {
-      console.error(`[StopJob] Error querying job:`, queryError);
+      // Console log removed for performance
       res.status(500).json({ error: 'Failed to query job status' });
       return;
     }
     
     if (!job) {
-      console.log(`[StopJob] Job not found in database: ${jobId}`);
+      // Console log removed for performance
       res.status(404).json({ error: 'Job not found' });
       return;
     }
 
-    console.log(`[StopJob] Job found - Owner: ${job.userId}, Status: ${job.status}`);
+    // Console log removed for performance
     
     // Allow admin or job owner to stop the job
-    if (job.userId !== req.user.id && req.user.role !== 'Admin') {
-      console.log(`[StopJob] Access denied - User ${req.user.id} is not owner or admin`);
+    if (job.userId !== req.user.id && req.user.role !== 'admin') {
+      // Console log removed for performance
       res.status(403).json({ error: 'Access denied' });
       return;
     }
 
     // Check if job is already completed or failed
     if (job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled') {
-      console.log(`[StopJob] Job already in final state: ${job.status}`);
+      // Console log removed for performance
       res.status(400).json({ error: `Job is already ${job.status}` });
       return;
     }
 
     // Cancel the job in the processor
-    console.log(`[StopJob] Attempting to cancel job in processor...`);
+    // Console log removed for performance
     const cancelled = await jobProcessor.cancelJob(jobId);
-    console.log(`[StopJob] Processor cancellation result: ${cancelled}`);
+    // Console log removed for performance
     
     if (cancelled) {
       // Update job status in database
@@ -870,26 +806,26 @@ export async function stopJob(req: Request, res: Response): Promise<void> {
           status: 'failed',
           error: 'Job cancelled by user',
         });
-        console.log(`[StopJob] Job status updated in database`);
+        // Console log removed for performance
       } catch (updateError) {
-        console.error(`[StopJob] Error updating job status:`, updateError);
+        // Console log removed for performance
       }
 
       // Log activity
       try {
         await logActivity(req, 'stop_job', 'aiMatchingJobs', jobId, 'Stopped matching job');
       } catch (logError) {
-        console.error(`[StopJob] Error logging activity:`, logError);
+        // Console log removed for performance
       }
 
       res.json({ success: true, message: 'Job stopped' });
     } else {
-      console.log(`[StopJob] Job not found in processor or already completed`);
+      // Console log removed for performance
       res.status(400).json({ error: 'Job not found in processor or already completed' });
     }
   } catch (error) {
-    console.error('[StopJob] Unexpected error:', error);
-    console.error('[StopJob] Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+    // Console log removed for performance
+    // Console log removed for performance
     res.status(500).json({ error: 'Failed to stop job' });
   }
 }
@@ -941,7 +877,7 @@ export async function autoSaveResult(req: Request, res: Response): Promise<void>
 
     res.json({ success: true });
   } catch (error) {
-    console.error('Autosave error:', error);
+    // Console log removed for performance
     res.status(500).json({ error: 'Failed to autosave' });
   }
 }
@@ -1005,7 +941,7 @@ export async function runMatch(req: Request, res: Response): Promise<void> {
 
     res.json({ success: true, matchResult });
   } catch (error) {
-    console.error('Run match error:', error);
+    // Console log removed for performance
     res.status(500).json({ error: 'Failed to run match' });
   }
 }
@@ -1046,7 +982,7 @@ export async function deleteJob(req: Request, res: Response): Promise<void> {
 
     res.json({ success: true });
   } catch (error) {
-    console.error('Delete job error:', error);
+    // Console log removed for performance
     res.status(500).json({ error: 'Failed to delete job' });
   }
 }
@@ -1073,7 +1009,7 @@ export async function getProcessorStatus(req: Request, res: Response): Promise<v
     const status = jobProcessor.getQueueStatus();
     res.json(status);
   } catch (error) {
-    console.error('Get processor status error:', error);
+    // Console log removed for performance
     res.status(500).json({ error: 'Failed to get processor status' });
   }
 }
@@ -1091,13 +1027,13 @@ export async function getMatchingMethods(req: Request, res: Response): Promise<v
     ];
     res.json(methods);
   } catch (error) {
-    console.error('Get matching methods error:', error);
+    // Console log removed for performance
     res.status(500).json({ error: 'Failed to get matching methods' });
   }
 }
 
 export async function testLocalMatch(req: Request, res: Response): Promise<void> {
-  console.log('[TestLocalMatch] Request received:', { description: req.body.description });
+  // Console log removed for performance
   try {
     const { description } = req.body;
 
@@ -1111,28 +1047,28 @@ export async function testLocalMatch(req: Request, res: Response): Promise<void>
       return;
     }
 
-    console.log(`[TestLocalMatch] Testing local match for: "${description}"`);
+    // Console log removed for performance
 
     // Get all active price items for matching
-    console.log('[TestLocalMatch] Fetching price items from Convex...');
+    // Console log removed for performance
     const priceItems = await convex.query(api.priceItems.getActive);
-    console.log('[TestLocalMatch] Found price items:', priceItems?.length || 0);
+    // Console log removed for performance
     
     if (!priceItems || priceItems.length === 0) {
-      console.error('[TestLocalMatch] No price items found in database');
+      // Console log removed for performance
       res.status(500).json({ error: 'No price items available for matching' });
       return;
     }
 
     // Run local match test
-    console.log('[TestLocalMatch] Running match with matching service...');
+    // Console log removed for performance
     const matchResult = await matchingService.matchItem(
       description,
       'LOCAL',
       priceItems,
       [] // No context headers for instant test
     );
-    console.log('[TestLocalMatch] Match result:', matchResult);
+    // Console log removed for performance
 
     // For now, return just the best match as an array
     const matches = [{
@@ -1143,14 +1079,14 @@ export async function testLocalMatch(req: Request, res: Response): Promise<void>
       confidence: matchResult.confidence,
     }];
 
-    console.log(`[TestLocalMatch] Local test complete. Found 1 match`);
+    // Console log removed for performance
 
     res.json({
       matches: matches,
       bestMatch: matchResult,
     });
   } catch (error) {
-    console.error('[TestLocalMatch] Error:', error);
+    // Console log removed for performance
     res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to test local match' });
   }
 }
@@ -1164,22 +1100,22 @@ export async function stopAllJobs(req: Request, res: Response): Promise<void> {
 
     // Only allow admins or the user to stop their own jobs
     // For now, let's allow any authenticated user to stop all running jobs
-    console.log(`[StopAllJobs] User ${req.user.id} requested to stop all running jobs`);
+    // Console log removed for performance
 
     // First, check processor status
     const processorStatus = jobProcessor.getQueueStatus();
-    console.log(`[StopAllJobs] Processor status:`, processorStatus);
+    // Console log removed for performance
     
     const processorRunningJobs = jobProcessor.getRunningJobs();
-    console.log(`[StopAllJobs] Running jobs in processor:`, processorRunningJobs);
+    // Console log removed for performance
 
     // Get all running jobs from Convex
     const runningJobs = await convex.query(api.priceMatching.getRunningJobs, {});
-    console.log(`[StopAllJobs] Found ${runningJobs.length} running jobs in Convex`);
+    // Console log removed for performance
 
     // Cancel all jobs in the processor
     const cancelledCount = await jobProcessor.cancelAllJobs();
-    console.log(`[StopAllJobs] Cancelled ${cancelledCount} jobs in processor`);
+    // Console log removed for performance
 
     // Update all running jobs in Convex to failed status
     let convexUpdateCount = 0;
@@ -1193,11 +1129,11 @@ export async function stopAllJobs(req: Request, res: Response): Promise<void> {
           });
           convexUpdateCount++;
         } catch (error) {
-          console.error(`[StopAllJobs] Failed to update job ${job._id} in Convex:`, error);
+          // Console log removed for performance
         }
       }
     }
-    console.log(`[StopAllJobs] Updated ${convexUpdateCount} jobs in Convex`);
+    // Console log removed for performance
 
     // Log activity
     await logActivity(req, 'stop_all_jobs', 'system', null, `Stopped all running jobs (${cancelledCount} cancelled)`);
@@ -1211,7 +1147,7 @@ export async function stopAllJobs(req: Request, res: Response): Promise<void> {
       }
     });
   } catch (error) {
-    console.error('[StopAllJobs] Error:', error);
+    // Console log removed for performance
     res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to stop all jobs' });
   }
 }

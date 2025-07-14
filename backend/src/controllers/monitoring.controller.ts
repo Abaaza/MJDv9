@@ -84,7 +84,7 @@ export async function getSystemMetrics(req: Request, res: Response): Promise<voi
       functionVersion: process.env.AWS_LAMBDA_FUNCTION_VERSION,
       memoryLimit: process.env.AWS_LAMBDA_FUNCTION_MEMORY_SIZE,
       region: process.env.AWS_REGION,
-      remainingTime: req.context?.getRemainingTimeInMillis?.() || null
+      remainingTime: (req as any).context?.getRemainingTimeInMillis?.() || null
     } : null;
 
     const metrics = {

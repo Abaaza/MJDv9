@@ -17,8 +17,8 @@ interface MatchingResult {
   method?: string;
 }
 
-export class MatchingService {
-  private static instance: MatchingService;
+export class SimplifiedMatchingService {
+  private static instance: SimplifiedMatchingService;
   private convex = getConvexClient();
   private cohereClient: CohereClient | null = null;
   private openaiClient: OpenAI | null = null;
@@ -33,11 +33,11 @@ export class MatchingService {
     });
   }
 
-  static getInstance(): MatchingService {
-    if (!MatchingService.instance) {
-      MatchingService.instance = new MatchingService();
+  static getInstance(): SimplifiedMatchingService {
+    if (!SimplifiedMatchingService.instance) {
+      SimplifiedMatchingService.instance = new SimplifiedMatchingService();
     }
-    return MatchingService.instance;
+    return SimplifiedMatchingService.instance;
   }
 
   private async ensureClientsInitialized() {
@@ -139,60 +139,6 @@ export class MatchingService {
     };
     
     return unitMap[normalized] || normalized;
-  }
-
-  /**
-   * Match item with pre-generated embedding (for batch processing)
-   */
-  async matchItemWithEmbedding(
-    description: string,
-    method: 'COHERE' | 'OPENAI',
-    preGeneratedEmbedding: number[],
-    providedPriceItems?: PriceItem[],
-    contextHeaders?: string[]
-  ): Promise<MatchingResult> {
-    const priceItems = providedPriceItems || await this.getPriceItems();
-    const queryUnit = this.extractUnit(description);
-    
-    // Filter items with embeddings for the specific provider
-    const itemsWithEmbeddings = priceItems.filter(item => 
-      item.embedding && item.embeddingProvider === method.toLowerCase()
-    );
-    
-    if (itemsWithEmbeddings.length === 0) {
-      return this.localMatch(description, priceItems, contextHeaders);
-    }
-    
-    // Calculate similarities using pre-generated embedding
-    const scoredMatches = itemsWithEmbeddings.map(item => {
-      const similarity = this.cosineSimilarity(preGeneratedEmbedding, item.embedding!);
-      
-      // Simple unit boost
-      let finalScore = similarity;
-      if (queryUnit && item.unit) {
-        const normalizedQuery = this.normalizeUnit(queryUnit);
-        const normalizedItem = this.normalizeUnit(item.unit);
-        if (normalizedQuery === normalizedItem) {
-          finalScore = Math.min(finalScore * 1.2, 0.99);
-        }
-      }
-      
-      return { item, score: finalScore };
-    });
-    
-    // Sort and get best match
-    scoredMatches.sort((a, b) => b.score - a.score);
-    const bestMatch = scoredMatches[0];
-    
-    return {
-      matchedItemId: bestMatch.item._id,
-      matchedDescription: bestMatch.item.description,
-      matchedCode: bestMatch.item.code || '',
-      matchedUnit: bestMatch.item.unit || '',
-      matchedRate: bestMatch.item.rate,
-      confidence: bestMatch.score,
-      method: method
-    };
   }
 
   /**
@@ -477,91 +423,5 @@ export class MatchingService {
     
     const denominator = Math.sqrt(normA) * Math.sqrt(normB);
     return denominator === 0 ? 0 : dotProduct / denominator;
-  }
-
-  /**
-   * Generate embeddings for BOQ items (for price list)
-   */
-  async generateBOQEmbeddings(
-    items: Array<{ description: string; category?: string; unit?: string }>,
-    provider: 'cohere' | 'openai'
-  ): Promise<Map<string, number[]>> {
-    await this.ensureClientsInitialized();
-    const embeddings = new Map<string, number[]>();
-
-    if (provider === 'cohere' && this.cohereClient) {
-      try {
-        const texts = items.map(item => this.createSimpleText(item as any));
-        const response = await this.cohereClient.embed({
-          texts,
-          model: 'embed-english-v3.0',
-          inputType: 'search_document',
-        });
-        
-        items.forEach((item, index) => {
-          embeddings.set(item.description, response.embeddings[index]);
-        });
-      } catch (error) {
-        // Silently fail - embeddings not critical
-      }
-    } else if (provider === 'openai' && this.openaiClient) {
-      try {
-        const texts = items.map(item => this.createSimpleText(item as any));
-        const response = await this.openaiClient.embeddings.create({
-          input: texts,
-          model: 'text-embedding-3-small',
-        });
-        
-        items.forEach((item, index) => {
-          embeddings.set(item.description, response.data[index].embedding);
-        });
-      } catch (error) {
-        // Silently fail - embeddings not critical
-      }
-    }
-
-    return embeddings;
-  }
-
-  /**
-   * Generate batch embeddings for matching
-   */
-  async generateBatchEmbeddings(
-    descriptions: string[],
-    method: 'COHERE' | 'OPENAI'
-  ): Promise<Map<string, number[]>> {
-    await this.ensureClientsInitialized();
-    const embeddings = new Map<string, number[]>();
-
-    if (method === 'COHERE' && this.cohereClient) {
-      try {
-        const response = await this.cohereClient.embed({
-          texts: descriptions,
-          model: 'embed-english-v3.0',
-          inputType: 'search_query',
-        });
-        
-        descriptions.forEach((desc, index) => {
-          embeddings.set(desc, response.embeddings[index]);
-        });
-      } catch (error) {
-        // Silently fail - return empty map
-      }
-    } else if (method === 'OPENAI' && this.openaiClient) {
-      try {
-        const response = await this.openaiClient.embeddings.create({
-          input: descriptions,
-          model: 'text-embedding-3-small',
-        });
-        
-        descriptions.forEach((desc, index) => {
-          embeddings.set(desc, response.data[index].embedding);
-        });
-      } catch (error) {
-        // Silently fail - return empty map
-      }
-    }
-
-    return embeddings;
   }
 }

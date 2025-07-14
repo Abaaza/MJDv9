@@ -47,12 +47,7 @@ export class JobProcessorService extends EventEmitter {
   }
 
   async addJob(jobId: string, userId: string, items: any[], method: string): Promise<void> {
-    console.log(`[JobProcessor] Adding job ${jobId} to queue:`, {
-      userId,
-      itemCount: items.length,
-      method,
-      currentQueueLength: this.processingQueue.length
-    });
+    // Console log removed for performance
     
     const job: ProcessingJob = {
       jobId,
@@ -71,7 +66,7 @@ export class JobProcessorService extends EventEmitter {
 
     this.jobs.set(jobId, job);
     this.processingQueue.push(jobId);
-    console.log(`[JobProcessor] Job ${jobId} added to queue. Queue length: ${this.processingQueue.length}`);
+    // Console log removed for performance
     
     // Count items with quantities vs context headers
     const itemsWithQuantities = items.filter(item => 
@@ -94,24 +89,24 @@ export class JobProcessorService extends EventEmitter {
     // Pre-generate embeddings for AI methods (non-blocking)
     if (method === 'COHERE' || method === 'OPENAI' || method === 'HYBRID') {
       this.preGenerateEmbeddings(method).catch(error => {
-        console.error(`[JobProcessor] Failed to pre-generate embeddings:`, error);
+        // Console log removed for performance
       });
     }
   }
 
   async cancelJob(jobId: string): Promise<boolean> {
-    console.log(`[JobProcessor] Attempting to cancel job: ${jobId}`);
+    // Console log removed for performance
     const job = this.jobs.get(jobId);
     if (!job) {
-      console.log(`[JobProcessor] Job ${jobId} not found in memory`);
+      // Console log removed for performance
       return false;
     }
 
-    console.log(`[JobProcessor] Job ${jobId} current status: ${job.status}`);
+    // Console log removed for performance
     
     // Check if job is already in a final state
     if (job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled') {
-      console.log(`[JobProcessor] Job ${jobId} already in final state: ${job.status}`);
+      // Console log removed for performance
       return false;
     }
 
@@ -130,16 +125,16 @@ export class JobProcessorService extends EventEmitter {
         status: 'failed' as any,
         error: 'Job cancelled by user',
       });
-      console.log(`[JobProcessor] Job ${jobId} status updated in Convex`);
+      // Console log removed for performance
     } catch (error) {
-      console.error(`[JobProcessor] Failed to update Convex status for job ${jobId}:`, error);
+      // Console log removed for performance
     }
 
     // Remove from queue if still pending
     const queueIndex = this.processingQueue.indexOf(jobId);
     if (queueIndex > -1) {
       this.processingQueue.splice(queueIndex, 1);
-      console.log(`[JobProcessor] Job ${jobId} removed from processing queue`);
+      // Console log removed for performance
     }
     
     // If was currently processing, it will be stopped in the next iteration
@@ -147,14 +142,14 @@ export class JobProcessorService extends EventEmitter {
       this.emitLog(jobId, 'info', 'Stopping running job...');
     }
     
-    console.log(`[JobProcessor] Job ${jobId} successfully cancelled`);
+    // Console log removed for performance
     return true;
   }
 
   async cancelAllJobs(): Promise<number> {
-    console.log(`[JobProcessor] CancelAllJobs called`);
-    console.log(`[JobProcessor] Current queue length: ${this.processingQueue.length}`);
-    console.log(`[JobProcessor] Total jobs in memory: ${this.jobs.size}`);
+    // Console log removed for performance
+    // Console log removed for performance
+    // Console log removed for performance
     
     let cancelledCount = 0;
     const jobsToCancel: string[] = [];
@@ -163,11 +158,11 @@ export class JobProcessorService extends EventEmitter {
     for (const [jobId, job] of this.jobs.entries()) {
       if (job.status !== 'completed' && job.status !== 'failed' && job.status !== 'cancelled') {
         jobsToCancel.push(jobId);
-        console.log(`[JobProcessor] Job ${jobId} (status: ${job.status}) will be cancelled`);
+        // Console log removed for performance
       }
     }
     
-    console.log(`[JobProcessor] Found ${jobsToCancel.length} jobs to cancel`);
+    // Console log removed for performance
     
     // Cancel each job
     for (const jobId of jobsToCancel) {
@@ -175,19 +170,19 @@ export class JobProcessorService extends EventEmitter {
       if (cancelled) {
         cancelledCount++;
       } else {
-        console.log(`[JobProcessor] Failed to cancel job ${jobId}`);
+        // Console log removed for performance
       }
     }
     
     // Clear the processing queue
     this.processingQueue = [];
-    console.log(`[JobProcessor] Processing queue cleared`);
+    // Console log removed for performance
     
     // Reset processing flag to allow new jobs
     this.isProcessing = false;
-    console.log(`[JobProcessor] Processing flag reset`);
+    // Console log removed for performance
     
-    console.log(`[JobProcessor] CancelAllJobs completed. Cancelled ${cancelledCount} jobs`);
+    // Console log removed for performance
     return cancelledCount;
   }
 
@@ -242,17 +237,17 @@ export class JobProcessorService extends EventEmitter {
   private async processNextJob() {
     const jobId = this.processingQueue.shift();
     if (!jobId) {
-      console.log('[JobProcessor] No jobs in queue');
+      // Console log removed for performance
       return;
     }
 
     const job = this.jobs.get(jobId);
     if (!job) {
-      console.log(`[JobProcessor] Job ${jobId} not found in memory`);
+      // Console log removed for performance
       return;
     }
     
-    console.log(`[JobProcessor] Starting to process job ${jobId}`);
+    // Console log removed for performance
     const config = getMatchingConfig();
     
     // Start performance tracking
@@ -281,14 +276,14 @@ export class JobProcessorService extends EventEmitter {
 
     try {
       // Step 1: Load price database (0-15%)
-      console.log(`[JobProcessor] ${jobId}: Loading price database...`);
+      // Console log removed for performance
       job.progress = 1;
       job.progressMessage = 'Loading price database...';
       this.emitProgress(job);
       this.emitLog(jobId, 'info', 'Fetching price items from database');
       
       const priceItems = await this.convex.query(api.priceItems.getActive);
-      console.log(`[JobProcessor] ${jobId}: Loaded ${priceItems?.length || 0} price items`);
+      // Console log removed for performance
       
       job.progress = 15;
       job.progressMessage = `Loaded ${priceItems.length} price items`;
@@ -321,7 +316,7 @@ export class JobProcessorService extends EventEmitter {
       }
       
       // Update Convex to show progress and transition to matching status
-      console.log(`[JobProcessor] ${jobId}: Transitioning to matching status`);
+      // Console log removed for performance
       job.status = 'matching';
       await this.convex.mutation(api.priceMatching.updateJobStatus, {
         jobId: jobId as any,
@@ -330,7 +325,7 @@ export class JobProcessorService extends EventEmitter {
         progressMessage: job.progressMessage,
       });
       this.emitProgress(job);
-      console.log(`[JobProcessor] ${jobId}: Status updated to matching`);
+      // Console log removed for performance
       
       // Process items in batches
       const results: any[] = [];
@@ -344,12 +339,12 @@ export class JobProcessorService extends EventEmitter {
         // Check if job was cancelled (need to re-fetch from map in case it was updated)
         const currentJob = this.jobs.get(jobId);
         if (!currentJob) {
-          console.log(`[JobProcessor] ${jobId}: Job no longer exists, stopping processing`);
+          // Console log removed for performance
           break;
         }
         
         if (currentJob.status === 'cancelled') {
-          console.log(`[JobProcessor] ${jobId}: Job cancelled, stopping processing`);
+          // Console log removed for performance
           this.emitLog(jobId, 'warning', 'Job cancelled by user');
           break;
         }
@@ -462,8 +457,8 @@ export class JobProcessorService extends EventEmitter {
       await this.finalizeJob(jobId, job, results);
       
     } catch (error: any) {
-      console.error(`[JobProcessor] ${jobId}: Processing error:`, error);
-      console.error(`[JobProcessor] ${jobId}: Error stack:`, error.stack);
+      // Console log removed for performance
+      // Console log removed for performance
       job.status = 'failed';
       job.errors.push(error.message);
       
@@ -477,11 +472,11 @@ export class JobProcessorService extends EventEmitter {
       this.emit('job:failed', { jobId, error: error.message });
     } finally {
       this.isProcessing = false;
-      console.log(`[JobProcessor] ${jobId}: Processing complete. Queue length: ${this.processingQueue.length}`);
+      // Console log removed for performance
       
       // Clean up completed/failed jobs after 5 minutes
       setTimeout(async () => {
-        console.log(`[JobProcessor] ${jobId}: Cleaning up job from memory`);
+        // Console log removed for performance
         this.emitLog(jobId, 'info', 'Cleaning up job from memory');
         this.jobs.delete(jobId);
       }, 5 * 60 * 1000);
@@ -560,7 +555,7 @@ export class JobProcessorService extends EventEmitter {
           notes: 'Context header (no quantity)',
         };
         
-        console.log(`[JobProcessor] Adding context header for row ${item.rowNumber}: "${item.description.substring(0, 50)}..."`);
+        // Console log removed for performance
         results.push(contextResult);
         continue;
       }
@@ -629,7 +624,7 @@ export class JobProcessorService extends EventEmitter {
           notes: '',
         };
         
-        console.log(`[JobProcessor] Prepared result for row ${item.rowNumber}: ${matchResult.matchedDescription ? 'MATCHED' : 'NO MATCH'}`);
+        // Console log removed for performance
         results.push(resultToSave);
       } catch (error: any) {
         this.emitLog(job.jobId, 'error', 
@@ -658,7 +653,7 @@ export class JobProcessorService extends EventEmitter {
           notes: `Error: ${error.message}`,
         };
         
-        console.log(`[JobProcessor] Adding failed result for row ${item.rowNumber}`);
+        // Console log removed for performance
         results.push(failedResult);
       }
     }
@@ -674,8 +669,8 @@ export class JobProcessorService extends EventEmitter {
     }
 
     try {
-      console.log(`[JobProcessor] Updating Convex for job ${jobId}...`);
-      console.log(`[JobProcessor] Saving ${results.length} match results to database`);
+      // Console log removed for performance
+      // Console log removed for performance
       
       // Update job status first
       await this.convex.mutation(api.priceMatching.updateJobStatus, {
@@ -700,7 +695,7 @@ export class JobProcessorService extends EventEmitter {
       // Use batch processor for saving results
       const batchResult = await ConvexBatchProcessor.saveMatchResults(results);
       
-      console.log(`[JobProcessor] Batch save complete: ${batchResult.saved} saved, ${batchResult.failed} failed`);
+      // Console log removed for performance
       
       if (batchResult.failed > 0) {
         this.emitLog(jobId, 'warning', `Failed to save ${batchResult.failed} results due to rate limits`);
@@ -708,8 +703,8 @@ export class JobProcessorService extends EventEmitter {
 
       this.lastConvexUpdate = Date.now();
     } catch (error: any) {
-      console.error('[JobProcessor] Convex batch update error:', error);
-      console.error('[JobProcessor] Error details:', error.stack);
+      // Console log removed for performance
+      // Console log removed for performance
       // Don't fail the job, just log the error
       job.errors.push(`Convex update error: ${error.message}`);
     }
@@ -722,28 +717,28 @@ export class JobProcessorService extends EventEmitter {
         ...updates,
       });
     } catch (error) {
-      console.error('Failed to update Convex status:', error);
+      // Console log removed for performance
     }
   }
 
 
   private async finalizeJob(jobId: string, job: ProcessingJob, results: any[]) {
     try {
-      console.log(`[JobProcessor] Finalizing job ${jobId}...`);
-      console.log(`[JobProcessor] Total results to save: ${results.length}`);
+      // Console log removed for performance
+      // Console log removed for performance
       
       // Save any remaining unsaved results
       // Note: We no longer have savedResultsCount in this scope, so we'll save all results as a final check
       if (results.length > 0) {
-        console.log(`[JobProcessor] Checking if all ${results.length} results are saved to database...`);
+        // Console log removed for performance
         // In case some results weren't saved, try saving them all again
         // The createMatchResult mutation should handle duplicates gracefully
       } else {
-        console.log(`[JobProcessor] No results to save`);
+        // Console log removed for performance
       }
       
       // Final status update
-      console.log(`[JobProcessor] Updating job status to completed...`);
+      // Console log removed for performance
       await this.convex.mutation(api.priceMatching.updateJobStatus, {
         jobId: jobId as any,
         status: 'completed' as any,
@@ -766,8 +761,8 @@ export class JobProcessorService extends EventEmitter {
         details: `Completed matching ${job.matchedCount} of ${job.itemCount} items`,
       });
 
-      console.log(`[JobProcessor] Job ${jobId} finalized successfully`);
-      console.log(`[JobProcessor] Summary: ${job.matchedCount}/${job.itemCount} items processed`);
+      // Console log removed for performance
+      // Console log removed for performance
 
       this.emit('job:completed', {
         jobId,
@@ -776,8 +771,8 @@ export class JobProcessorService extends EventEmitter {
         duration: Date.now() - job.startTime,
       });
     } catch (error) {
-      console.error('[JobProcessor] Failed to finalize job:', error);
-      console.error('[JobProcessor] Error details:', error instanceof Error ? error.stack : 'No stack trace');
+      // Console log removed for performance
+      // Console log removed for performance
     }
   }
 
@@ -818,34 +813,34 @@ export class JobProcessorService extends EventEmitter {
   // Pre-generate embeddings for all price items
   private async preGenerateEmbeddings(method: string): Promise<void> {
     try {
-      console.log(`[JobProcessor] Pre-generating embeddings for ${method} method...`);
+      // Console log removed for performance
       
       // Get all price items
       const priceItems = await this.convex.query(api.priceItems.getActive);
       if (!priceItems || priceItems.length === 0) {
-        console.log('[JobProcessor] No price items found for embedding generation');
+        // Console log removed for performance
         return;
       }
       
-      console.log(`[JobProcessor] Found ${priceItems.length} price items`);
+      // Console log removed for performance
       
       // Get matching service instance
       const matchingService = MatchingService.getInstance();
       
       // Generate embeddings based on method
       if (method === 'COHERE' || method === 'HYBRID') {
-        await matchingService.generateBatchEmbeddings(priceItems, 'cohere');
-        console.log('[JobProcessor] Cohere embeddings pre-generated');
+        await matchingService.generateBatchEmbeddings(priceItems, 'COHERE');
+        // Console log removed for performance
       }
       
       if (method === 'OPENAI' || method === 'HYBRID') {
-        await matchingService.generateBatchEmbeddings(priceItems, 'openai');
-        console.log('[JobProcessor] OpenAI embeddings pre-generated');
+        await matchingService.generateBatchEmbeddings(priceItems, 'OPENAI');
+        // Console log removed for performance
       }
       
-      console.log('[JobProcessor] Embedding pre-generation complete');
+      // Console log removed for performance
     } catch (error) {
-      console.error('[JobProcessor] Error pre-generating embeddings:', error);
+      // Console log removed for performance
       // Don't throw - this is a non-blocking optimization
     }
   }
