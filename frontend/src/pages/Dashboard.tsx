@@ -297,24 +297,24 @@ export default function Dashboard() {
               <div className="flex justify-center py-8">
                 <Loader2 className="h-8 w-8 animate-spin" />
               </div>
-            ) : systemHealth ? (
+            ) : systemHealth && systemHealth.apiStatus ? (
               <>
                 <div className="grid grid-cols-2 gap-4">
                   {/* Cohere API */}
                   <div className={cn(
                     "p-4 rounded-lg border text-center",
-                    getApiStatusColor(systemHealth.apiStatus.cohere.status)
+                    getApiStatusColor(systemHealth.apiStatus?.cohere?.status || 'error')
                   )}>
                     <div className="flex items-center justify-center gap-2 mb-2">
-                      {getApiStatusIcon(systemHealth.apiStatus.cohere.status)}
+                      {getApiStatusIcon(systemHealth.apiStatus?.cohere?.status || 'error')}
                       <span className="font-medium">Cohere API</span>
                     </div>
                     <p className="text-sm font-semibold capitalize mb-1">
-                      {systemHealth.apiStatus.cohere.status.replace(/_/g, ' ')}
+                      {(systemHealth.apiStatus?.cohere?.status || 'error').replace(/_/g, ' ')}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {systemHealth.apiStatus.cohere.status === 'connected' 
-                        ? `Response: ${systemHealth.apiStatus.cohere.responseTime}ms`
+                      {systemHealth.apiStatus?.cohere?.status === 'connected' 
+                        ? `Response: ${systemHealth.apiStatus?.cohere?.responseTime || 0}ms`
                         : 'Check API configuration'}
                     </p>
                   </div>
@@ -322,18 +322,18 @@ export default function Dashboard() {
                   {/* OpenAI API */}
                   <div className={cn(
                     "p-4 rounded-lg border text-center",
-                    getApiStatusColor(systemHealth.apiStatus.openai.status)
+                    getApiStatusColor(systemHealth.apiStatus?.openai?.status || 'error')
                   )}>
                     <div className="flex items-center justify-center gap-2 mb-2">
-                      {getApiStatusIcon(systemHealth.apiStatus.openai.status)}
+                      {getApiStatusIcon(systemHealth.apiStatus?.openai?.status || 'error')}
                       <span className="font-medium">OpenAI API</span>
                     </div>
                     <p className="text-sm font-semibold capitalize mb-1">
-                      {systemHealth.apiStatus.openai.status.replace(/_/g, ' ')}
+                      {(systemHealth.apiStatus?.openai?.status || 'error').replace(/_/g, ' ')}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {systemHealth.apiStatus.openai.status === 'connected' 
-                        ? `Response: ${systemHealth.apiStatus.openai.responseTime}ms`
+                      {systemHealth.apiStatus?.openai?.status === 'connected' 
+                        ? `Response: ${systemHealth.apiStatus?.openai?.responseTime || 0}ms`
                         : 'Check API configuration'}
                     </p>
                   </div>
@@ -341,18 +341,18 @@ export default function Dashboard() {
                   {/* Database */}
                   <div className={cn(
                     "col-span-2 p-4 rounded-lg border text-center",
-                    getApiStatusColor(systemHealth.apiStatus.convex.status)
+                    getApiStatusColor(systemHealth.apiStatus?.convex?.status || 'error')
                   )}>
                     <div className="flex items-center justify-center gap-2 mb-2">
-                      {getApiStatusIcon(systemHealth.apiStatus.convex.status)}
+                      {getApiStatusIcon(systemHealth.apiStatus?.convex?.status || 'error')}
                       <span className="font-medium">Database Connection</span>
                     </div>
                     <p className="text-sm font-semibold capitalize mb-1">
-                      {systemHealth.apiStatus.convex.status}
+                      {systemHealth.apiStatus?.convex?.status || 'error'}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {systemHealth.apiStatus.convex.status === 'connected' 
-                        ? `Response: ${systemHealth.apiStatus.convex.responseTime}ms`
+                      {systemHealth.apiStatus?.convex?.status === 'connected' 
+                        ? `Response: ${systemHealth.apiStatus?.convex?.responseTime || 0}ms`
                         : 'Database connection issue'}
                     </p>
                   </div>

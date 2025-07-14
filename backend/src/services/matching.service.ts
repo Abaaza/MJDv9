@@ -473,7 +473,7 @@ export class MatchingService {
       matchedCode: bestMatch.item.code || '',
       matchedUnit: bestMatch.item.unit || '',
       matchedRate: bestMatch.item.rate,
-      confidence: bestMatch.score / 100,
+      confidence: Math.min((bestMatch.score / 100) * 1.1, 1.0), // 10% boost, capped at 100%
       method: 'LOCAL',
       matchingDetails: {
         scores: bestMatch.breakdown,
@@ -717,7 +717,7 @@ export class MatchingService {
       matchedCode: bestMatch.item.code || '',
       matchedUnit: bestMatch.item.unit || '',
       matchedRate: bestMatch.item.rate,
-      confidence: Math.min(finalConfidence, 0.99),
+      confidence: Math.min(finalConfidence * 1.1, 0.99), // 10% boost
       method: 'COHERE',
       matchingDetails: {
         scores: { similarity: bestMatch.similarity, adjusted: finalConfidence },
@@ -928,7 +928,7 @@ export class MatchingService {
       matchedCode: bestMatch.item.code || '',
       matchedUnit: bestMatch.item.unit || '',
       matchedRate: bestMatch.item.rate,
-      confidence: Math.min(finalConfidence, 0.99),
+      confidence: Math.min(finalConfidence * 1.1, 0.99), // 10% boost
       method: 'OPENAI',
       matchingDetails: {
         scores: { similarity: bestMatch.similarity, adjusted: finalConfidence },
@@ -1553,7 +1553,7 @@ export class MatchingService {
       matchedCode: match.item.code || '',
       matchedUnit: match.item.unit || '',
       matchedRate: match.item.rate,
-      confidence: match.score / 100,
+      confidence: Math.min((match.score / 100) * 1.1, 1.0), // 10% boost, capped at 100%
       method: 'LOCAL',
       matchingDetails: {
         scores: { fuzzy: match.score },

@@ -20,6 +20,7 @@ import healthRoutes from './routes/health.routes';
 import monitoringRoutes from './routes/monitoring.routes';
 // import asyncJobsRoutes from './routes/asyncJobs.routes';
 import { fileStorage } from './services/fileStorage.service';
+import { jobProcessor } from './services/jobProcessor.service';
 
 // __dirname is available in CommonJS after compilation
 // For TypeScript, we'll handle it conditionally
@@ -197,6 +198,7 @@ const PORT = env.PORT || 5000;
 
 // Initialize services
 fileStorage.initialize().catch(console.error);
+console.log('[Server] Job processor initialized:', jobProcessor ? 'ready' : 'failed');
 
 // For local development
 if (process.env.NODE_ENV !== 'production') {

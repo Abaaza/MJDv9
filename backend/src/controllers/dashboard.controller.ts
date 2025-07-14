@@ -73,11 +73,14 @@ export async function getRecentJobs(req: Request, res: Response): Promise<void> 
 }
 
 export async function getSystemHealth(req: Request, res: Response): Promise<void> {
+  console.log('[Dashboard] getSystemHealth called');
   try {
     if (!req.user) {
+      console.log('[Dashboard] No user authenticated');
       res.status(401).json({ error: 'Not authenticated' });
       return;
     }
+    console.log('[Dashboard] User authenticated:', req.user.email);
 
     // Check API connectivity
     const apiStatus = {
@@ -91,6 +94,7 @@ export async function getSystemHealth(req: Request, res: Response): Promise<void
       const cohereKey = await convex.query(api.applicationSettings.getByKey, { 
         key: 'COHERE_API_KEY' 
       }) as { value?: string } | null;
+      console.log('[Dashboard] Cohere key from DB:', cohereKey ? 'Found' : 'Not found', cohereKey ? `(length: ${cohereKey.value?.length})` : '');
       if (cohereKey?.value) {
         const start = Date.now();
         await httpClient.post('https://api.cohere.ai/v1/embed', {
@@ -108,6 +112,7 @@ export async function getSystemHealth(req: Request, res: Response): Promise<void
         apiStatus.cohere = { status: 'not_configured', responseTime: 0 };
       }
     } catch (error: any) {
+      console.error('[Dashboard] Cohere API check error:', error.message);
       if (error.response?.status === 401) {
         apiStatus.cohere = { status: 'invalid_key', responseTime: 0 };
       } else {
@@ -120,6 +125,7 @@ export async function getSystemHealth(req: Request, res: Response): Promise<void
       const openaiKey = await convex.query(api.applicationSettings.getByKey, { 
         key: 'OPENAI_API_KEY' 
       }) as { value?: string } | null;
+      console.log('[Dashboard] OpenAI key from DB:', openaiKey ? 'Found' : 'Not found', openaiKey ? `(length: ${openaiKey.value?.length})` : '');
       if (openaiKey?.value) {
         const start = Date.now();
         await httpClient.get('https://api.openai.com/v1/models', {
@@ -134,6 +140,7 @@ export async function getSystemHealth(req: Request, res: Response): Promise<void
         apiStatus.openai = { status: 'not_configured', responseTime: 0 };
       }
     } catch (error: any) {
+      console.error('[Dashboard] OpenAI API check error:', error.message);
       if (error.response?.status === 401) {
         apiStatus.openai = { status: 'invalid_key', responseTime: 0 };
       } else {

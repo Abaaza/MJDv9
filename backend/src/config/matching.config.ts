@@ -64,9 +64,9 @@ export const defaultMatchingConfig: MatchingConfig = {
       openai: 0.1,  // Lowered from 0.5
       default: 0.1  // Lowered from 0.5
     },
-    unitMatchBonus: 20,  // Increased from 10 to give more weight to unit matching
-    categoryMatchBonus: 15,
-    contextMatchBonus: 5,
+    unitMatchBonus: 25,  // Increased from 20 to give more weight to unit matching
+    categoryMatchBonus: 20,  // Increased from 15 - more weight for category matches
+    contextMatchBonus: 10,  // Increased from 5 - more weight for context
     codeMatchScore: 95,
     exactMatchScore: 100
   },
