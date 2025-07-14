@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { api } from '../lib/api';
 import { cn } from '../lib/utils';
 import { useConvex } from 'convex/react';
-import { api as convexApi } from '../convex/_generated/api';
+import { api as convexApi } from '../../convex/_generated/api';
 import { useAuthStore } from '../stores/auth.store';
 import { ClientSearch } from '../components/ClientSearch';
 import { Textarea } from '../components/ui/textarea';

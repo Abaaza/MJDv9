@@ -9,7 +9,7 @@ import { Label } from '../components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { useAuthStore } from '../stores/auth.store';
 import { useConvex } from 'convex/react';
-import { api as convexApi } from '../convex/_generated/api';
+import { api as convexApi } from '../../convex/_generated/api';
 import { format } from 'date-fns';
 
 export default function UserSettings() {

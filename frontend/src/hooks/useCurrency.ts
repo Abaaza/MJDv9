@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useConvex } from 'convex/react';
-import { api } from '../convex/_generated/api';
+import { api } from '../../convex/_generated/api';
 
 export interface CurrencySettings {
   currency: string;
