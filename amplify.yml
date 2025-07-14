@@ -10,7 +10,7 @@ applications:
             - cd frontend
             - npm install
             - npm install convex
-            - ln -s ../../convex ./convex
+            - cp -r ../convex .
             - echo "VITE_CONVEX_URL=https://good-dolphin-454.convex.cloud" > .env.production
             - echo "VITE_API_URL=https://ls4380art0.execute-api.us-east-1.amazonaws.com/api" >> .env.production
         build:
