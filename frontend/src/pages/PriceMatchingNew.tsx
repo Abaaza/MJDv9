@@ -17,6 +17,7 @@ import { useAuthStore } from '../stores/auth.store';
 import { ClientSearch } from '../components/ClientSearch';
 import { Textarea } from '../components/ui/textarea';
 import { useJobPolling } from '../hooks/useJobPolling';
+import { useJobLogs } from '../hooks/useJobLogs';
 import { JobLogs } from '../components/JobLogs';
 
 interface UploadFormData {
@@ -51,7 +52,8 @@ export default function PriceMatchingNew() {
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { user } = useAuthStore();
-  const { connected, jobProgress, jobLogs, subscribeToJob, unsubscribeFromJob } = useJobPolling();
+  const { connected, jobProgress, subscribeToJob, unsubscribeFromJob } = useJobPolling();
+  const { jobLogs, subscribeToJobLogs, unsubscribeFromJobLogs } = useJobLogs();
   const [currentJobId, setCurrentJobId] = useState<string | null>(null);
   const [showNewClientDialog, setShowNewClientDialog] = useState(false);
   const [showLogs, setShowLogs] = useState(false);
@@ -79,36 +81,20 @@ export default function PriceMatchingNew() {
     },
   });
 
-  // Subscribe to WebSocket updates for current job
+  // Subscribe to job updates and logs for current job
   useEffect(() => {
     if (currentJobId) {
       subscribeToJob(currentJobId);
+      subscribeToJobLogs(currentJobId);
       return () => {
         unsubscribeFromJob(currentJobId);
+        unsubscribeFromJobLogs(currentJobId);
       };
     }
-  }, [currentJobId, subscribeToJob, unsubscribeFromJob]);
+  }, [currentJobId, subscribeToJob, unsubscribeFromJob, subscribeToJobLogs, unsubscribeFromJobLogs]);
 
-  // Fetch job logs from memory API (no Convex, no 429!)
-  const { data: logData } = useQuery({
-    queryKey: ['jobLogs', currentJobId],
-    queryFn: async () => {
-      if (!currentJobId) return { logs: [], progress: null };
-      try {
-        const response = await api.get(`/jobs/${currentJobId}/logs`);
-        return response.data;
-      } catch (error) {
-        console.error('Failed to fetch job logs:', error);
-        return { logs: [], progress: null };
-      }
-    },
-    enabled: !!currentJobId,
-    refetchInterval: 500, // Poll every 500ms for smooth updates
-    staleTime: 0,
-  });
-
-  const memoryLogs = logData?.logs || [];
-  const memoryProgress = logData?.progress;
+  // Get current job logs from the hook
+  const currentJobLogs = currentJobId ? (jobLogs[currentJobId] || []) : [];
 
   // Create client mutation
   const createClientMutation = useMutation({
@@ -451,7 +437,7 @@ export default function PriceMatchingNew() {
         </Card>
 
       {/* Progress Section */}
-      {currentJobId && (jobStatus || jobProgress[currentJobId] || memoryProgress) && (
+      {currentJobId && (jobStatus || jobProgress[currentJobId]) && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center justify-between">
@@ -473,7 +459,7 @@ export default function PriceMatchingNew() {
                   {showLogs ? 'Hide' : 'Show'} Logs
                 </Button>
                 {jobStatus?.status !== 'completed' && jobStatus?.status !== 'failed' && jobStatus?.status !== 'stopped' && 
-                 memoryProgress?.status !== 'completed' && memoryProgress?.status !== 'failed' && memoryProgress?.status !== 'stopped' && (
+                 jobProgress[currentJobId]?.status !== 'completed' && jobProgress[currentJobId]?.status !== 'failed' && jobProgress[currentJobId]?.status !== 'stopped' && (
                   <>
                     <Button
                       size="sm"
@@ -501,17 +487,17 @@ export default function PriceMatchingNew() {
               <div>
                 <div className="flex justify-between mb-2">
                   <span className="text-sm font-medium">
-                    {memoryProgress?.progressMessage || jobProgress[currentJobId]?.progressMessage || jobStatus?.progressMessage || 'Processing...'}
+                    {jobProgress[currentJobId]?.progressMessage || jobStatus?.progressMessage || 'Processing...'}
                   </span>
-                  <span className="text-sm font-medium">{memoryProgress?.progress || jobProgress[currentJobId]?.progress || jobStatus?.progress || 0}%</span>
+                  <span className="text-sm font-medium">{jobProgress[currentJobId]?.progress || jobStatus?.progress || 0}%</span>
                 </div>
                 <div className="w-full bg-gray-200 rounded-full h-3">
                   <div
                     className={cn(
                       'h-3 rounded-full transition-all duration-500',
-                      getProgressColor(memoryProgress?.progress || jobProgress[currentJobId]?.progress || jobStatus?.progress || 0)
+                      getProgressColor(jobProgress[currentJobId]?.progress || jobStatus?.progress || 0)
                     )}
-                    style={{ width: `${memoryProgress?.progress || jobProgress[currentJobId]?.progress || jobStatus?.progress || 0}%` }}
+                    style={{ width: `${jobProgress[currentJobId]?.progress || jobStatus?.progress || 0}%` }}
                   />
                 </div>
               </div>
@@ -519,7 +505,7 @@ export default function PriceMatchingNew() {
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <p className="text-gray-500">Status</p>
-                  <p className="font-medium capitalize">{memoryProgress?.status || jobProgress[currentJobId]?.status || jobStatus?.status || 'pending'}</p>
+                  <p className="font-medium capitalize">{jobProgress[currentJobId]?.status || jobStatus?.status || 'pending'}</p>
                 </div>
                 <div>
                   <p className="text-gray-500">Items Matched</p>
@@ -535,7 +521,7 @@ export default function PriceMatchingNew() {
                 </div>
               )}
 
-              {(jobStatus?.status === 'completed' || memoryProgress?.status === 'completed') && (
+              {(jobStatus?.status === 'completed' || jobProgress[currentJobId]?.status === 'completed') && (
                 <div className="flex gap-3">
                   <Button
                     onClick={() => window.location.href = `/projects#${currentJobId}`}
@@ -560,9 +546,9 @@ export default function PriceMatchingNew() {
       )}
 
       {/* Job Logs */}
-      {currentJobId && showLogs && (memoryLogs.length > 0 || memoryProgress) && (
+      {currentJobId && showLogs && currentJobLogs.length > 0 && (
         <JobLogs 
-          logs={memoryLogs.map((log: any) => ({
+          logs={currentJobLogs.map((log: any) => ({
             jobId: currentJobId,
             level: log.level,
             message: log.message,
@@ -570,8 +556,8 @@ export default function PriceMatchingNew() {
           }))} 
           title="Processing Logs" 
           className="mt-4"
-          jobStatus={memoryProgress?.status || jobStatus?.status}
-          startTime={jobStatus?.startedAt || memoryProgress?.startTime}
+          jobStatus={jobStatus?.status || jobProgress[currentJobId]?.status}
+          startTime={jobStatus?.startedAt}
           matchingMethod={formData.matchingMethod}
         />
       )}

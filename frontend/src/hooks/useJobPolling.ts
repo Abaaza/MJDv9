@@ -11,11 +11,6 @@ interface JobProgress {
   itemCount: number;
 }
 
-interface JobLog {
-  timestamp: number;
-  level: 'info' | 'error' | 'warning';
-  message: string;
-}
 
 interface JobStatus {
   jobId: string;
@@ -27,13 +22,11 @@ interface JobStatus {
   startTime: number;
   lastUpdate: number;
   errors: string[];
-  logs: JobLog[];
 }
 
 export function useJobPolling() {
   const [connected, setConnected] = useState(true); // Always "connected" for polling
   const [jobProgress, setJobProgress] = useState<Record<string, JobProgress>>({});
-  const [jobLogs, setJobLogs] = useState<Record<string, JobLog[]>>({});
   const activePolls = useRef<Map<string, NodeJS.Timeout>>(new Map());
   const lastStatusRef = useRef<Map<string, string>>(new Map());
 
@@ -43,13 +36,13 @@ export function useJobPolling() {
       const response = await api.get(`/jobs/${jobId}/status`);
       const status: JobStatus = response.data;
       
-      console.log(`[JobPolling] Status for job ${jobId}:`, {
-        status: status.status,
-        progress: status.progress,
-        matchedCount: status.matchedCount,
-        itemCount: status.itemCount,
-        progressMessage: status.progressMessage
-      });
+      // Get previous status first
+      const previousStatus = lastStatusRef.current.get(jobId);
+      
+      // Reduce console logging - only log important state changes
+      if (process.env.NODE_ENV === 'development' && previousStatus !== status.status) {
+        console.log(`[JobPolling] Status change for job ${jobId}: ${status.status} (${status.progress}%)`);
+      }
       
       // Update progress
       setJobProgress(prev => ({
@@ -64,29 +57,9 @@ export function useJobPolling() {
         }
       }));
       
-      // Update logs - merge new logs with existing ones
-      if (status.logs && status.logs.length > 0) {
-        setJobLogs(prev => {
-          const existingLogs = prev[jobId] || [];
-          const existingTimestamps = new Set(existingLogs.map(log => log.timestamp));
-          
-          // Only add new logs that we haven't seen before
-          const newLogs = status.logs.filter(log => !existingTimestamps.has(log.timestamp));
-          
-          // Merge and keep only last 100 logs
-          const mergedLogs = [...existingLogs, ...newLogs].slice(-100);
-          
-          return {
-            ...prev,
-            [jobId]: mergedLogs
-          };
-        });
-      }
-      
       // Check for status changes
-      const previousStatus = lastStatusRef.current.get(jobId);
       if (previousStatus !== status.status) {
-        console.log(`[JobPolling] Status changed for job ${jobId}: ${previousStatus} -> ${status.status}`);
+        // Status change already logged above when in development
         lastStatusRef.current.set(jobId, status.status);
         
         // Show notifications for status changes
@@ -145,7 +118,9 @@ export function useJobPolling() {
 
   // Subscribe to job updates (start polling)
   const subscribeToJob = useCallback((jobId: string) => {
-    console.log('Starting polling for job:', jobId);
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Starting polling for job:', jobId);
+    }
     
     // Stop any existing polling for this job
     stopPolling(jobId);
@@ -153,30 +128,25 @@ export function useJobPolling() {
     // Initial poll
     pollJobStatus(jobId);
     
-    // Set up interval polling (every 2 seconds)
+    // Fixed interval polling - adaptive rates were causing infinite loops
     const interval = setInterval(async () => {
       const shouldContinue = await pollJobStatus(jobId);
       if (!shouldContinue) {
         stopPolling(jobId);
       }
-    }, 2000);
+    }, 3000); // 3 second intervals
     
     activePolls.current.set(jobId, interval);
   }, [pollJobStatus, stopPolling]);
 
   // Unsubscribe from job updates (stop polling)
   const unsubscribeFromJob = useCallback((jobId: string) => {
-    console.log('Stopping polling for job:', jobId);
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Stopping polling for job:', jobId);
+    }
     stopPolling(jobId);
   }, [stopPolling]);
 
-  // Clear logs for a job
-  const clearJobLogs = useCallback((jobId: string) => {
-    setJobLogs(prev => {
-      const { [jobId]: _, ...rest } = prev;
-      return rest;
-    });
-  }, []);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -199,11 +169,9 @@ export function useJobPolling() {
   return {
     connected,
     jobProgress,
-    jobLogs,
     processorStatus,
     subscribeToJob,
     unsubscribeFromJob,
     requestProcessorStatus,
-    clearJobLogs,
   };
 }

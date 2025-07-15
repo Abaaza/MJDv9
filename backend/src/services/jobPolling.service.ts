@@ -167,8 +167,7 @@ export class JobPollingService {
     });
     if (!job) return null;
     
-    // Get logs
-    const logs = await this.convex.query(api.jobLogs.getJobLogs, { jobId });
+    // Don't fetch logs here - they're handled by logStorage service
     
     return {
       jobId: job._id,
@@ -180,11 +179,7 @@ export class JobPollingService {
       startTime: job.startedAt,
       lastUpdate: Date.now(),
       errors: job.error ? [job.error] : [],
-      logs: logs.map(log => ({
-        timestamp: log._creationTime,
-        level: log.level as 'info' | 'error' | 'warning',
-        message: log.message
-      }))
+      logs: [] // Logs are fetched separately via the logs endpoint
     };
   }
   
@@ -205,12 +200,18 @@ export class JobPollingService {
   }
   
   private async addJobLog(jobId: string, level: 'info' | 'error' | 'warning', message: string): Promise<void> {
+    // Removed Convex log creation - logs are now handled by logStorage service
+    console.log(`[Job ${jobId}] ${level.toUpperCase()}: ${message}`);
+  }
+  
+  private async oldAddJobLog(jobId: string, level: 'info' | 'error' | 'warning', message: string): Promise<void> {
     try {
-      await this.convex.mutation(api.jobLogs.create, {
-        jobId,
-        level,
-        message
-      });
+      // Disabled to prevent Convex rate limiting
+      // await this.convex.mutation(api.jobLogs.create, {
+      //   jobId,
+      //   level,
+      //   message
+      // });
     } catch (error) {
       console.error('Failed to add job log:', error);
     }

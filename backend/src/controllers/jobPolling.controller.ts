@@ -138,20 +138,33 @@ export async function getJobStatus(req: Request, res: Response): Promise<void> {
 export async function getJobLogs(req: Request, res: Response): Promise<void> {
   try {
     const { jobId } = req.params;
+    const { since } = req.query;
     
     // Get logs from memory - no Convex calls, no 429 errors!
-    const logs = logStorage.getLogs(jobId);
+    const allLogs = logStorage.getLogs(jobId);
+    
+    // Filter logs based on 'since' timestamp if provided
+    let logs = allLogs;
+    if (since && typeof since === 'string') {
+      const sinceDate = new Date(since);
+      if (!isNaN(sinceDate.getTime())) {
+        logs = allLogs.filter(log => new Date(log.timestamp).getTime() > sinceDate.getTime());
+      }
+    }
     
     // Also get the current progress
     const progress = logStorage.getProgress(jobId);
     
-    // Debug logging - disabled to reduce verbosity
-    // console.log(`[API] Fetched ${logs.length} logs for job ${jobId} from memory`);
+    // Rate limiting headers
+    res.setHeader('X-RateLimit-Limit', '60');
+    res.setHeader('X-RateLimit-Remaining', '59');
+    res.setHeader('X-RateLimit-Reset', new Date(Date.now() + 60000).toISOString());
     
     res.json({
       logs,
       progress,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      total: logs.length
     });
     
   } catch (error: any) {

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
+import './table-scroll-styles.css';
 import { 
   Loader2,
   Search,
@@ -8,7 +9,8 @@ import {
   X,
   Edit,
   Percent,
-  Download
+  Download,
+  Trash2
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
@@ -38,6 +40,7 @@ interface MatchResult {
   isManuallyEdited: boolean;
   totalPrice?: number;
   notes?: string;
+  isDeleted?: boolean;
 }
 
 interface MatchData {
@@ -461,6 +464,32 @@ export function AIMatchResultsModal({ jobId, jobMatchingMethod, onClose }: AIMat
     setEditValues({});
   };
 
+  const handleDelete = async (resultId: string) => {
+    if (!confirm('Are you sure you want to delete this item? It will be excluded from the export.')) {
+      return;
+    }
+    
+    try {
+      // Mark the item as deleted (confidence = 0 means no match)
+      await updateResultMutation.mutateAsync({
+        resultId,
+        updates: {
+          confidence: 0,
+          matchedItemId: '',
+          matchedDescription: 'Item deleted',
+          matchedCode: '',
+          matchedUnit: '',
+          matchedRate: 0,
+          totalPrice: 0,
+          notes: 'Item deleted by user',
+        },
+      });
+      toast.success('Item deleted successfully');
+    } catch (error) {
+      toast.error('Failed to delete item');
+    }
+  };
+
   const getConfidenceColor = (confidence: number) => {
     if (confidence >= 0.8) return 'text-green-600 bg-green-50';
     if (confidence >= 0.6) return 'text-yellow-600 bg-yellow-50';
@@ -494,7 +523,7 @@ export function AIMatchResultsModal({ jobId, jobMatchingMethod, onClose }: AIMat
 
   // Separate actual items from context headers
   const actualItems = results?.filter(result => 
-    result.matchMethod !== 'CONTEXT' && result.originalQuantity && result.originalQuantity > 0
+    !result.isDeleted && result.matchMethod !== 'CONTEXT' && result.originalQuantity && result.originalQuantity > 0
   ) || [];
   
   const filteredResults = actualItems.filter(result => 
@@ -652,10 +681,10 @@ export function AIMatchResultsModal({ jobId, jobMatchingMethod, onClose }: AIMat
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-2 sm:p-4 z-50 overflow-y-auto">
-      <div className="bg-white dark:bg-gray-900 rounded-lg shadow-xl w-full max-w-7xl my-4 sm:my-8">
-        <Card className="border-0">
-          <CardHeader className="sticky top-0 bg-white dark:bg-gray-900 z-10 border-b p-4">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-2 sm:p-4 z-50">
+      <div className="bg-white dark:bg-gray-900 rounded-lg shadow-xl w-[95vw] max-w-[1600px] my-4 sm:my-8 max-h-[95vh] overflow-hidden flex flex-col">
+        <Card className="border-0 h-full flex flex-col">
+          <CardHeader className="sticky top-0 bg-white dark:bg-gray-900 z-10 border-b p-4 flex-shrink-0">
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
               <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
                 {jobMatchingMethod} Match Results
@@ -663,20 +692,18 @@ export function AIMatchResultsModal({ jobId, jobMatchingMethod, onClose }: AIMat
               </CardTitle>
               <div className="flex flex-wrap items-center gap-2">
                 <Button
-                  className="h-8"
                   variant="outline"
                   onClick={handleDownloadResults}
-                  className="text-xs sm:text-sm"
+                  className="h-8 text-xs sm:text-sm"
                 >
                   <Download className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
                   <span className="hidden sm:inline">Export Excel</span>
                   <span className="sm:hidden">Export</span>
                 </Button>
                 <Button
-                  className="h-8"
                   variant="outline"
                   onClick={() => setShowDiscountModal(true)}
-                  className="text-xs sm:text-sm"
+                  className="h-8 text-xs sm:text-sm"
                 >
                   <Percent className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
                   <span className="hidden sm:inline">Discount/Markup</span>
@@ -692,30 +719,30 @@ export function AIMatchResultsModal({ jobId, jobMatchingMethod, onClose }: AIMat
                   />
                 </div>
                 {onClose && (
-                  <Button className="h-8" variant="ghost" onClick={onClose} className="p-2">
+                  <Button variant="ghost" onClick={onClose} className="h-8 p-2">
                     <X className="h-4 w-4" />
                   </Button>
                 )}
               </div>
             </div>
           </CardHeader>
-          <CardContent className="max-h-[calc(95vh-8rem)] sm:max-h-[calc(90vh-8rem)] overflow-y-auto p-2 sm:p-6">
+          <CardContent className="flex-1 overflow-hidden p-2 sm:p-6 flex flex-col">
             {resultsLoading ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="h-8 w-8 animate-spin" />
               </div>
             ) : groupedResults.length > 0 ? (
-              <div>
+              <>
                 {/* Desktop Table View */}
-                <div className="hidden lg:block overflow-x-auto">
-                  <table className="w-full border-collapse">
+                <div className="hidden lg:block overflow-auto max-h-[calc(100vh-20rem)] scrollbar-thin scrollbar-thumb-gray-400 scrollbar-track-gray-100">
+                  <table className="border-collapse w-full" style={{ minWidth: '1400px' }}>
                     <thead>
                       <tr className="border-b bg-gray-50 dark:bg-gray-800">
-                        <th className="text-left p-3 font-medium text-sm">Row</th>
+                        <th className="text-left p-3 font-medium text-sm sticky left-0 bg-gray-50 dark:bg-gray-800 z-10">Row</th>
                         <th className="text-left p-3 font-medium text-sm min-w-[300px]">Original Description</th>
                         <th className="text-left p-3 font-medium text-sm min-w-[350px]">Matched Item</th>
-                        <th className="text-left p-3 font-medium text-sm">Excel Unit</th>
-                        <th className="text-left p-3 font-medium text-sm">Price List Unit</th>
+                        <th className="text-left p-3 font-medium text-sm whitespace-nowrap">Excel Unit</th>
+                        <th className="text-left p-3 font-medium text-sm whitespace-nowrap">Price List Unit</th>
                         <th className="text-left p-3 font-medium text-sm">Rate</th>
                         <th className="text-left p-3 font-medium text-sm">Quantity</th>
                         <th className="text-left p-3 font-medium text-sm">Total</th>
@@ -729,7 +756,7 @@ export function AIMatchResultsModal({ jobId, jobMatchingMethod, onClose }: AIMat
                         {/* Section Header Row */}
                         {group.header && (
                           <tr className="bg-gray-100 dark:bg-gray-800 border-t-2 border-gray-300 dark:border-gray-600">
-                            <td className="p-3 text-sm font-medium text-gray-600 dark:text-gray-300">
+                            <td className="p-3 text-sm font-medium text-gray-600 dark:text-gray-300 sticky left-0 bg-gray-100 dark:bg-gray-800 z-10">
                               {group.header.rowNumber}
                             </td>
                             <td colSpan={9} className="p-3">
@@ -745,10 +772,12 @@ export function AIMatchResultsModal({ jobId, jobMatchingMethod, onClose }: AIMat
                         )}
                         {/* Item Rows */}
                         {group.items.filter(item => 
-                          searchTerm === '' || 
-                          item.originalDescription.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          item.matchedDescription?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          item.matchedCode?.toLowerCase().includes(searchTerm.toLowerCase())
+                          !item.isDeleted && (
+                            searchTerm === '' || 
+                            item.originalDescription.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                            item.matchedDescription?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                            item.matchedCode?.toLowerCase().includes(searchTerm.toLowerCase())
+                          )
                         ).map((result) => {
                           const displayMatch = getDisplayMatch(result);
                           const matchType = selectedMatchTypes[result._id] || 'AI';
@@ -757,7 +786,7 @@ export function AIMatchResultsModal({ jobId, jobMatchingMethod, onClose }: AIMat
                           
                           return (
                             <tr key={result._id} className="border-b hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                              <td className="p-3 text-sm">{result.rowNumber}</td>
+                              <td className="p-3 text-sm sticky left-0 bg-white dark:bg-gray-900 z-10">{result.rowNumber}</td>
                               <td className="p-3 text-sm">
                                 <div className="whitespace-normal break-words max-w-md">
                                   {result.originalDescription}
@@ -898,13 +927,24 @@ export function AIMatchResultsModal({ jobId, jobMatchingMethod, onClose }: AIMat
                                       </Button>
                                     </>
                                   ) : (
-                                    <Button
-                                      className="h-8"
-                                      variant="ghost"
-                                      onClick={() => handleEdit(result)}
-                                    >
-                                      <Edit className="h-4 w-4" />
-                                    </Button>
+                                    <>
+                                      <Button
+                                        className="h-8"
+                                        variant="ghost"
+                                        onClick={() => handleEdit(result)}
+                                        title="Edit"
+                                      >
+                                        <Edit className="h-4 w-4" />
+                                      </Button>
+                                      <Button
+                                        className="h-8"
+                                        variant="ghost"
+                                        onClick={() => handleDelete(result._id)}
+                                        title="Delete"
+                                      >
+                                        <Trash2 className="h-4 w-4 text-red-500" />
+                                      </Button>
+                                    </>
                                   )}
                                 </div>
                               </td>
@@ -918,7 +958,7 @@ export function AIMatchResultsModal({ jobId, jobMatchingMethod, onClose }: AIMat
                 </div>
 
                 {/* Mobile Card View */}
-                <div className="lg:hidden space-y-4">
+                <div className="lg:hidden overflow-auto max-h-[calc(100vh-20rem)] space-y-4">
                   {groupedResults.map((group, groupIndex) => (
                     <div key={`mobile-group-${groupIndex}`} className="space-y-3">
                       {/* Section Header */}
@@ -936,10 +976,12 @@ export function AIMatchResultsModal({ jobId, jobMatchingMethod, onClose }: AIMat
                       
                       {/* Item Cards */}
                       {group.items.filter(item => 
-                        searchTerm === '' || 
-                        item.originalDescription.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                        item.matchedDescription?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                        item.matchedCode?.toLowerCase().includes(searchTerm.toLowerCase())
+                        !item.isDeleted && (
+                          searchTerm === '' || 
+                          item.originalDescription.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          item.matchedDescription?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          item.matchedCode?.toLowerCase().includes(searchTerm.toLowerCase())
+                        )
                       ).map((result) => {
                         const displayMatch = getDisplayMatch(result);
                         const matchType = selectedMatchTypes[result._id] || 'AI';
@@ -1024,47 +1066,42 @@ export function AIMatchResultsModal({ jobId, jobMatchingMethod, onClose }: AIMat
                                       <div>
                                         <label className="text-xs text-gray-500">Unit</label>
                                         <Input
-                                          className="h-8"
                                           value={editValues.matchedUnit || ''}
                                           onChange={(e) => setEditValues({...editValues, matchedUnit: e.target.value})}
-                                          className="text-sm"
+                                          className="h-8 text-sm"
                                         />
                                       </div>
                                       <div>
                                         <label className="text-xs text-gray-500">Rate</label>
                                         <Input
-                                          className="h-8"
                                           type="number"
                                           value={editValues.matchedRate || 0}
                                           onChange={(e) => setEditValues({...editValues, matchedRate: parseFloat(e.target.value) || 0})}
-                                          className="text-sm"
+                                          className="h-8 text-sm"
                                         />
                                       </div>
                                     </div>
                                     <div>
                                       <label className="text-xs text-gray-500">Quantity</label>
                                       <Input
-                                        className="h-8"
                                         type="number"
                                         value={editValues.originalQuantity || 0}
                                         onChange={(e) => setEditValues({...editValues, originalQuantity: parseFloat(e.target.value) || 0})}
-                                        className="text-sm"
+                                        className="h-8 text-sm"
                                       />
                                     </div>
                                     <div className="flex gap-2">
                                       <Button
-                                        className="h-8"
                                         onClick={() => handleSaveEdit(result._id)}
-                                        className="flex-1 text-xs"
+                                        className="h-8 flex-1 text-xs"
                                       >
                                         <Save className="h-3 w-3 mr-1" />
                                         Save
                                       </Button>
                                       <Button
-                                        className="h-8"
                                         variant="outline"
                                         onClick={handleCancelEdit}
-                                        className="flex-1 text-xs"
+                                        className="h-8 flex-1 text-xs"
                                       >
                                         Cancel
                                       </Button>
@@ -1102,17 +1139,26 @@ export function AIMatchResultsModal({ jobId, jobMatchingMethod, onClose }: AIMat
                                   </span>
                                 </div>
                                 
-                                {/* Edit Button */}
+                                {/* Action Buttons */}
                                 {editingResultId !== result._id && (
-                                  <Button
-                                    className="h-8"
-                                    variant="outline"
-                                    onClick={() => handleEdit(result)}
-                                    className="w-full text-xs"
-                                  >
-                                    <Edit className="h-3 w-3 mr-1" />
-                                    Edit
-                                  </Button>
+                                  <div className="flex gap-2">
+                                    <Button
+                                      variant="outline"
+                                      onClick={() => handleEdit(result)}
+                                      className="h-8 flex-1 text-xs"
+                                    >
+                                      <Edit className="h-3 w-3 mr-1" />
+                                      Edit
+                                    </Button>
+                                    <Button
+                                      variant="outline"
+                                      onClick={() => handleDelete(result._id)}
+                                      className="h-8 flex-1 text-xs"
+                                    >
+                                      <Trash2 className="h-3 w-3 mr-1 text-red-500" />
+                                      Delete
+                                    </Button>
+                                  </div>
                                 )}
                               </div>
                             )}
@@ -1123,7 +1169,7 @@ export function AIMatchResultsModal({ jobId, jobMatchingMethod, onClose }: AIMat
                   ))}
                 </div>
                 
-                {/* Total Quotation Sum */}
+                {/* Total Quotation Sum - Outside scrollable area */}
                 {actualItems.length > 0 && (
                   <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
                     <div className="flex justify-between items-center">
@@ -1137,7 +1183,7 @@ export function AIMatchResultsModal({ jobId, jobMatchingMethod, onClose }: AIMat
                     </div>
                   </div>
                 )}
-              </div>
+              </>
             ) : (
               <p className="text-center py-8 text-muted-foreground">No results found</p>
             )}

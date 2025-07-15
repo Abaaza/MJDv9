@@ -7,6 +7,7 @@ import {
   cancelJob 
 } from '../controllers/jobPolling.controller';
 import { uploadExcel } from '../middleware/upload';
+import { logRateLimiter } from '../middleware/rateLimiter';
 
 const router = Router();
 
@@ -16,8 +17,8 @@ router.post('/upload', authenticate, uploadExcel, uploadAndProcessBOQ);
 // Get job status
 router.get('/:jobId/status', authenticate, getJobStatus);
 
-// Get job logs
-router.get('/:jobId/logs', authenticate, getJobLogs);
+// Get job logs with rate limiting
+router.get('/:jobId/logs', authenticate, logRateLimiter, getJobLogs);
 
 // Cancel job
 router.post('/:jobId/cancel', authenticate, cancelJob);

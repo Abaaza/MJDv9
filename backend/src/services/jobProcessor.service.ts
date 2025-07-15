@@ -49,13 +49,19 @@ export class JobProcessorService extends EventEmitter {
   async addJob(jobId: string, userId: string, items: any[], method: string): Promise<void> {
     // Console log removed for performance
     
+    // Count items with quantities vs context headers FIRST
+    const itemsWithQuantities = items.filter(item => 
+      item.quantity !== undefined && item.quantity !== null && item.quantity > 0
+    ).length;
+    const contextHeaders = items.length - itemsWithQuantities;
+    
     const job: ProcessingJob = {
       jobId,
       userId,
       status: 'pending',
       progress: 0,
       progressMessage: 'Job queued',
-      itemCount: items.length,
+      itemCount: itemsWithQuantities, // Use items with quantities count, not total
       matchedCount: 0,
       items,
       method,
@@ -67,12 +73,6 @@ export class JobProcessorService extends EventEmitter {
     this.jobs.set(jobId, job);
     this.processingQueue.push(jobId);
     // Console log removed for performance
-    
-    // Count items with quantities vs context headers
-    const itemsWithQuantities = items.filter(item => 
-      item.quantity !== undefined && item.quantity !== null && item.quantity > 0
-    ).length;
-    const contextHeaders = items.length - itemsWithQuantities;
     
     // Emit event for real-time updates
     this.emit('job:queued', { jobId, userId, itemCount: itemsWithQuantities });
@@ -264,7 +264,7 @@ export class JobProcessorService extends EventEmitter {
       item.quantity !== undefined && item.quantity !== null && item.quantity > 0
     ).length;
     const contextHeaders = job.items.length - itemsWithQuantities;
-    this.emitLog(jobId, 'info', `Starting job processing for ${itemsWithQuantities} items (${contextHeaders} context headers)`);
+    this.emitLog(jobId, 'info', `Starting job processing for ${itemsWithQuantities} items`);
     
     // Immediately update Convex to show parsing status
     await this.convex.mutation(api.priceMatching.updateJobStatus, {
@@ -280,7 +280,7 @@ export class JobProcessorService extends EventEmitter {
       job.progress = 1;
       job.progressMessage = 'Loading price database...';
       this.emitProgress(job);
-      this.emitLog(jobId, 'info', 'Fetching price items from database');
+      // Reduce log verbosity - removed database fetching log
       
       const priceItems = await this.convex.query(api.priceItems.getActive);
       // Console log removed for performance
@@ -299,7 +299,10 @@ export class JobProcessorService extends EventEmitter {
         job.progressMessage = 'Preparing batches for AI processing...';
         this.emitProgress(job);
         
-        this.emitLog(jobId, 'info', `ðŸ¤– AI Method (${job.method}): Created ${totalBatches} batches of ${this.BATCH_SIZE} items each for optimal API performance`);
+        // Log batch creation only for first batch to reduce verbosity
+        if (totalBatches > 0) {
+          this.emitLog(jobId, 'info', `Using ${job.method} method with ${totalBatches} batches`);
+        }
         
         job.progress = 25;
         job.progressMessage = `Starting AI processing of ${job.items.length} items in ${totalBatches} batches...`;
@@ -309,7 +312,7 @@ export class JobProcessorService extends EventEmitter {
         job.progressMessage = 'Starting LOCAL processing...';
         this.emitProgress(job);
         
-        this.emitLog(jobId, 'info', `âš¡ LOCAL Method: Processing ${job.items.length} items efficiently (no API rate limits)`);
+        this.emitLog(jobId, 'info', `Using LOCAL method for ${job.items.length} items`);
         
         job.progressMessage = `Processing ${job.items.length} items with LOCAL matching...`;
         this.emitProgress(job);
@@ -353,19 +356,14 @@ export class JobProcessorService extends EventEmitter {
         const batch = job.items.slice(startIdx, startIdx + this.BATCH_SIZE);
         const batchNumber = batchIndex + 1;
         
-        // Calculate realistic progress (25-90%) based on actual items to match
-        const itemsToMatchSoFar = processedCount - contextHeaderCount;
-        // Use 65 instead of 70 to cap at 90% instead of 95%
-        const progressPercentage = Math.min(90, 25 + Math.round((itemsToMatchSoFar / job.itemCount) * 65));
-        job.progress = progressPercentage;
-        job.progressMessage = `Processing batch ${batchNumber}/${totalBatches} (${itemsToMatchSoFar}/${job.itemCount} items)`;
-        
+        // Show progress before processing
+        const itemsProcessedBefore = processedCount - contextHeaderCount;
+        job.progressMessage = `Processing batch ${batchNumber}/${totalBatches} (${itemsProcessedBefore}/${job.itemCount} items)`;
         this.emitProgress(job);
         
-        if (isAIMethod) {
-          this.emitLog(jobId, 'info', `ðŸ¤– Starting AI batch ${batchNumber}/${totalBatches} with ${batch.length} items`);
-        } else {
-          this.emitLog(jobId, 'info', `âš¡ Processing items ${startIdx + 1}-${startIdx + batch.length}`);
+        // Only log every 5th batch or first/last batch to reduce verbosity
+        if (batchIndex === 0 || batchIndex === totalBatches - 1 || batchIndex % 5 === 0) {
+          this.emitLog(jobId, 'info', `Processing batch ${batchNumber}/${totalBatches}`);
         }
         
         const batchStartTime = Date.now();
@@ -385,15 +383,17 @@ export class JobProcessorService extends EventEmitter {
         
         job.matchedCount = successCount;
         const itemsWithQuantities = processedCount - contextHeaderCount;
+        
+        // Calculate accurate progress based on items with quantities only
+        const progressPercentage = Math.min(90, 25 + Math.round((itemsWithQuantities / job.itemCount) * 65));
+        job.progress = progressPercentage;
         job.progressMessage = `Processed ${itemsWithQuantities}/${job.itemCount} items (${successCount} matched, ${failureCount} failed)`;
         
-        if (isAIMethod) {
+        // Only log batch completion for significant batches
+        if (batchIndex === totalBatches - 1 || batchIndex % 10 === 9) {
+          const avgTimePerBatch = batchDuration / 1000;
           this.emitLog(jobId, 'success', 
-            `ðŸ¤– AI Batch ${batchNumber}/${totalBatches} completed in ${(batchDuration/1000).toFixed(1)}s - ${batchSuccesses} matches, ${batchFailures} failures`
-          );
-        } else {
-          this.emitLog(jobId, 'success', 
-            `âš¡ Processed ${batch.length} items in ${(batchDuration/1000).toFixed(1)}s - ${batchSuccesses} matches, ${batchFailures} failures`
+            `Batch ${batchNumber}/${totalBatches} done - ${successCount}/${itemsWithQuantities} matched so far`
           );
         }
         
@@ -409,13 +409,13 @@ export class JobProcessorService extends EventEmitter {
 
         // Save results to database - save ALL unsaved results
         const unsavedResults = results.slice(savedResultsCount);
-        if (unsavedResults.length > 0 && (unsavedResults.length >= this.CONVEX_BATCH_SIZE || processedCount === job.itemCount)) {
+        if (unsavedResults.length > 0 && (unsavedResults.length >= this.CONVEX_BATCH_SIZE || processedCount === job.items.length)) {
           this.emitLog(jobId, 'info', `Saving ${unsavedResults.length} results to database (items ${savedResultsCount + 1}-${results.length})`);
           await this.batchUpdateConvex(jobId, job, unsavedResults);
           savedResultsCount = results.length; // Update saved count
           
           // Add delay after batch save to avoid rate limits
-          if (processedCount < job.itemCount) {
+          if (processedCount < job.items.length) {
             await new Promise(resolve => setTimeout(resolve, this.CONVEX_BATCH_DELAY));
           }
         }

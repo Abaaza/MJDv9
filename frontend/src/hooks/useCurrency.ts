@@ -25,7 +25,10 @@ export function useCurrency() {
 
   const formatPrice = (amount: number | undefined | null): string => {
     if (amount === undefined || amount === null) return `${symbol}0.00`;
-    return `${symbol}${amount.toFixed(2)}`;
+    
+    // Format number with commas
+    const formatted = amount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    return `${symbol}${formatted}`;
   };
 
   return {

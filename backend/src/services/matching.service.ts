@@ -98,23 +98,68 @@ export class MatchingService {
   }
 
   /**
-   * Extract unit from description - simplified
+   * Extract unit from description - Enhanced for better detection
    */
   private extractUnit(text: string): string {
+    // First try to extract units in parentheses or after numbers
+    const inParentheses = text.match(/\(([^)]+)\)/);
+    if (inParentheses) {
+      const unitInParen = this.checkForUnit(inParentheses[1]);
+      if (unitInParen) return unitInParen;
+    }
+    
+    // Check after numbers (e.g., "100 m2", "50 kg")
+    const afterNumber = text.match(/\d+\.?\d*\s*([a-zA-Z][a-zA-Z0-9\.]*)/);
+    if (afterNumber) {
+      const unitAfterNum = this.checkForUnit(afterNumber[1]);
+      if (unitAfterNum) return unitAfterNum;
+    }
+    
+    // Standard unit patterns
     const unitPatterns = [
-      /\b(m2|sqm|sq\.?m|square\s*met(?:er|re)s?)\b/i,
-      /\b(m3|cum|cu\.?m|cubic\s*met(?:er|re)s?)\b/i,
-      /\b(kg|kilogram?s?)\b/i,
+      // Area units
+      /\b(m2|sqm|sq\.?\s*m|square\s*met(?:er|re)s?|sq\.?\s*met(?:er|re)s?)\b/i,
+      /\b(ft2|sqft|sq\.?\s*ft|square\s*f(?:ee|oo)t)\b/i,
+      
+      // Volume units
+      /\b(m3|cum|cu\.?\s*m|cubic\s*met(?:er|re)s?|cu\.?\s*met(?:er|re)s?)\b/i,
+      /\b(ft3|cuft|cu\.?\s*ft|cubic\s*f(?:ee|oo)t)\b/i,
+      
+      // Weight units
+      /\b(kg|kgs?|kilogram?s?|kilo)\b/i,
+      /\b(ton|tonnes?|t|metric\s*ton)\b/i,
+      /\b(lbs?|pounds?)\b/i,
+      
+      // Liquid volume units
       /\b(ltr|lit(?:er|re)s?|l)\b/i,
-      /\b(nos?|numbers?|pcs?|pieces?)\b/i,
-      /\b(mt|met(?:er|re)s?|m)\b/i,
+      /\b(gal|gallons?)\b/i,
+      
+      // Count units
+      /\b(nos?|numbers?|num)\b/i,
+      /\b(pcs?|pieces?|pc)\b/i,
+      /\b(each|ea|units?)\b/i,
+      
+      // Length units
+      /\b(mt|mtr|met(?:er|re)s?|m)\b/i,
       /\b(mm|millimet(?:er|re)s?)\b/i,
-      /\b(rm|running\s*met(?:er|re)s?)\b/i,
-      /\b(ton|tonnes?|t)\b/i,
+      /\b(cm|centimet(?:er|re)s?)\b/i,
+      /\b(rm|rmt|running\s*met(?:er|re)s?)\b/i,
+      /\b(ft|feet|foot)\b/i,
+      /\b(in|inch|inches)\b/i,
+      
+      // Time units
       /\b(hrs?|hours?)\b/i,
       /\b(days?)\b/i,
+      /\b(weeks?)\b/i,
+      /\b(months?)\b/i,
+      
+      // Other units
       /\b(sets?)\b/i,
-      /\b(pairs?)\b/i
+      /\b(pairs?)\b/i,
+      /\b(bags?)\b/i,
+      /\b(rolls?)\b/i,
+      /\b(sheets?)\b/i,
+      /\b(bundles?)\b/i
     ];
     
     for (const pattern of unitPatterns) {
@@ -124,26 +169,76 @@ export class MatchingService {
     
     return '';
   }
+  
+  /**
+   * Helper to check if a string is a valid unit
+   */
+  private checkForUnit(str: string): string {
+    const commonUnits = ['m2', 'sqm', 'm3', 'cum', 'kg', 'kgs', 'l', 'ltr', 'nos', 'no', 
+                        'pcs', 'pc', 'm', 'mt', 'mm', 'cm', 'rm', 'ft', 'in', 'hr', 'hrs',
+                        'day', 'days', 'set', 'sets', 'pair', 'pairs', 'ea', 'each'];
+    
+    const normalized = str.toLowerCase().trim();
+    if (commonUnits.includes(normalized)) {
+      return str;
+    }
+    return '';
+  }
 
   /**
-   * Normalize unit for comparison
+   * Normalize unit for comparison - Enhanced with more variations
    */
   private normalizeUnit(unit: string): string {
-    const normalized = unit.toUpperCase().trim();
+    const normalized = unit.toUpperCase().trim()
+      .replace(/\./g, '') // Remove dots
+      .replace(/\s+/g, ' '); // Normalize spaces
+      
     const unitMap: Record<string, string> = {
-      'SQM': 'M2', 'SQ.M': 'M2', 'SQUARE METER': 'M2', 'SQUARE METERS': 'M2',
-      'CUM': 'M3', 'CU.M': 'M3', 'CUBIC METER': 'M3', 'CUBIC METERS': 'M3',
-      'KGS': 'KG', 'KILOGRAM': 'KG', 'KILOGRAMS': 'KG',
-      'LTR': 'L', 'LITER': 'L', 'LITERS': 'L', 'LITRE': 'L', 'LITRES': 'L',
-      'NOS': 'NO', 'NUMBER': 'NO', 'NUMBERS': 'NO', 'PCS': 'NO', 'PIECE': 'NO', 'PIECES': 'NO',
-      'MT': 'M', 'METER': 'M', 'METERS': 'M', 'METRE': 'M', 'METRES': 'M',
-      'MM': 'MM', 'MILLIMETER': 'MM', 'MILLIMETERS': 'MM',
-      'RM': 'RM', 'RUNNING METER': 'RM', 'RUNNING METERS': 'RM',
-      'TON': 'T', 'TONNE': 'T', 'TONNES': 'T',
+      // Area units
+      'SQM': 'M2', 'SQ M': 'M2', 'SQUARE METER': 'M2', 'SQUARE METERS': 'M2',
+      'SQUARE METRE': 'M2', 'SQUARE METRES': 'M2', 'SQ METER': 'M2', 'SQ METRE': 'M2',
+      'SQFT': 'FT2', 'SQ FT': 'FT2', 'SQUARE FOOT': 'FT2', 'SQUARE FEET': 'FT2',
+      
+      // Volume units
+      'CUM': 'M3', 'CU M': 'M3', 'CUBIC METER': 'M3', 'CUBIC METERS': 'M3',
+      'CUBIC METRE': 'M3', 'CUBIC METRES': 'M3', 'CU METER': 'M3', 'CU METRE': 'M3',
+      'CUFT': 'FT3', 'CU FT': 'FT3', 'CUBIC FOOT': 'FT3', 'CUBIC FEET': 'FT3',
+      
+      // Weight units
+      'KGS': 'KG', 'KILOGRAM': 'KG', 'KILOGRAMS': 'KG', 'KILO': 'KG',
+      'TON': 'T', 'TONNE': 'T', 'TONNES': 'T', 'TONS': 'T', 'METRIC TON': 'T',
+      'LBS': 'LB', 'POUND': 'LB', 'POUNDS': 'LB',
+      
+      // Volume (liquid) units
+      'LTR': 'L', 'LITER': 'L', 'LITERS': 'L', 'LITRE': 'L', 'LITRES': 'L', 'LIT': 'L',
+      'GAL': 'GALLON', 'GALLONS': 'GALLON',
+      
+      // Count units
+      'NOS': 'NO', 'NUMBER': 'NO', 'NUMBERS': 'NO', 'NUM': 'NO',
+      'PCS': 'PC', 'PIECE': 'PC', 'PIECES': 'PC', 'PC': 'PC',
+      'EACH': 'EA', 'UNIT': 'EA', 'UNITS': 'EA',
+      
+      // Length units
+      'MT': 'M', 'MTR': 'M', 'METER': 'M', 'METERS': 'M', 'METRE': 'M', 'METRES': 'M',
+      'MM': 'MM', 'MILLIMETER': 'MM', 'MILLIMETERS': 'MM', 'MILLIMETRE': 'MM', 'MILLIMETRES': 'MM',
+      'CM': 'CM', 'CENTIMETER': 'CM', 'CENTIMETERS': 'CM', 'CENTIMETRE': 'CM', 'CENTIMETRES': 'CM',
+      'RM': 'RM', 'RMT': 'RM', 'RUNNING METER': 'RM', 'RUNNING METERS': 'RM', 'RUNNING METRE': 'RM',
+      'FT': 'FT', 'FEET': 'FT', 'FOOT': 'FT',
+      'IN': 'IN', 'INCH': 'IN', 'INCHES': 'IN',
+      
+      // Time units
       'HR': 'HOUR', 'HRS': 'HOUR', 'HOURS': 'HOUR',
       'DAY': 'DAY', 'DAYS': 'DAY',
+      'WEEK': 'WEEK', 'WEEKS': 'WEEK',
+      'MONTH': 'MONTH', 'MONTHS': 'MONTH',
+      
+      // Other units
       'SET': 'SET', 'SETS': 'SET',
-      'PAIR': 'PAIR', 'PAIRS': 'PAIR'
+      'PAIR': 'PAIR', 'PAIRS': 'PAIR',
+      'BAG': 'BAG', 'BAGS': 'BAG',
+      'ROLL': 'ROLL', 'ROLLS': 'ROLL',
+      'SHEET': 'SHEET', 'SHEETS': 'SHEET',
+      'BUNDLE': 'BUNDLE', 'BUNDLES': 'BUNDLE'
     };
     
     return unitMap[normalized] || normalized;
@@ -175,14 +270,18 @@ export class MatchingService {
     const scoredMatches = itemsWithEmbeddings.map(item => {
       const similarity = this.cosineSimilarity(preGeneratedEmbedding, item.embedding!);
       
-      // Simple unit boost
+      // Strong unit boost for AI matching
       let finalScore = similarity;
       if (queryUnit && item.unit) {
         const normalizedQuery = this.normalizeUnit(queryUnit);
         const normalizedItem = this.normalizeUnit(item.unit);
         if (normalizedQuery === normalizedItem) {
-          finalScore = Math.min(finalScore * 1.2, 0.99);
+          // Boost score significantly for unit match
+          finalScore = Math.min(similarity + 0.3, 0.99); // Add 30% boost instead of 20% multiply
         }
+      } else if (queryUnit && !item.unit) {
+        // Penalize items without units
+        finalScore = similarity * 0.7; // 30% penalty
       }
       
       return { item, score: finalScore };
@@ -245,16 +344,23 @@ export class MatchingService {
     
     const matches = priceItems.map(item => {
       // Simple fuzzy score
-      const fuzzyScore = fuzz.token_set_ratio(description, item.description);
+      // Calculate fuzzy score
+      const fuzzyScore = fuzz.token_set_ratio(description, item.description); // Use full score
       
-      // Unit bonus (simple: match = +20, no match = 0)
+      // Unit bonus - HEAVILY PRIORITIZED
       let unitBonus = 0;
       if (queryUnit && item.unit) {
         const normalizedQuery = this.normalizeUnit(queryUnit);
         const normalizedItem = this.normalizeUnit(item.unit);
         if (normalizedQuery === normalizedItem) {
-          unitBonus = 20;
+          unitBonus = 40; // Reduced from 50 to 40
         }
+      } else if (queryUnit && !item.unit) {
+        // Penalize items without units when query has a unit
+        unitBonus = -20; // Increased penalty
+      } else if (!queryUnit && item.unit) {
+        // Slight penalty when query has no unit but item has one
+        unitBonus = -5;
       }
       
       // Category+Subcategory combined bonus (treat as single unit)
@@ -289,17 +395,37 @@ export class MatchingService {
       return { item, score: totalScore };
     });
     
-    // Sort and get best match
-    matches.sort((a, b) => b.score - a.score);
+    // Sort with unit match as primary criteria when scores are close
+    matches.sort((a, b) => {
+      // If scores are very close (within 10 points), prioritize unit match
+      if (Math.abs(b.score - a.score) < 10 && queryUnit) {
+        const aNormUnit = a.item.unit ? this.normalizeUnit(a.item.unit) : '';
+        const bNormUnit = b.item.unit ? this.normalizeUnit(b.item.unit) : '';
+        const queryNormUnit = this.normalizeUnit(queryUnit);
+        
+        const aHasUnitMatch = aNormUnit === queryNormUnit;
+        const bHasUnitMatch = bNormUnit === queryNormUnit;
+        
+        if (aHasUnitMatch && !bHasUnitMatch) return -1;
+        if (!aHasUnitMatch && bHasUnitMatch) return 1;
+      }
+      
+      return b.score - a.score;
+    });
     const bestMatch = matches[0];
     
+    // Always return the best match, even if confidence is low
+    // Let the user decide what confidence threshold to accept
     return {
       matchedItemId: bestMatch.item._id,
       matchedDescription: bestMatch.item.description,
       matchedCode: bestMatch.item.code || '',
       matchedUnit: bestMatch.item.unit || '',
       matchedRate: bestMatch.item.rate,
-      confidence: Math.min(bestMatch.score / 100, 0.99),
+      // Adjust confidence calculation to account for bonuses
+      // Max possible: fuzzy(90) + unit(40) + category(25) = 155
+      // Scale confidence more generously to avoid too many low scores
+      confidence: Math.min(bestMatch.score / 130, 0.95), // Scale to 130 for more generous scoring
       method: 'LOCAL'
     };
   }
@@ -382,14 +508,18 @@ export class MatchingService {
         // Calculate cosine similarity
         const similarity = this.cosineSimilarity(queryEmbedding!, embedding);
         
-        // Simple unit boost
+        // Strong unit boost for Cohere matching
         let finalScore = similarity;
         if (queryUnit && item.unit) {
           const normalizedQuery = this.normalizeUnit(queryUnit);
           const normalizedItem = this.normalizeUnit(item.unit);
           if (normalizedQuery === normalizedItem) {
-            finalScore = Math.min(finalScore * 1.2, 0.99); // 20% boost for unit match
+            // Boost score significantly for unit match
+            finalScore = Math.min(similarity + 0.3, 0.99); // Add 30% boost
           }
+        } else if (queryUnit && !item.unit) {
+          // Penalize items without units
+          finalScore = similarity * 0.7; // 30% penalty
         }
         
         return { item, score: finalScore };
@@ -463,14 +593,18 @@ export class MatchingService {
       .map(item => {
         const similarity = this.cosineSimilarity(queryEmbedding, item.embedding!);
         
-        // Simple unit boost
+        // Strong unit boost for OpenAI matching
         let finalScore = similarity;
         if (queryUnit && item.unit) {
           const normalizedQuery = this.normalizeUnit(queryUnit);
           const normalizedItem = this.normalizeUnit(item.unit);
           if (normalizedQuery === normalizedItem) {
-            finalScore = Math.min(finalScore * 1.2, 0.99); // 20% boost for unit match
+            // Boost score significantly for unit match
+            finalScore = Math.min(similarity + 0.3, 0.99); // Add 30% boost
           }
+        } else if (queryUnit && !item.unit) {
+          // Penalize items without units
+          finalScore = similarity * 0.7; // 30% penalty
         }
         
         return { item, score: finalScore };
