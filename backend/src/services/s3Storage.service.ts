@@ -13,7 +13,8 @@ export class S3StorageService {
   private constructor() {
     // Check if we have S3 configuration
     this.useS3 = !!(process.env.AWS_S3_BUCKET && (process.env.AWS_ACCESS_KEY_ID || process.env.AWS_LAMBDA_FUNCTION_NAME));
-    this.bucketName = process.env.AWS_S3_BUCKET || 'mjd-boq-uploads';
+    // Hardcode the bucket name for production
+    this.bucketName = 'mjd-boq-uploads-prod';
     
     if (this.useS3) {
       // Initialize S3 client

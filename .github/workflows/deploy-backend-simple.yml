@@ -1,0 +1,67 @@
+name: Deploy Backend Simple
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'backend/**'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Configure AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Deploy Lambda
+        run: |
+          cd backend
+          
+          # Build
+          npm ci
+          npm run build
+          
+          # Package
+          mkdir deploy
+          cp -r dist/* deploy/
+          cp handler-lambda.js package*.json deploy/
+          cd deploy
+          npm ci --production
+          
+          # Remove large unnecessary files
+          rm -rf node_modules/aws-sdk
+          find . -name "*.map" -delete
+          find . -name "*.md" -delete
+          
+          # Create zip
+          zip -r ../deploy.zip . -q
+          cd ..
+          
+          # Check size
+          ls -lh deploy.zip
+          
+          # Deploy
+          aws lambda update-function-code \
+            --function-name boq-matching-system-prod-api \
+            --zip-file fileb://deploy.zip
+          
+          # Wait for update
+          sleep 20
+          
+          # Test
+          curl https://ls4380art0.execute-api.us-east-1.amazonaws.com/health

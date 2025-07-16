@@ -45,6 +45,20 @@ Thumbs.db
 *.tmp
 *.temp
 .cache/
+temp_uploads/
+uploads/
+
+# Windows temp files
+backend/C*Users*
+backend/*AppData*
+backend/nul
+nul
+**/nul
+backend/lambda-deploy/
+backend/lambda-full-deploy/
+backend/lambda-deploy.zip
+backend/deployment.zip
+backend/emergency-handler.zip
 
 # Backend specific
 backend/node_modules/
