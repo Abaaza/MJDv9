@@ -39,7 +39,7 @@ jobs:
           # Package
           rm -rf deploy
           mkdir deploy
-          cp -r dist/* deploy/
+          cp -r dist deploy/
           cp handler-lambda.js package*.json deploy/
           cd deploy
           npm ci --production
