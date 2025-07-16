@@ -50,7 +50,7 @@ async function testPriceMatching(useLocal = false) {
     log('\\n2. Testing authentication...', 'yellow');
     try {
       const loginResponse = await axios.post(`${baseUrl}/api/auth/login`, TEST_USER);
-      authToken = loginResponse.data.token;
+      authToken = loginResponse.data.accessToken;
       log(`✓ Login successful. Token received: ${authToken.substring(0, 20)}...`, 'green');
     } catch (error) {
       if (error.response?.status === 404) {
@@ -62,7 +62,7 @@ async function testPriceMatching(useLocal = false) {
             ...TEST_USER,
             name: 'Test User'
           });
-          authToken = registerResponse.data.token;
+          authToken = registerResponse.data.accessToken;
           log(`✓ Registration successful. Token received: ${authToken.substring(0, 20)}...`, 'green');
         } catch (regError) {
           log(`✗ Registration failed: ${regError.response?.data?.message || regError.message}`, 'red');

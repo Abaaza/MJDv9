@@ -4,6 +4,7 @@ import { api } from '../lib/convex-api';
 import { ExcelService } from '../services/excel.service';
 import { MatchingService } from '../services/matching.service';
 import { jobProcessor } from '../services/jobProcessor.service';
+import { lambdaProcessor, LambdaProcessorService } from '../services/lambdaProcessor.service';
 import { toConvexId } from '../utils/convexId';
 import { v4 as uuidv4 } from 'uuid';
 import { fileStorage } from '../services/fileStorage.service';
@@ -369,8 +370,26 @@ export async function uploadAndMatch(req: Request, res: Response): Promise<void>
     // Console log removed for performance
     const processorStartTime = Date.now();
     
-    // Check if job should be processed asynchronously
-    if (AsyncJobInvoker.shouldProcessAsync(preparedItems.length)) {
+    // Check if running in Lambda and should process synchronously
+    if (LambdaProcessorService.isLambdaEnvironment() && lambdaProcessor.shouldProcessSynchronously(preparedItems.length)) {
+      // Console log removed for performance
+      console.log(`[Lambda] Processing ${preparedItems.length} items synchronously to avoid timeout issues`);
+      
+      // Process synchronously in Lambda for small files
+      const result = await lambdaProcessor.processSynchronously(
+        jobId.toString(),
+        userId.toString(),
+        preparedItems,
+        matchingMethod,
+        processorStartTime
+      );
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Lambda processing failed');
+      }
+      
+      // Console log removed for performance
+    } else if (AsyncJobInvoker.shouldProcessAsync(preparedItems.length)) {
       // Console log removed for performance
       
       // Update job status to indicate async processing
@@ -391,7 +410,7 @@ export async function uploadAndMatch(req: Request, res: Response): Promise<void>
       
       // Console log removed for performance
     } else {
-      // Process synchronously for small jobs
+      // Process synchronously for small jobs (non-Lambda)
       await jobProcessor.addJob(jobId.toString(), userId.toString(), preparedItems, matchingMethod);
     }
     
@@ -496,8 +515,22 @@ export async function startMatching(req: Request, res: Response): Promise<void> 
     
     // Console log removed for performance
     
-    // Check if job should be processed asynchronously
-    if (AsyncJobInvoker.shouldProcessAsync(parsedItems.length)) {
+    // Check if running in Lambda and should process synchronously
+    if (LambdaProcessorService.isLambdaEnvironment() && lambdaProcessor.shouldProcessSynchronously(parsedItems.length)) {
+      console.log(`[Lambda] Processing ${parsedItems.length} items synchronously in startMatching`);
+      
+      // Process synchronously in Lambda for small files
+      const result = await lambdaProcessor.processSynchronously(
+        jobId,
+        req.user.id.toString(),
+        parsedItems,
+        matchingMethod
+      );
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Lambda processing failed');
+      }
+    } else if (AsyncJobInvoker.shouldProcessAsync(parsedItems.length)) {
       // Console log removed for performance
       
       // Send to async processor
@@ -510,7 +543,7 @@ export async function startMatching(req: Request, res: Response): Promise<void> 
       
       // Console log removed for performance
     } else {
-      // Process synchronously for small jobs
+      // Process synchronously for small jobs (non-Lambda)
       await jobProcessor.addJob(jobId, req.user.id.toString(), parsedItems, matchingMethod);
     }
     
