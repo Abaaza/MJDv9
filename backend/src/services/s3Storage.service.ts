@@ -6,7 +6,7 @@ import fs from 'fs/promises';
 
 export class S3StorageService {
   private static instance: S3StorageService;
-  private s3: AWS.S3;
+  private s3: any;
   private bucketName: string;
   private useS3: boolean;
   private localStorageDir: string;
