@@ -28,8 +28,8 @@ export class MatchingService {
 
   private constructor() {
     this.embeddingCache = new LRUCache<string, number[]>({
-      max: 5000,
-      ttl: 1000 * 60 * 60, // 1 hour
+      max: 10000, // Increased cache size
+      ttl: 1000 * 60 * 60 * 2, // 2 hours - longer TTL for Lambda
     });
   }
 

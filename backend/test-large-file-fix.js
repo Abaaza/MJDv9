@@ -123,8 +123,11 @@ async function runTests() {
   
   // Test different file sizes
   const tests = [
-    { file: 'boq_test_sample.xlsx', expected: 'Should process successfully (11 items)' },
-    { file: 'boq_large.xlsx', expected: 'Should process successfully if <500 items OR fail gracefully if >500 items' }
+    { file: 'test-boq.xlsx', expected: 'Should process successfully (small file ~5 items)' },
+    { file: 'test-boq-100-items.xlsx', expected: 'Should process successfully (100 items)' },
+    { file: 'test-boq-500-items.xlsx', expected: 'Should process successfully (500 items)' },
+    { file: 'test-boq-1000-items.xlsx', expected: 'Should process successfully (1000 items)' },
+    { file: 'test-boq-2000-items.xlsx', expected: 'Should process successfully (2000 items - at limit)' }
   ];
   
   for (const test of tests) {

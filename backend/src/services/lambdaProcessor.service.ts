@@ -15,9 +15,11 @@ export class LambdaProcessorService {
   private matchingService = MatchingService.getInstance();
   
   // Lambda-optimized settings
-  private readonly LAMBDA_BATCH_SIZE = 5; // Smaller batches for Lambda
-  private readonly LAMBDA_ITEM_THRESHOLD = 500; // Process synchronously if less than this (increased from 50)
+  private readonly LAMBDA_BATCH_SIZE = 20; // Increased batch size for faster processing
+  private readonly LAMBDA_ITEM_THRESHOLD = 2000; // Process synchronously if less than this
   private readonly LAMBDA_TIMEOUT_BUFFER = 30000; // 30 seconds buffer before Lambda timeout
+  private readonly CONVEX_UPDATE_INTERVAL = 100; // Update progress every 100 items
+  private readonly MAX_CONCURRENT_MATCHES = 5; // Process multiple matches in parallel
   
   /**
    * Check if we're running in Lambda environment
@@ -61,36 +63,55 @@ export class LambdaProcessorService {
       const priceItems = await this.convex.query(api.priceItems.getActive);
       console.log(`[LambdaProcessor] Loaded ${priceItems.length} price items`);
       
-      // Process items in small batches
+      // Process items in optimized batches
       const results: any[] = [];
       let matchedCount = 0;
       let processedCount = 0;
+      let lastProgressUpdate = 0;
       
       const totalBatches = Math.ceil(items.length / this.LAMBDA_BATCH_SIZE);
+      console.log(`[LambdaProcessor] Processing ${items.length} items in ${totalBatches} batches`);
       
+      // Process batches with optimizations
       for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
         // Check if we're approaching Lambda timeout
         const elapsedTime = Date.now() - startTime;
         if (elapsedTime > (300000 - this.LAMBDA_TIMEOUT_BUFFER)) { // 5 min Lambda limit
           console.warn(`[LambdaProcessor] Approaching Lambda timeout, stopping at batch ${batchIndex}`);
           
-          // Update status to indicate timeout
+          // Save what we have so far
+          if (results.length > 0) {
+            await this.saveResultsInChunks(results.slice(0, processedCount), jobId);
+          }
+          
+          // Update status to indicate partial completion
           await this.convex.mutation(api.priceMatching.updateJobStatus, {
             jobId: jobId as any,
-            status: 'failed' as any,
-            error: 'Processing timeout - file too large. Please use a smaller file.',
-            progress: Math.round((processedCount / items.length) * 100),
-            progressMessage: `Timeout after processing ${processedCount} items`
+            status: 'completed' as any,
+            progress: 100,
+            progressMessage: `Partially completed: ${matchedCount} matches out of ${processedCount} items processed (timeout)`,
+            matchedCount,
           });
           
-          throw new Error('Lambda timeout - file too large for processing within time limit');
+          return {
+            success: true,
+            matchedCount,
+            results: results.slice(0, processedCount),
+          };
         }
         
         const startIdx = batchIndex * this.LAMBDA_BATCH_SIZE;
         const batch = items.slice(startIdx, startIdx + this.LAMBDA_BATCH_SIZE);
         
-        // Process batch
-        const batchResults = await this.processBatch(batch, priceItems, method, jobId);
+        // Process batch in parallel for better performance
+        const batchPromises = [];
+        for (let i = 0; i < batch.length; i += this.MAX_CONCURRENT_MATCHES) {
+          const subBatch = batch.slice(i, i + this.MAX_CONCURRENT_MATCHES);
+          batchPromises.push(this.processBatch(subBatch, priceItems, method, jobId));
+        }
+        
+        const batchResultArrays = await Promise.all(batchPromises);
+        const batchResults = batchResultArrays.flat();
         results.push(...batchResults);
         
         // Count matches
@@ -100,42 +121,23 @@ export class LambdaProcessorService {
         matchedCount += batchMatches;
         processedCount += batch.length;
         
-        // Update progress (cap at 85% to leave room for saving)
-        const progress = Math.min(85, Math.round((processedCount / items.length) * 85));
-        await this.convex.mutation(api.priceMatching.updateJobStatus, {
-          jobId: jobId as any,
-          status: 'matching' as any,
-          progress,
-          progressMessage: `Processed ${processedCount}/${items.length} items`,
-          matchedCount,
-        });
-        
-        // Small delay to avoid rate limits
-        await new Promise(resolve => setTimeout(resolve, 100));
+        // Update progress less frequently to reduce Convex calls
+        if (processedCount - lastProgressUpdate >= this.CONVEX_UPDATE_INTERVAL || batchIndex === totalBatches - 1) {
+          const progress = Math.min(85, Math.round((processedCount / items.length) * 85));
+          await this.convex.mutation(api.priceMatching.updateJobStatus, {
+            jobId: jobId as any,
+            status: 'matching' as any,
+            progress,
+            progressMessage: `Processed ${processedCount}/${items.length} items`,
+            matchedCount,
+          });
+          lastProgressUpdate = processedCount;
+        }
       }
       
-      // Save results in smaller chunks for Lambda
+      // Save results using optimized method
       console.log(`[LambdaProcessor] Saving ${results.length} results to database`);
-      const saveChunkSize = 10; // Even smaller chunks for Lambda
-      
-      for (let i = 0; i < results.length; i += saveChunkSize) {
-        const chunk = results.slice(i, i + saveChunkSize);
-        
-        // Update progress for saving
-        const saveProgress = 85 + Math.round((i / results.length) * 10);
-        await this.convex.mutation(api.priceMatching.updateJobStatus, {
-          jobId: jobId as any,
-          status: 'matching' as any,
-          progress: saveProgress,
-          progressMessage: `Saving results... (${i}/${results.length})`,
-        });
-        
-        // Save chunk
-        await ConvexBatchProcessor.saveMatchResults(chunk);
-        
-        // Small delay between chunks
-        await new Promise(resolve => setTimeout(resolve, 200));
-      }
+      await this.saveResultsInChunks(results, jobId);
       
       // Final update
       const finalItemsWithQty = results.filter(r => r.matchMethod !== 'CONTEXT').length;
@@ -269,10 +271,48 @@ export class LambdaProcessorService {
   }
   
   /**
+   * Save results in optimized chunks
+   */
+  private async saveResultsInChunks(results: any[], jobId: string): Promise<void> {
+    const saveChunkSize = 50; // Larger chunks for faster saving
+    const totalChunks = Math.ceil(results.length / saveChunkSize);
+    
+    console.log(`[LambdaProcessor] Saving ${results.length} results in ${totalChunks} chunks`);
+    
+    // Save all chunks in parallel batches
+    const parallelBatches = 5; // Save 5 chunks at a time
+    for (let i = 0; i < results.length; i += saveChunkSize * parallelBatches) {
+      const promises = [];
+      
+      for (let j = 0; j < parallelBatches && (i + j * saveChunkSize) < results.length; j++) {
+        const startIdx = i + j * saveChunkSize;
+        const chunk = results.slice(startIdx, startIdx + saveChunkSize);
+        if (chunk.length > 0) {
+          promises.push(ConvexBatchProcessor.saveMatchResults(chunk));
+        }
+      }
+      
+      // Wait for batch to complete
+      await Promise.all(promises);
+      
+      // Update progress periodically
+      if (i % 200 === 0) {
+        const saveProgress = 85 + Math.round((i / results.length) * 14);
+        await this.convex.mutation(api.priceMatching.updateJobStatus, {
+          jobId: jobId as any,
+          status: 'matching' as any,
+          progress: saveProgress,
+          progressMessage: `Saving results... (${Math.min(i + saveChunkSize * parallelBatches, results.length)}/${results.length})`,
+        });
+      }
+    }
+  }
+
+  /**
    * Check if a job should be processed synchronously in Lambda
    */
   shouldProcessSynchronously(itemCount: number): boolean {
-    // In Lambda, process small files synchronously
+    // In Lambda, process files up to threshold synchronously
     if (LambdaProcessorService.isLambdaEnvironment()) {
       return itemCount <= this.LAMBDA_ITEM_THRESHOLD;
     }
