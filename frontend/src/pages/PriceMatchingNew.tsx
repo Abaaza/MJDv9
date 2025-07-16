@@ -546,7 +546,7 @@ export default function PriceMatchingNew() {
       )}
 
       {/* Job Logs */}
-      {currentJobId && showLogs && currentJobLogs.length > 0 && (
+      {currentJobId && showLogs && (
         <JobLogs 
           logs={currentJobLogs.map((log: any) => ({
             jobId: currentJobId,
