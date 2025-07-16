@@ -1,0 +1,27 @@
+{
+    "compilerOptions":  {
+                            "noEmit":  false,
+                            "noImplicitAny":  false,
+                            "resolveJsonModule":  true,
+                            "allowSyntheticDefaultImports":  true,
+                            "noUnusedLocals":  false,
+                            "strictNullChecks":  false,
+                            "noImplicitReturns":  false,
+                            "strict":  false,
+                            "noUnusedParameters":  false,
+                            "skipLibCheck":  true,
+                            "allowJs":  true,
+                            "esModuleInterop":  true
+                        },
+    "include":  [
+                    "src/**/*"
+                ],
+    "exclude":  [
+                    "node_modules",
+                    "**/*.test.ts",
+                    "**/*.spec.ts",
+                    "src/scripts/**",
+                    "src/tests/**"
+                ],
+    "extends":  "./tsconfig.json"
+}
