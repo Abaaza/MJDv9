@@ -1,18 +1,32 @@
-import { Lambda, S3 } from 'aws-sdk';
-import { SQS } from 'aws-sdk';
 import { v4 as uuidv4 } from 'uuid';
 
-const lambda = new Lambda({
-  region: process.env.AWS_REGION || 'us-east-1'
-});
+// Dynamic import for aws-sdk to handle Lambda environment
+let Lambda: any, S3: any, SQS: any;
+let lambda: any, sqs: any, s3: any;
+let awsSdkAvailable = false;
 
-const sqs = new SQS({
-  region: process.env.AWS_REGION || 'us-east-1'
-});
+try {
+  const AWS = require('aws-sdk');
+  Lambda = AWS.Lambda;
+  S3 = AWS.S3;
+  SQS = AWS.SQS;
+  
+  lambda = new Lambda({
+    region: process.env.AWS_REGION || 'us-east-1'
+  });
 
-const s3 = new S3({
-  region: process.env.AWS_REGION || 'us-east-1'
-});
+  sqs = new SQS({
+    region: process.env.AWS_REGION || 'us-east-1'
+  });
+
+  s3 = new S3({
+    region: process.env.AWS_REGION || 'us-east-1'
+  });
+  
+  awsSdkAvailable = true;
+} catch (error) {
+  console.warn('[AsyncJobInvoker] aws-sdk not available, async jobs disabled');
+}
 
 export interface JobPayload {
   jobId: string;
@@ -48,6 +62,10 @@ export class AsyncJobInvoker {
    * Invoke Lambda function asynchronously
    */
   static async invokeLambda(payload: JobPayload): Promise<void> {
+    if (!awsSdkAvailable) {
+      throw new Error('AWS SDK not available for async processing');
+    }
+    
     const params = {
       FunctionName: `${process.env.AWS_LAMBDA_FUNCTION_NAME}-processJob`,
       InvocationType: 'Event', // Async invocation
@@ -67,6 +85,10 @@ export class AsyncJobInvoker {
    * Send job to SQS queue with S3 storage for large payloads
    */
   static async sendToQueue(payload: JobPayload): Promise<void> {
+    if (!awsSdkAvailable) {
+      throw new Error('AWS SDK not available for async processing');
+    }
+    
     if (!this.SQS_QUEUE_URL) {
       console.warn('[AsyncJobInvoker] SQS_QUEUE_URL not configured, falling back to direct processing');
       throw new Error('SQS_QUEUE_URL not configured');
