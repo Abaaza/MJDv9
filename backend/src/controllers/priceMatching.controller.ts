@@ -375,21 +375,49 @@ export async function uploadAndMatch(req: Request, res: Response): Promise<void>
       // Console log removed for performance
       console.log(`[Lambda] Processing ${preparedItems.length} items synchronously to avoid timeout issues`);
       
-      // Process synchronously in Lambda for small files
-      const result = await lambdaProcessor.processSynchronously(
-        jobId.toString(),
-        userId.toString(),
-        preparedItems,
-        matchingMethod,
-        processorStartTime
-      );
-      
-      if (!result.success) {
-        throw new Error(result.error || 'Lambda processing failed');
+      try {
+        // Process synchronously in Lambda for files up to 500 items
+        const result = await lambdaProcessor.processSynchronously(
+          jobId.toString(),
+          userId.toString(),
+          preparedItems,
+          matchingMethod,
+          processorStartTime
+        );
+        
+        if (!result.success) {
+          throw new Error(result.error || 'Lambda processing failed');
+        }
+      } catch (error: any) {
+        // If Lambda processing fails, provide helpful error message
+        console.error(`[Lambda] Synchronous processing failed:`, error);
+        
+        // Update job status to failed with helpful message
+        await convex.mutation(api.priceMatching.updateJobStatus, {
+          jobId: jobId,
+          status: 'failed' as any,
+          error: `File is too large for Lambda processing (${preparedItems.length} items). Please try: 1) Upload a smaller file (under 500 items), 2) Split your file into smaller chunks, or 3) Contact support for batch processing options.`
+        });
+        
+        throw new Error(`File too large for Lambda environment. Please upload files with less than 500 items or split your file into smaller chunks.`);
       }
       
       // Console log removed for performance
-    } else if (AsyncJobInvoker.shouldProcessAsync(preparedItems.length)) {
+    } else if (LambdaProcessorService.isLambdaEnvironment()) {
+      // In Lambda but file is too large (>500 items)
+      console.error(`[Lambda] File too large for Lambda processing: ${preparedItems.length} items`);
+      
+      // Update job status to failed with helpful message
+      await convex.mutation(api.priceMatching.updateJobStatus, {
+        jobId: jobId,
+        status: 'failed' as any,
+        error: `This file contains ${preparedItems.length} items, which exceeds the Lambda processing limit of 500 items. Please split your file into smaller chunks (max 500 items each) and process them separately.`,
+        progress: 0,
+        progressMessage: 'File too large for serverless processing'
+      });
+      
+      throw new Error(`File too large (${preparedItems.length} items). Lambda can only process files with up to 500 items. Please split your file into smaller chunks.`);
+    } else if (AsyncJobInvoker && AsyncJobInvoker.shouldProcessAsync && AsyncJobInvoker.shouldProcessAsync(preparedItems.length)) {
       // Console log removed for performance
       
       // Update job status to indicate async processing

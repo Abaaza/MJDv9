@@ -2,20 +2,20 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { api } from '../lib/api';
 
 interface JobLog {
-  timestamp: number;
-  level: 'info' | 'error' | 'warning';
+  timestamp: string; // ISO date string from backend
+  level: 'info' | 'error' | 'warning' | 'success';
   message: string;
 }
 
 interface LogCache {
   logs: JobLog[];
   lastFetch: number;
-  lastTimestamp: number;
+  lastTimestamp: string | null;
 }
 
 const LOG_CACHE_DURATION = 10000; // Cache logs for 10 seconds
-const LOG_POLL_INTERVAL = 5000; // Poll every 5 seconds for logs
-const MAX_LOGS_PER_JOB = 100; // Keep only last 100 logs
+const LOG_POLL_INTERVAL = 2000; // Poll every 2 seconds for logs (faster updates)
+const MAX_LOGS_PER_JOB = 500; // Keep last 500 logs for better history
 
 export function useJobLogs() {
   const [jobLogs, setJobLogs] = useState<Record<string, JobLog[]>>({});
@@ -34,9 +34,9 @@ export function useJobLogs() {
 
     try {
       // Only fetch new logs since last timestamp
-      const lastTimestamp = cached?.lastTimestamp || 0;
+      const lastTimestamp = cached?.lastTimestamp || null;
       const response = await api.get(`/jobs/${jobId}/logs`, {
-        params: { since: lastTimestamp }
+        params: lastTimestamp ? { since: lastTimestamp } : {}
       });
       
       const newLogs: JobLog[] = response.data.logs || [];
@@ -44,7 +44,7 @@ export function useJobLogs() {
       // Merge with existing logs
       const existingLogs = cached?.logs || [];
       const mergedLogs = [...existingLogs, ...newLogs]
-        .sort((a, b) => a.timestamp - b.timestamp)
+        .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
         .slice(-MAX_LOGS_PER_JOB); // Keep only last 100
       
       // Update cache

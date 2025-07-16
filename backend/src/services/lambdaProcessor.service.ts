@@ -16,7 +16,7 @@ export class LambdaProcessorService {
   
   // Lambda-optimized settings
   private readonly LAMBDA_BATCH_SIZE = 5; // Smaller batches for Lambda
-  private readonly LAMBDA_ITEM_THRESHOLD = 50; // Process synchronously if less than this
+  private readonly LAMBDA_ITEM_THRESHOLD = 500; // Process synchronously if less than this (increased from 50)
   private readonly LAMBDA_TIMEOUT_BUFFER = 30000; // 30 seconds buffer before Lambda timeout
   
   /**
@@ -73,7 +73,17 @@ export class LambdaProcessorService {
         const elapsedTime = Date.now() - startTime;
         if (elapsedTime > (300000 - this.LAMBDA_TIMEOUT_BUFFER)) { // 5 min Lambda limit
           console.warn(`[LambdaProcessor] Approaching Lambda timeout, stopping at batch ${batchIndex}`);
-          break;
+          
+          // Update status to indicate timeout
+          await this.convex.mutation(api.priceMatching.updateJobStatus, {
+            jobId: jobId as any,
+            status: 'failed' as any,
+            error: 'Processing timeout - file too large. Please use a smaller file.',
+            progress: Math.round((processedCount / items.length) * 100),
+            progressMessage: `Timeout after processing ${processedCount} items`
+          });
+          
+          throw new Error('Lambda timeout - file too large for processing within time limit');
         }
         
         const startIdx = batchIndex * this.LAMBDA_BATCH_SIZE;
