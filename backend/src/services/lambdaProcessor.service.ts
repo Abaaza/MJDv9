@@ -14,11 +14,11 @@ export class LambdaProcessorService {
   private convex = getConvexClient();
   private matchingService = MatchingService.getInstance();
   
-  // Lambda-optimized settings
-  private readonly LAMBDA_BATCH_SIZE = 100; // Much larger batches for efficiency
-  private readonly LAMBDA_ITEM_THRESHOLD = 1000; // Realistic limit for Lambda
+  // Lambda-optimized settings for 15-minute timeout
+  private readonly LAMBDA_BATCH_SIZE = 100; // Large batches for efficiency
+  private readonly LAMBDA_ITEM_THRESHOLD = 5000; // Can handle more with 15-min timeout
   private readonly LAMBDA_TIMEOUT_BUFFER = 60000; // 60 seconds buffer before Lambda timeout
-  private readonly CONVEX_UPDATE_INTERVAL = 1000; // Only update once per 1000 items
+  private readonly CONVEX_UPDATE_INTERVAL = 500; // Update every 500 items
   private readonly SAVE_BATCH_SIZE = 100; // Save in larger chunks
   
   /**
@@ -78,7 +78,7 @@ export class LambdaProcessorService {
       for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
         // Check if we're approaching Lambda timeout
         const elapsedTime = Date.now() - startTime;
-        if (elapsedTime > (300000 - this.LAMBDA_TIMEOUT_BUFFER)) { // 5 min Lambda limit
+        if (elapsedTime > (900000 - this.LAMBDA_TIMEOUT_BUFFER)) { // 15 min Lambda limit
           console.warn(`[LambdaProcessor] Approaching Lambda timeout, stopping at batch ${batchIndex}`);
           
           // Save what we have so far

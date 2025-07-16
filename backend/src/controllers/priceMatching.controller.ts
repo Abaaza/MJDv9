@@ -370,40 +370,50 @@ export async function uploadAndMatch(req: Request, res: Response): Promise<void>
     // Console log removed for performance
     const processorStartTime = Date.now();
     
-    // Check if running in Lambda and should process synchronously
-    if (LambdaProcessorService.isLambdaEnvironment() && lambdaProcessor.shouldProcessSynchronously(preparedItems.length)) {
-      // Console log removed for performance
-      console.log(`[Lambda] Processing ${preparedItems.length} items synchronously to avoid timeout issues`);
+    // Check if running in Lambda
+    if (LambdaProcessorService.isLambdaEnvironment()) {
+      console.log(`[Lambda] Queuing ${preparedItems.length} items for async processing`);
       
-      try {
-        // Process synchronously in Lambda for files up to 500 items
-        const result = await lambdaProcessor.processSynchronously(
-          jobId.toString(),
-          userId.toString(),
-          preparedItems,
-          matchingMethod,
-          processorStartTime
-        );
-        
-        if (!result.success) {
-          throw new Error(result.error || 'Lambda processing failed');
+      // For Lambda, always return immediately and process async to avoid API Gateway timeout
+      // Store the job data for background processing
+      await convex.mutation(api.priceMatching.updateJobStatus, {
+        jobId: jobId,
+        status: 'queued' as any,
+        progress: 0,
+        progressMessage: `Job queued for processing (${preparedItems.length} items)`,
+      });
+      
+      // Start async processing (non-blocking)
+      setImmediate(async () => {
+        try {
+          console.log(`[Lambda] Starting background processing for job ${jobId}`);
+          const result = await lambdaProcessor.processSynchronously(
+            jobId.toString(),
+            userId.toString(),
+            preparedItems,
+            matchingMethod,
+            Date.now()
+          );
+          
+          if (!result.success) {
+            await convex.mutation(api.priceMatching.updateJobStatus, {
+              jobId: jobId,
+              status: 'failed' as any,
+              error: result.error || 'Processing failed',
+            });
+          }
+        } catch (error: any) {
+          console.error(`[Lambda] Background processing error:`, error);
+          await convex.mutation(api.priceMatching.updateJobStatus, {
+            jobId: jobId,
+            status: 'failed' as any,
+            error: error.message || 'Background processing failed',
+          });
         }
-      } catch (error: any) {
-        // If Lambda processing fails, provide helpful error message
-        console.error(`[Lambda] Synchronous processing failed:`, error);
-        
-        // Update job status to failed with helpful message
-        await convex.mutation(api.priceMatching.updateJobStatus, {
-          jobId: jobId,
-          status: 'failed' as any,
-          error: `File is too large for Lambda processing (${preparedItems.length} items). Please try: 1) Upload a smaller file (under 1000 items), 2) Split your file into smaller chunks, or 3) Contact support for batch processing options.`
-        });
-        
-        throw new Error(`File too large for Lambda environment. Please upload files with less than 1000 items or split your file into smaller chunks.`);
-      }
+      });
       
       // Console log removed for performance
-    } else if (LambdaProcessorService.isLambdaEnvironment()) {
+    } else if (LambdaProcessorService.isLambdaEnvironment() && false) {
       // In Lambda but file is too large (>300 items)
       console.error(`[Lambda] File too large for Lambda processing: ${preparedItems.length} items`);
       
