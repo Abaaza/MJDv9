@@ -37,6 +37,7 @@ jobs:
           npm run build
           
           # Package
+          rm -rf deploy
           mkdir deploy
           cp -r dist/* deploy/
           cp handler-lambda.js package*.json deploy/
