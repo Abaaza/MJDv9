@@ -266,7 +266,7 @@ export async function uploadAndMatch(req: Request, res: Response): Promise<void>
       if (!res.headersSent) {
         res.status(504).json({ error: 'Operation timeout. Please try uploading a smaller file or contact support.' });
       }
-    }, 120000); // 2 minute timeout
+    }, 280000); // 4.5 minute timeout (Lambda has 5 min limit)
 
     // Console log removed for performance
     const parseStartTime = Date.now();

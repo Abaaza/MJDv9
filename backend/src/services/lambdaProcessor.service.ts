@@ -18,7 +18,7 @@ export class LambdaProcessorService {
   private readonly LAMBDA_BATCH_SIZE = 20; // Increased batch size for faster processing
   private readonly LAMBDA_ITEM_THRESHOLD = 2000; // Process synchronously if less than this
   private readonly LAMBDA_TIMEOUT_BUFFER = 30000; // 30 seconds buffer before Lambda timeout
-  private readonly CONVEX_UPDATE_INTERVAL = 100; // Update progress every 100 items
+  private readonly CONVEX_UPDATE_INTERVAL = 250; // Update progress every 250 items
   private readonly MAX_CONCURRENT_MATCHES = 5; // Process multiple matches in parallel
   
   /**
@@ -51,13 +51,15 @@ export class LambdaProcessorService {
       
       console.log(`[LambdaProcessor] Processing ${itemsWithQuantities.length} items (${contextHeaders} context headers)`);
       
-      // Update initial status
-      await this.convex.mutation(api.priceMatching.updateJobStatus, {
-        jobId: jobId as any,
-        status: 'matching' as any,
-        progress: 10,
-        progressMessage: `Starting Lambda processing of ${itemsWithQuantities.length} items...`,
-      });
+      // Update initial status only for larger files
+      if (items.length > 100) {
+        await this.convex.mutation(api.priceMatching.updateJobStatus, {
+          jobId: jobId as any,
+          status: 'matching' as any,
+          progress: 10,
+          progressMessage: `Starting Lambda processing of ${itemsWithQuantities.length} items...`,
+        });
+      }
       
       // Load price items
       const priceItems = await this.convex.query(api.priceItems.getActive);
@@ -295,8 +297,8 @@ export class LambdaProcessorService {
       // Wait for batch to complete
       await Promise.all(promises);
       
-      // Update progress periodically
-      if (i % 200 === 0) {
+      // Update progress only a few times during save
+      if (i === 0 || i >= results.length / 2 || i >= results.length - saveChunkSize * parallelBatches) {
         const saveProgress = 85 + Math.round((i / results.length) * 14);
         await this.convex.mutation(api.priceMatching.updateJobStatus, {
           jobId: jobId as any,
