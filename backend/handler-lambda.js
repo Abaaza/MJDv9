@@ -74,8 +74,13 @@ const handler = serverless(app, {
     }
   },
   response: (response, event, context) => {
+    // Ensure response has headers object
+    if (!response.headers) {
+      response.headers = {};
+    }
+    
     // Ensure cookies are properly set in the response
-    if (response.headers && response.headers['set-cookie']) {
+    if (response.headers['set-cookie']) {
       console.log('[Handler] Response has set-cookie headers');
       
       // API Gateway expects set-cookie as an array
