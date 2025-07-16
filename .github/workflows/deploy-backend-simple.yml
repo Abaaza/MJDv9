@@ -57,14 +57,21 @@ jobs:
           find . -name "*.test.js" -delete
           find . -name "*.spec.js" -delete
           
-          # Remove unnecessary large packages while keeping aws-sdk
-          rm -rf node_modules/@aws-sdk/client-*
+          # Remove large packages
+          rm -rf node_modules/@aws-sdk
           rm -rf node_modules/rxjs
           rm -rf node_modules/@tanstack
+          rm -rf node_modules/prettier
+          rm -rf node_modules/react-dom
+          rm -rf node_modules/react
           
-          # Keep only production dependencies of aws-sdk
-          find node_modules/aws-sdk -name "*.min.js" -delete
-          find node_modules/aws-sdk -name "*.flow" -delete
+          # CRITICAL: Remove aws-sdk v2 (41MB) - Lambda runtime includes it
+          rm -rf node_modules/aws-sdk
+          
+          # Remove other large unnecessary packages
+          rm -rf node_modules/@babel
+          rm -rf node_modules/eslint*
+          rm -rf node_modules/jest*
           
           # Create zip
           zip -r ../deploy.zip . -q

@@ -1,4 +1,5 @@
-import AWS from 'aws-sdk';
+// Use dynamic import for aws-sdk to handle Lambda environment
+let AWS: any;
 import { v4 as uuidv4 } from 'uuid';
 import path from 'path';
 import fs from 'fs/promises';
@@ -17,11 +18,18 @@ export class S3StorageService {
     this.bucketName = 'mjd-boq-uploads-prod';
     
     if (this.useS3) {
-      // Initialize S3 client
-      this.s3 = new AWS.S3({
-        region: process.env.AWS_REGION || 'us-east-1',
-        // Credentials are automatically loaded from environment or IAM role
-      });
+      try {
+        // Try to load aws-sdk - it's available in Lambda runtime
+        AWS = require('aws-sdk');
+        // Initialize S3 client
+        this.s3 = new AWS.S3({
+          region: process.env.AWS_REGION || 'us-east-1',
+          // Credentials are automatically loaded from environment or IAM role
+        });
+      } catch (error) {
+        console.warn('[S3Storage] aws-sdk not available, falling back to local storage');
+        this.useS3 = false;
+      }
     }
     
     // Local storage fallback directory
