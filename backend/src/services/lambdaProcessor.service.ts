@@ -15,11 +15,11 @@ export class LambdaProcessorService {
   private matchingService = MatchingService.getInstance();
   
   // Lambda-optimized settings
-  private readonly LAMBDA_BATCH_SIZE = 20; // Increased batch size for faster processing
-  private readonly LAMBDA_ITEM_THRESHOLD = 2000; // Process synchronously if less than this
-  private readonly LAMBDA_TIMEOUT_BUFFER = 30000; // 30 seconds buffer before Lambda timeout
-  private readonly CONVEX_UPDATE_INTERVAL = 250; // Update progress every 250 items
-  private readonly MAX_CONCURRENT_MATCHES = 5; // Process multiple matches in parallel
+  private readonly LAMBDA_BATCH_SIZE = 100; // Much larger batches for efficiency
+  private readonly LAMBDA_ITEM_THRESHOLD = 1000; // Realistic limit for Lambda
+  private readonly LAMBDA_TIMEOUT_BUFFER = 60000; // 60 seconds buffer before Lambda timeout
+  private readonly CONVEX_UPDATE_INTERVAL = 1000; // Only update once per 1000 items
+  private readonly SAVE_BATCH_SIZE = 100; // Save in larger chunks
   
   /**
    * Check if we're running in Lambda environment
@@ -105,15 +105,8 @@ export class LambdaProcessorService {
         const startIdx = batchIndex * this.LAMBDA_BATCH_SIZE;
         const batch = items.slice(startIdx, startIdx + this.LAMBDA_BATCH_SIZE);
         
-        // Process batch in parallel for better performance
-        const batchPromises = [];
-        for (let i = 0; i < batch.length; i += this.MAX_CONCURRENT_MATCHES) {
-          const subBatch = batch.slice(i, i + this.MAX_CONCURRENT_MATCHES);
-          batchPromises.push(this.processBatch(subBatch, priceItems, method, jobId));
-        }
-        
-        const batchResultArrays = await Promise.all(batchPromises);
-        const batchResults = batchResultArrays.flat();
+        // Process batch sequentially for stability in Lambda
+        const batchResults = await this.processBatch(batch, priceItems, method, jobId);
         results.push(...batchResults);
         
         // Count matches
@@ -276,35 +269,22 @@ export class LambdaProcessorService {
    * Save results in optimized chunks
    */
   private async saveResultsInChunks(results: any[], jobId: string): Promise<void> {
-    const saveChunkSize = 50; // Larger chunks for faster saving
-    const totalChunks = Math.ceil(results.length / saveChunkSize);
+    const totalChunks = Math.ceil(results.length / this.SAVE_BATCH_SIZE);
     
     console.log(`[LambdaProcessor] Saving ${results.length} results in ${totalChunks} chunks`);
     
-    // Save all chunks in parallel batches
-    const parallelBatches = 5; // Save 5 chunks at a time
-    for (let i = 0; i < results.length; i += saveChunkSize * parallelBatches) {
-      const promises = [];
+    // Save sequentially in larger chunks
+    for (let i = 0; i < results.length; i += this.SAVE_BATCH_SIZE) {
+      const chunk = results.slice(i, i + this.SAVE_BATCH_SIZE);
+      await ConvexBatchProcessor.saveMatchResults(chunk);
       
-      for (let j = 0; j < parallelBatches && (i + j * saveChunkSize) < results.length; j++) {
-        const startIdx = i + j * saveChunkSize;
-        const chunk = results.slice(startIdx, startIdx + saveChunkSize);
-        if (chunk.length > 0) {
-          promises.push(ConvexBatchProcessor.saveMatchResults(chunk));
-        }
-      }
-      
-      // Wait for batch to complete
-      await Promise.all(promises);
-      
-      // Update progress only a few times during save
-      if (i === 0 || i >= results.length / 2 || i >= results.length - saveChunkSize * parallelBatches) {
-        const saveProgress = 85 + Math.round((i / results.length) * 14);
+      // Only update progress at 50% and 90%
+      if (i > results.length / 2 && i < results.length * 0.6) {
         await this.convex.mutation(api.priceMatching.updateJobStatus, {
           jobId: jobId as any,
           status: 'matching' as any,
-          progress: saveProgress,
-          progressMessage: `Saving results... (${Math.min(i + saveChunkSize * parallelBatches, results.length)}/${results.length})`,
+          progress: 90,
+          progressMessage: `Saving results...`,
         });
       }
     }
