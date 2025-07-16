@@ -44,8 +44,7 @@ jobs:
           cd deploy
           npm ci --production
           
-          # Remove large unnecessary files
-          rm -rf node_modules/aws-sdk
+          # Remove large unnecessary files (but keep aws-sdk as it's needed)
           find . -name "*.map" -delete
           find . -name "*.md" -delete
           
