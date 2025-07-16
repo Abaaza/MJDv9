@@ -25,9 +25,11 @@ export class LambdaProcessorService {
    * Check if we're running in Lambda environment
    */
   static isLambdaEnvironment(): boolean {
+    // Explicitly check for Lambda environment variables
+    // EC2 instances may have AWS_EXECUTION_ENV but not the Lambda-specific ones
     return !!process.env.AWS_LAMBDA_FUNCTION_NAME || 
            !!process.env.LAMBDA_TASK_ROOT ||
-           !!process.env.AWS_EXECUTION_ENV;
+           (!!process.env.AWS_EXECUTION_ENV && process.env.AWS_EXECUTION_ENV.includes('AWS_Lambda'));
   }
   
   /**

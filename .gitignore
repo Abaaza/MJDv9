@@ -102,10 +102,12 @@ convex/_generated/
 *.tar
 *.tar.gz
 deploy-*.ps1
-deploy-*.sh
 deploy-*.bat
-deploy-*.md
 deploy.cmd
+# Keep EC2 deployment scripts
+!deploy-ec2.sh
+!deploy-to-ec2.sh
+!manage-ec2.sh
 deployment-*.json
 azure-*.ps1
 azure-*.sh
