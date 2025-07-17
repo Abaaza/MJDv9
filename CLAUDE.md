@@ -1,10 +1,123 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides comprehensive guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
 
-This is a BOQ (Bill of Quantities) Matching System for the construction industry. It uses AI-powered matching to map items from construction BOQ Excel files to an internal price list database.
+This is a BOQ (Bill of Quantities) Matching System for the construction industry. It uses AI-powered matching to map items from construction BOQ Excel files to an internal price list database. The system is designed to handle large Excel files with thousands of items and match them against a price database using multiple methods.
+
+## Architecture Overview
+
+### Technology Stack
+- **Frontend**: React 19 with Vite, TypeScript, TailwindCSS, Shadcn/ui components
+- **Backend**: Express 5.x with TypeScript, JWT authentication
+- **Database**: Convex (real-time database with TypeScript-first API)
+- **AI Services**: OpenAI and Cohere for embeddings-based matching
+- **Infrastructure**: 
+  - Frontend: AWS Amplify (auto-deploys from GitHub)
+  - Backend: AWS EC2 instance with PM2 process manager
+  - SSL: Nginx reverse proxy with self-signed certificates
+- **File Storage**: Local storage on EC2 (can be configured for S3)
+
+### Deployment Architecture
+
+```
+Frontend (React) → AWS Amplify → HTTPS → EC2 Instance → Nginx → Express Backend → Convex DB
+                                              ↓
+                                          PM2 Process Manager
+```
+
+## Key Features
+
+1. **Excel File Processing**
+   - Supports multiple Excel formats (XLS, XLSX, CSV)
+   - Dynamic header detection
+   - Handles files with 10,000+ items
+   - Context header support (items without quantities)
+
+2. **Matching Methods**
+   - LOCAL: Fuzzy string matching with construction-specific patterns
+   - COHERE: AI embeddings using Cohere API
+   - OPENAI: AI embeddings using OpenAI API
+   - MANUAL: User can manually select matches
+
+3. **Real-time Progress Tracking**
+   - WebSocket-like polling for job status
+   - Progress bars with percentage completion
+   - Live logs display
+   - Queue position for pending jobs
+
+4. **Rate Limiting & Error Handling**
+   - Exponential backoff for API calls
+   - 429 error handling with automatic retry
+   - Convex rate limit management
+   - Frontend polling optimization
+
+## Critical Configuration
+
+### Environment Variables
+
+**Backend (.env)**
+```env
+# Database
+CONVEX_URL=https://good-dolphin-454.convex.cloud
+
+# JWT Configuration (minimum 32 characters)
+JWT_ACCESS_SECRET=mjd-boq-matching-access-secret-key-2025-secure
+JWT_REFRESH_SECRET=mjd-boq-matching-refresh-secret-key-2025-secure
+JWT_ACCESS_EXPIRY=16h
+JWT_REFRESH_EXPIRY=30d
+
+# API Keys
+COHERE_API_KEY=your-cohere-api-key
+OPENAI_API_KEY=your-openai-api-key
+
+# Server Configuration
+PORT=5000
+NODE_ENV=production
+FRONTEND_URL=https://main.d3j084kic0l1ff.amplifyapp.com
+CORS_ORIGIN=https://main.d3j084kic0l1ff.amplifyapp.com
+COOKIE_SECURE=true
+```
+
+**Frontend (.env)**
+```env
+VITE_API_URL=https://13.218.146.247/api
+VITE_CONVEX_URL=https://good-dolphin-454.convex.cloud
+```
+
+### EC2 Backend Configuration
+
+**Location**: `/home/ec2-user/app/backend/`
+
+**Key Files**:
+- `index.js`: Entry point with environment setup and fetch polyfill
+- `dist/`: Compiled TypeScript output
+- `.env`: Environment variables
+
+**PM2 Process**: Named `boq-backend`
+
+**Nginx Configuration**: `/etc/nginx/conf.d/boq.conf`
+- Proxies HTTPS (443) to backend (5000)
+- Handles CORS headers
+- SSL with self-signed certificate
+
+### Important Rate Limits
+
+1. **Convex Database**
+   - Batch size: 5 items per mutation
+   - Delay between batches: 5 seconds
+   - Retry attempts: 5 with exponential backoff
+
+2. **Frontend Polling**
+   - Job status: 5 seconds
+   - Job logs: 10 seconds
+   - Dashboard stats: 30 seconds
+
+3. **API Rate Limits**
+   - General: 100 requests/minute
+   - Job status: 300 requests/minute
+   - Job logs: 600 requests/minute
 
 ## Key Commands
 
@@ -13,125 +126,295 @@ This is a BOQ (Bill of Quantities) Matching System for the construction industry
 # Install all dependencies
 npm run install:all
 
-# Start development servers (Convex + Backend + Frontend)
-npm run dev
+# Start development servers
+npm run dev              # Starts all services
+npm run dev:backend      # Backend only
+npm run dev:frontend     # Frontend only
 
-# Individual dev servers
-npm run dev:convex    # Convex database
-npm run dev:backend   # Express API server
-npm run dev:frontend  # React frontend
+# Build for production
+npm run build            # Build all
+cd backend && npm run build  # Backend only
+cd frontend && npm run build # Frontend only
 ```
 
-### Build & Deploy
+### Deployment
+
+**Backend to EC2**:
+```powershell
+# From project root
+powershell -File deploy-backend-ec2-fix.ps1
+```
+
+**Frontend to Amplify**:
 ```bash
-# Build all components
-npm run build
-
-# Production build
-npm run build:production
-
-# Azure deployment
-npm run build:azure
+# Automatic deployment on git push
+git add .
+git commit -m "Your changes"
+git push origin main
 ```
 
-### Testing
+### EC2 Management
 ```bash
-# Run comprehensive test suite
-cd backend && npx tsx src/tests/comprehensive-test.ts
+# SSH into EC2
+ssh -i boq-key-202507161911.pem ec2-user@13.218.146.247
 
-# Test matching logic
-cd backend && npx tsx src/tests/test-improved-matching.ts
+# Check backend status
+pm2 status
+pm2 logs boq-backend
 
-# Test Excel parsing
-cd backend && npx tsx src/tests/test-excel-parsing-improvements.ts
+# Restart backend
+pm2 restart boq-backend
+
+# Check Nginx
+sudo systemctl status nginx
+sudo nginx -t  # Test configuration
 ```
 
-### Frontend Commands
+## Project Structure
+
+```
+boq-matching-system/
+├── frontend/
+│   ├── src/
+│   │   ├── components/     # Reusable UI components
+│   │   ├── pages/         # Route pages
+│   │   ├── hooks/         # Custom React hooks
+│   │   ├── lib/           # Utilities and API client
+│   │   └── types/         # TypeScript definitions
+│   ├── package.json
+│   └── vite.config.ts
+├── backend/
+│   ├── src/
+│   │   ├── controllers/   # Route handlers
+│   │   ├── services/      # Business logic
+│   │   ├── middleware/    # Express middleware
+│   │   ├── utils/         # Utility functions
+│   │   ├── config/        # Configuration files
+│   │   └── server.ts      # Express app setup
+│   ├── index.js           # Entry point for EC2
+│   └── package.json
+├── convex/
+│   ├── schema.ts          # Database schema
+│   └── *.ts              # Convex functions
+└── amplify.yml           # Amplify build configuration
+```
+
+## Critical Implementation Details
+
+### Authentication Flow
+1. User logs in with email/password
+2. Backend verifies credentials against Convex
+3. JWT access token (16h) and refresh token (30d) generated
+4. Access token stored in localStorage
+5. Refresh token in httpOnly cookie
+6. Auto-refresh on 401 responses
+
+### File Upload & Processing Flow
+1. User uploads Excel/CSV file
+2. File parsed on backend with dynamic header detection
+3. Job created in Convex with status tracking
+4. Items processed in batches (5 items/batch)
+5. Progress updated every 25 items
+6. Results saved to Convex
+7. User can view, edit, and export results
+
+### Matching Algorithm
+1. **LOCAL Method**:
+   - Fuzzy string matching
+   - Construction-specific patterns
+   - Unit normalization
+   - Abbreviation expansion
+
+2. **AI Methods (Cohere/OpenAI)**:
+   - Generate embeddings for BOQ items
+   - Compare with pre-computed price list embeddings
+   - Cosine similarity scoring
+   - Cache embeddings for performance
+
+### Error Handling Patterns
+
+1. **429 Rate Limit Errors**:
+```typescript
+await retryWithBackoff(
+  () => api.call(),
+  {
+    maxRetries: 5,
+    initialDelay: 2000,
+    shouldRetry: (error) => error?.response?.status === 429
+  }
+);
+```
+
+2. **Connection Errors**:
+- Automatic retry with exponential backoff
+- No error display to user during retries
+- Fallback to cached data when available
+
+### Performance Optimizations
+
+1. **Console Log Removal**:
+   - Use `backend/remove-console-logs.js` script
+   - Removes logs from performance-critical files
+
+2. **Batch Processing**:
+   - Process items in batches of 5
+   - Save results every 25 items
+   - Delay between Convex operations
+
+3. **Caching**:
+   - LRU cache for AI embeddings
+   - In-memory job status cache
+   - Frontend query caching with React Query
+
+## Known Issues & Solutions
+
+1. **Job Progress Reset**
+   - Caused by aggressive polling
+   - Solution: Reduced polling to 10s intervals
+
+2. **429 Errors from Convex**
+   - Caused by too many simultaneous requests
+   - Solution: Batch operations with delays
+
+3. **Connection Refused**
+   - Intermittent EC2/network issues
+   - Solution: Retry logic with backoff
+
+4. **JWT Expiry**
+   - Users logged out after 15 minutes
+   - Solution: Extended to 16 hours
+
+## Security Considerations
+
+1. **Authentication**:
+   - JWT secrets must be 32+ characters
+   - Refresh tokens in httpOnly cookies
+   - CORS restricted to Amplify domain
+
+2. **File Upload**:
+   - Size limit: 50MB
+   - Type validation for Excel/CSV only
+   - Sanitized filenames
+
+3. **API Security**:
+   - All endpoints require authentication
+   - Rate limiting implemented
+   - Input validation with Zod
+
+## Monitoring & Debugging
+
+1. **Check Backend Health**:
 ```bash
-cd frontend
-npm run lint     # Run ESLint
-npm run build    # Build for production
+curl -k https://13.218.146.247/api/health
 ```
 
-## Architecture Overview
+2. **View Logs**:
+```bash
+# On EC2
+pm2 logs boq-backend --lines 100
+tail -f /home/ec2-user/.pm2/logs/boq-backend-error.log
+```
 
-### Three-Layer Architecture
+3. **Monitor Jobs**:
+- Check Projects page for job status
+- View browser console for API errors
+- Check Network tab for 429 errors
 
-1. **Frontend (React + TypeScript)**
-   - Located in `/frontend`
-   - Uses React 19, React Router, Tailwind CSS
-   - State management with Zustand
-   - Real-time updates via Socket.io
-   - Form handling with React Hook Form + Zod
+## Testing
 
-2. **Backend (Express + TypeScript)**
-   - Located in `/backend`
-   - RESTful API with Express 5
-   - Authentication using JWT (access + refresh tokens)
-   - File uploads handled via Multer
-   - Supports AWS S3 or local file storage
-   - Can be deployed as Lambda functions or standalone server
+### Test Credentials
+- Email: `abaza@mjd.com`
+- Password: `abaza123`
+- Role: Admin
 
-3. **Database (Convex)**
-   - Schema defined in `/convex/schema.ts`
-   - Real-time database with TypeScript-first API
-   - Handles all data persistence and queries
+### API Testing
+```bash
+# Login
+curl -k -X POST https://13.218.146.247/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"abaza@mjd.com","password":"abaza123"}'
 
-### Core Services
+# Health check
+curl -k https://13.218.146.247/api/health
+```
 
-**Matching Service** (`backend/src/services/matching.service.ts`)
-- Implements multi-method matching: LOCAL (fuzzy), COHERE (embeddings), OPENAI (embeddings)
-- LRU cache for embeddings
-- Construction-specific pattern matching
-- Handles Excel file parsing with dynamic header detection
+## Deployment Checklist
 
-**Job Processing** (`backend/src/services/jobProcessor.service.ts`)
-- Async job processing for BOQ matching
-- Progress tracking and error handling
-- Excel file parsing with multiple format support
+When deploying to a new environment:
 
-**File Storage** (`backend/src/services/fileStorage.service.ts`)
-- Abstraction over S3 and local storage
-- Handles file uploads and downloads
+1. **Backend Setup**:
+   - [ ] Install Node.js 16+ on EC2
+   - [ ] Install PM2 globally
+   - [ ] Configure Nginx with SSL
+   - [ ] Set up environment variables
+   - [ ] Install cross-fetch polyfill
+   - [ ] Configure firewall for ports 443, 5000
 
-### Key Data Models
+2. **Frontend Setup**:
+   - [ ] Update API URL in amplify.yml
+   - [ ] Configure Amplify app
+   - [ ] Connect GitHub repository
+   - [ ] Set up automatic deployments
 
-- **Users**: Authentication and authorization
-- **PriceItems**: Master price list with construction-specific fields
-- **AIMatchingJobs**: Async job tracking for BOQ processing
-- **MatchResults**: Individual row matching results
-- **Clients/Projects**: Business entity management
+3. **Database Setup**:
+   - [ ] Create Convex project
+   - [ ] Deploy schema
+   - [ ] Create admin user
+   - [ ] Import price list data
 
-### API Routes
+4. **Post-Deployment**:
+   - [ ] Test authentication
+   - [ ] Upload test Excel file
+   - [ ] Verify matching works
+   - [ ] Check rate limiting
+   - [ ] Monitor for errors
 
-- `/api/auth/*` - Authentication endpoints
-- `/api/price-matching/*` - BOQ upload and matching
-- `/api/price-list/*` - Price item management
-- `/api/dashboard/*` - Analytics and metrics
-- `/api/admin/*` - Admin operations
-- `/api/clients/*` - Client management
-- `/api/projects/*` - Project management
+## Common Operations
 
-### Security Features
+### Update JWT Expiry
+```javascript
+// In backend/src/config/env.ts
+JWT_ACCESS_EXPIRY: z.string().default('16h'),  // Change this value
+```
 
-- JWT-based authentication with refresh tokens
-- Rate limiting on all endpoints
-- Input validation using Joi/Zod
-- Helmet.js for security headers
-- CORS configuration for cross-origin requests
+### Change Convex Database
+1. Update CONVEX_URL in backend .env
+2. Update backend/index.js
+3. Restart PM2: `pm2 restart boq-backend`
 
-## Development Tips
+### Fix Rate Limit Issues
+1. Increase delays in jobProcessor.service.ts
+2. Reduce batch sizes
+3. Implement caching
+4. Use ConvexWrapper for automatic retry
 
-- The system supports multiple Excel formats - test files are in `backend/src/tests/`
-- Matching accuracy depends on price item data quality - ensure descriptions are detailed
-- The construction pattern service (`constructionPatterns.service.ts`) contains domain-specific logic
-- Environment variables are loaded from `.env` files (not committed)
-- Convex functions are in both `/convex` and duplicated in frontend/backend for type safety
+### Add New Matching Method
+1. Add to MatchingMethod type
+2. Implement in matching.service.ts
+3. Add UI option in MatchingMethodSelector
+4. Update job processor logic
 
-## Deployment Considerations
+## Tips for Duplication
 
-- Can deploy to AWS Lambda, Azure App Service, or Vercel
-- Frontend can be served statically or from the backend
-- Ensure Convex environment variables are set
-- File storage requires either S3 bucket or persistent local storage
-- Set appropriate CORS origins for production
+1. **Change Branding**:
+   - Update `frontend/index.html` title
+   - Change logo in `frontend/src/components/Layout.tsx`
+   - Update color scheme in `frontend/tailwind.config.js`
+
+2. **New Convex Project**:
+   - Create new Convex project
+   - Update CONVEX_URL everywhere
+   - Deploy schema: `npx convex deploy`
+   - Create new admin user
+
+3. **New AWS Resources**:
+   - Launch new EC2 instance
+   - Create new Amplify app
+   - Update all URLs and IDs
+
+4. **Domain-Specific Changes**:
+   - Modify `constructionPatterns.service.ts` for your industry
+   - Update price item schema if needed
+   - Adjust matching algorithms
+
+Remember: Always test thoroughly in a staging environment before going to production!
