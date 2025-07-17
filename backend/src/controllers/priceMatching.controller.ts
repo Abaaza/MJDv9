@@ -10,6 +10,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { fileStorage } from '../services/fileStorage.service';
 import { logActivity } from '../utils/activityLogger';
 import { AsyncJobInvoker } from '../utils/asyncJobInvoker';
+import { ConvexWrapper } from '../utils/convexWrapper';
 
 const convex = getConvexClient();
 const excelService = new ExcelService();
@@ -835,10 +836,14 @@ export async function stopJob(req: Request, res: Response): Promise<void> {
     // Console log removed for performance
     let job;
     try {
-      job = await convex.query(api.priceMatching.getJob, { jobId: toConvexId<'aiMatchingJobs'>(jobId) });
-    } catch (queryError) {
+      job = await ConvexWrapper.query(api.priceMatching.getJob, { jobId: toConvexId<'aiMatchingJobs'>(jobId) });
+    } catch (queryError: any) {
       // Console log removed for performance
-      res.status(500).json({ error: 'Failed to query job status' });
+      if (queryError.status === 429 || queryError.message?.includes('429')) {
+        res.status(503).json({ error: 'Service temporarily unavailable due to rate limiting. Please try again in a few seconds.' });
+      } else {
+        res.status(500).json({ error: 'Failed to query job status' });
+      }
       return;
     }
     
@@ -870,16 +875,18 @@ export async function stopJob(req: Request, res: Response): Promise<void> {
     // Console log removed for performance
     
     if (cancelled) {
-      // Update job status in database
+      // Update job status in database with retry handling
       try {
-        await convex.mutation(api.priceMatching.updateJobStatus, {
+        await ConvexWrapper.mutation(api.priceMatching.updateJobStatus, {
           jobId: toConvexId<'aiMatchingJobs'>(jobId),
           status: 'failed',
           error: 'Job cancelled by user',
         });
         // Console log removed for performance
-      } catch (updateError) {
+      } catch (updateError: any) {
         // Console log removed for performance
+        // Don't fail the whole operation if we can't update the status
+        console.error('[StopJob] Failed to update job status in Convex:', updateError.message);
       }
 
       // Log activity
@@ -1181,29 +1188,47 @@ export async function stopAllJobs(req: Request, res: Response): Promise<void> {
     // Console log removed for performance
 
     // Get all running jobs from Convex
-    const runningJobs = await convex.query(api.priceMatching.getRunningJobs, {});
+    let runningJobs = [];
+    try {
+      runningJobs = await ConvexWrapper.query(api.priceMatching.getRunningJobs, {});
+    } catch (error: any) {
+      console.error('[StopAllJobs] Failed to get running jobs:', error.message);
+      // Continue anyway - we can still cancel jobs in the processor
+    }
     // Console log removed for performance
 
-    // Cancel all jobs in the processor
+    // Cancel all jobs in the processor first
     const cancelledCount = await jobProcessor.cancelAllJobs();
     // Console log removed for performance
 
-    // Update all running jobs in Convex to failed status
+    // Update all running jobs in Convex to failed status with rate limit handling
     let convexUpdateCount = 0;
+    const updatePromises = [];
+    
     for (const job of runningJobs) {
       if (job.status !== 'completed' && job.status !== 'failed') {
-        try {
-          await convex.mutation(api.priceMatching.updateJobStatus, {
-            jobId: job._id as any,
-            status: 'failed',
-            error: 'Job stopped by user (bulk stop)',
-          });
+        // Use no-retry wrapper for bulk operations to avoid cascading delays
+        const updatePromise = ConvexWrapper.mutationNoRetry(api.priceMatching.updateJobStatus, {
+          jobId: job._id as any,
+          status: 'failed',
+          error: 'Job stopped by user (bulk stop)',
+        }).then(() => {
           convexUpdateCount++;
-        } catch (error) {
-          // Console log removed for performance
+        }).catch((error: any) => {
+          console.error(`[StopAllJobs] Failed to update job ${job._id}:`, error.message);
+        });
+        
+        updatePromises.push(updatePromise);
+        
+        // Add delay between updates to avoid rate limits
+        if (updatePromises.length % 5 === 0) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
         }
       }
     }
+    
+    // Wait for all updates to complete
+    await Promise.allSettled(updatePromises);
     // Console log removed for performance
 
     // Log activity

@@ -6,6 +6,7 @@ import { logStorage } from './logStorage.service';
 import { ConvexBatchProcessor } from '../utils/convexBatch';
 import { PerformanceLogger } from '../utils/performanceLogger';
 import { getMatchingConfig } from '../config/matching.config';
+import { ConvexWrapper } from '../utils/convexWrapper';
 
 interface ProcessingJob {
   jobId: string;
@@ -30,15 +31,15 @@ export class JobProcessorService extends EventEmitter {
   private matchingService = MatchingService.getInstance();
   
   // Batch configuration
-  private readonly BATCH_SIZE = 10;
-  private readonly UPDATE_INTERVAL = 5000; // 5 seconds
-  private readonly CONVEX_BATCH_SIZE = 50; // Update Convex every 50 items
+  private readonly BATCH_SIZE = 5; // Reduced batch size
+  private readonly UPDATE_INTERVAL = 10000; // 10 seconds
+  private readonly CONVEX_BATCH_SIZE = 25; // Update Convex every 25 items
   
   // Rate limiting
   private lastConvexUpdate = 0;
-  private readonly MIN_UPDATE_INTERVAL = 5000; // Minimum 5 seconds between Convex updates
-  private readonly CONVEX_MUTATION_DELAY = 100; // 100ms between individual mutations
-  private readonly CONVEX_BATCH_DELAY = 2000; // 2 seconds between batches
+  private readonly MIN_UPDATE_INTERVAL = 10000; // Minimum 10 seconds between Convex updates
+  private readonly CONVEX_MUTATION_DELAY = 500; // 500ms between individual mutations
+  private readonly CONVEX_BATCH_DELAY = 5000; // 5 seconds between batches
 
   constructor() {
     super();
@@ -119,15 +120,17 @@ export class JobProcessorService extends EventEmitter {
     
     this.emitLog(jobId, 'warning', 'Job cancelled by user');
     
-    // Update Convex status
+    // Update Convex status with retry handling
     try {
       await this.updateConvexStatus(jobId, {
         status: 'failed' as any,
         error: 'Job cancelled by user',
       });
       // Console log removed for performance
-    } catch (error) {
+    } catch (error: any) {
       // Console log removed for performance
+      // Don't throw - job is already cancelled locally
+      console.error(`[JobProcessor] Failed to update cancelled status in Convex: ${error.message}`);
     }
 
     // Remove from queue if still pending
@@ -267,7 +270,7 @@ export class JobProcessorService extends EventEmitter {
     this.emitLog(jobId, 'info', `Starting job processing for ${itemsWithQuantities} items`);
     
     // Immediately update Convex to show parsing status
-    await this.convex.mutation(api.priceMatching.updateJobStatus, {
+    await ConvexWrapper.mutation(api.priceMatching.updateJobStatus, {
       jobId: jobId as any,
       status: 'parsing' as any,
       progress: 0,
@@ -282,7 +285,7 @@ export class JobProcessorService extends EventEmitter {
       this.emitProgress(job);
       // Reduce log verbosity - removed database fetching log
       
-      const priceItems = await this.convex.query(api.priceItems.getActive);
+      const priceItems = await ConvexWrapper.query(api.priceItems.getActive, {});
       // Console log removed for performance
       
       job.progress = 15;
@@ -321,7 +324,7 @@ export class JobProcessorService extends EventEmitter {
       // Update Convex to show progress and transition to matching status
       // Console log removed for performance
       job.status = 'matching';
-      await this.convex.mutation(api.priceMatching.updateJobStatus, {
+      await ConvexWrapper.mutation(api.priceMatching.updateJobStatus, {
         jobId: jobId as any,
         status: 'matching' as any,
         progress: 25,
@@ -464,7 +467,7 @@ export class JobProcessorService extends EventEmitter {
       
       
       // Update Convex with final progress before finalization
-      await this.convex.mutation(api.priceMatching.updateJobStatus, {
+      await ConvexWrapper.mutation(api.priceMatching.updateJobStatus, {
         jobId: jobId as any,
         status: 'completed' as any,
         progress: 100,
@@ -691,7 +694,7 @@ export class JobProcessorService extends EventEmitter {
       // Console log removed for performance
       
       // Update job status first
-      await this.convex.mutation(api.priceMatching.updateJobStatus, {
+      await ConvexWrapper.mutation(api.priceMatching.updateJobStatus, {
         jobId: jobId as any,
         status: 'matching' as any,
         progress: job.progress,
@@ -702,7 +705,7 @@ export class JobProcessorService extends EventEmitter {
       await new Promise(resolve => setTimeout(resolve, 500));
       
       // Update matched count separately
-      await this.convex.mutation(api.priceMatching.updateMatchedCount, {
+      await ConvexWrapper.mutation(api.priceMatching.updateMatchedCount, {
         jobId: jobId as any,
         matchedCount: job.matchedCount,
       });
@@ -730,12 +733,17 @@ export class JobProcessorService extends EventEmitter {
 
   private async updateConvexStatus(jobId: string, updates: any) {
     try {
-      await this.convex.mutation(api.priceMatching.updateJobStatus, {
+      await ConvexWrapper.mutation(api.priceMatching.updateJobStatus, {
         jobId: jobId as any,
         ...updates,
       });
-    } catch (error) {
+    } catch (error: any) {
       // Console log removed for performance
+      console.error(`[JobProcessor] Failed to update job status: ${error.message}`);
+      // Re-throw only if it's not a rate limit error
+      if (!error.message?.includes('429') && error.status !== 429) {
+        throw error;
+      }
     }
   }
 
@@ -757,7 +765,7 @@ export class JobProcessorService extends EventEmitter {
       
       // Final status update
       // Console log removed for performance
-      await this.convex.mutation(api.priceMatching.updateJobStatus, {
+      await ConvexWrapper.mutation(api.priceMatching.updateJobStatus, {
         jobId: jobId as any,
         status: 'completed' as any,
         progress: 100,
@@ -765,13 +773,13 @@ export class JobProcessorService extends EventEmitter {
       });
       
       // Update final matched count
-      await this.convex.mutation(api.priceMatching.updateMatchedCount, {
+      await ConvexWrapper.mutation(api.priceMatching.updateMatchedCount, {
         jobId: jobId as any,
         matchedCount: job.matchedCount,
       });
 
-      // Log completion
-      await this.convex.mutation(api.activityLogs.create, {
+      // Log completion - use no-retry for non-critical operation
+      await ConvexWrapper.mutationNoRetry(api.activityLogs.create, {
         userId: job.userId as any,
         action: 'completed_matching',
         entityType: 'aiMatchingJobs',
@@ -834,7 +842,7 @@ export class JobProcessorService extends EventEmitter {
       // Console log removed for performance
       
       // Get all price items
-      const priceItems = await this.convex.query(api.priceItems.getActive);
+      const priceItems = await ConvexWrapper.query(api.priceItems.getActive, {});
       if (!priceItems || priceItems.length === 0) {
         // Console log removed for performance
         return;

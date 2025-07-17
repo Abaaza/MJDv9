@@ -7,6 +7,8 @@ import { toConvexId } from '../utils/convexId';
 import { fileStorage } from '../services/fileStorage.service';
 import { logActivity } from '../utils/activityLogger';
 import { logStorage } from '../services/logStorage.service';
+import { ConvexWrapper } from '../utils/convexWrapper';
+import { jobProcessor } from '../services/jobProcessor.service';
 
 const convex = getConvexClient();
 const excelService = new ExcelService();
@@ -57,7 +59,6 @@ export async function uploadAndProcessBOQ(req: Request, res: Response): Promise<
     
     // Store the original file for later use in export
     const fileId = await fileStorage.saveFile(req.file.buffer, req.file.originalname);
-    console.log(`[Upload] Stored original Excel file with ID: ${fileId}`);
     
     // Get items from all sheets
     const allItems = parseResult.sheets.flatMap(sheet => sheet.items);
@@ -71,7 +72,7 @@ export async function uploadAndProcessBOQ(req: Request, res: Response): Promise<
     );
 
     // Create a matching job
-    const jobId = await convex.mutation(api.priceMatching.createJob, {
+    const jobId = await ConvexWrapper.mutation(api.priceMatching.createJob, {
       userId: toConvexId<'users'>(req.user.id),
       fileName: req.file.originalname,
       fileBuffer: [],
@@ -116,24 +117,88 @@ export async function uploadAndProcessBOQ(req: Request, res: Response): Promise<
   }
 }
 
+// Simple in-memory cache for job status
+const statusCache = new Map<string, { data: any; timestamp: number }>();
+const CACHE_TTL = 5000; // 5 seconds cache
+
 export async function getJobStatus(req: Request, res: Response): Promise<void> {
   try {
     const { jobId } = req.params;
     
-    const status = await jobPollingService.getJobStatus(jobId);
-    
-    if (!status) {
-      res.status(404).json({ error: 'Job not found' });
+    // Check cache first
+    const cached = statusCache.get(jobId);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+      res.json(cached.data);
       return;
     }
     
-    res.json(status);
+    // First check in-memory job processor
+    const inMemoryJob = jobProcessor.getJobStatus(jobId);
+    if (inMemoryJob) {
+      // Job is actively being processed
+      const status = {
+        _id: jobId,
+        status: inMemoryJob.status,
+        progress: inMemoryJob.progress,
+        progressMessage: inMemoryJob.progressMessage,
+        itemCount: inMemoryJob.itemCount,
+        matchedCount: inMemoryJob.matchedCount,
+        startTime: inMemoryJob.startTime
+      };
+      
+      // Cache the response
+      statusCache.set(jobId, { data: status, timestamp: Date.now() });
+      res.json(status);
+      return;
+    }
+    
+    // If not in memory, get from Convex with retry handling
+    try {
+      const status = await jobPollingService.getJobStatus(jobId);
+      
+      if (!status) {
+        res.status(404).json({ error: 'Job not found' });
+        return;
+      }
+      
+      // Cache the response
+      statusCache.set(jobId, { data: status, timestamp: Date.now() });
+      res.json(status);
+    } catch (convexError: any) {
+      // If Convex fails, return cached data if available
+      if (cached) {
+        res.json(cached.data);
+        return;
+      }
+      
+      // Check if it's a rate limit error
+      if (convexError.status === 429 || convexError.message?.includes('429')) {
+        res.status(503).json({ 
+          error: 'Service temporarily unavailable',
+          retryAfter: 5,
+          cached: false
+        });
+        return;
+      }
+      
+      throw convexError;
+    }
     
   } catch (error: any) {
     console.error('Get job status error:', error);
     res.status(500).json({ error: 'Failed to get job status' });
   }
 }
+
+// Clean up old cache entries periodically
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, value] of statusCache.entries()) {
+    if (now - value.timestamp > CACHE_TTL * 10) {
+      statusCache.delete(key);
+    }
+  }
+}, 60000); // Clean every minute
 
 export async function getJobLogs(req: Request, res: Response): Promise<void> {
   try {

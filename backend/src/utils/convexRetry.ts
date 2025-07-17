@@ -8,9 +8,9 @@ interface RetryOptions {
 }
 
 const defaultOptions: Required<RetryOptions> = {
-  maxRetries: 3,
-  initialDelay: 1000,
-  maxDelay: 10000,
+  maxRetries: 5, // Increased for better handling of rate limits
+  initialDelay: 2000, // Start with 2 seconds for rate limits
+  maxDelay: 30000, // Max 30 seconds between retries
   backoffFactor: 2,
 };
 
@@ -28,15 +28,30 @@ export async function withRetry<T>(
     } catch (error: any) {
       lastError = error;
       
+      // Check if it's a rate limit error (429)
+      const isRateLimitError = error.status === 429 || 
+                              error.message?.includes('429') ||
+                              error.message?.includes('rate limit') ||
+                              error.message?.includes('Too Many Requests');
+      
       // Check if it's a network error
       const isNetworkError = error.message?.includes('fetch failed') || 
                            error.message?.includes('ETIMEDOUT') ||
                            error.message?.includes('ECONNREFUSED');
       
-      if (attempt < opts.maxRetries && isNetworkError) {
-        console.log(`[ConvexRetry] Attempt ${attempt + 1} failed with network error. Retrying in ${delay}ms...`);
+      const isRetryableError = isRateLimitError || isNetworkError;
+      
+      if (attempt < opts.maxRetries && isRetryableError) {
+        // Use exponential backoff for rate limits
+        if (isRateLimitError) {
+          // For rate limits, use a longer delay with exponential backoff
+          delay = Math.min(delay * Math.pow(opts.backoffFactor, attempt + 1), opts.maxDelay);
+          console.log(`[ConvexRetry] Rate limit (429) hit. Waiting ${delay}ms before retry ${attempt + 1}/${opts.maxRetries}...`);
+        } else {
+          console.log(`[ConvexRetry] Network error. Retrying in ${delay}ms...`);
+        }
+        
         await new Promise(resolve => setTimeout(resolve, delay));
-        delay = Math.min(delay * opts.backoffFactor, opts.maxDelay);
       } else {
         throw error;
       }

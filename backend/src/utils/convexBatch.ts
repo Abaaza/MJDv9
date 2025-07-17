@@ -7,10 +7,10 @@ interface BatchOperation {
 }
 
 export class ConvexBatchProcessor {
-  private static readonly MAX_BATCH_SIZE = 10; // Convex can handle ~10 mutations in parallel safely
-  private static readonly BATCH_DELAY = 1000; // 1 second between batches
+  private static readonly MAX_BATCH_SIZE = 5; // Reduced to avoid rate limits
+  private static readonly BATCH_DELAY = 2000; // 2 seconds between batches
   private static readonly RETRY_DELAY = 5000; // 5 seconds on rate limit
-  private static readonly MAX_RETRIES = 3;
+  private static readonly MAX_RETRIES = 5; // Increased retries for 429 errors
 
   /**
    * Process multiple mutations in batches to avoid rate limits
@@ -34,9 +34,14 @@ export class ConvexBatchProcessor {
             retries++;
             
             // Check if it's a rate limit error
-            if (error.message?.includes('429') || error.message?.includes('rate limit')) {
-              console.log(`[ConvexBatch] Rate limited, waiting ${this.RETRY_DELAY}ms before retry ${retries}/${this.MAX_RETRIES}`);
-              await new Promise(resolve => setTimeout(resolve, this.RETRY_DELAY * retries)); // Exponential backoff
+            if (error.status === 429 || 
+                error.message?.includes('429') || 
+                error.message?.includes('rate limit') ||
+                error.message?.includes('Too Many Requests') ||
+                error.code === 'TOO_MANY_REQUESTS') {
+              const backoffDelay = this.RETRY_DELAY * Math.pow(2, retries - 1); // Exponential backoff
+              console.log(`[ConvexBatch] Rate limited (429), waiting ${backoffDelay}ms before retry ${retries}/${this.MAX_RETRIES}`);
+              await new Promise(resolve => setTimeout(resolve, backoffDelay));
               continue;
             }
             

@@ -21,6 +21,7 @@ import monitoringRoutes from './routes/monitoring.routes';
 // import asyncJobsRoutes from './routes/asyncJobs.routes';
 import { fileStorage } from './services/fileStorage.service';
 import { jobProcessor } from './services/jobProcessor.service';
+import { convexRateLimiter } from './middleware/convexRateLimit';
 
 // __dirname is available in CommonJS after compilation
 // For TypeScript, we'll handle it conditionally
@@ -30,6 +31,9 @@ const app = express();
 
 // Export for Lambda
 export { app };
+
+// Trust proxy for rate limiting behind Nginx
+app.set('trust proxy', true);
 
 // Security middleware with enhanced configuration
 app.use(helmet({
@@ -63,30 +67,30 @@ app.use(cors({
   maxAge: 86400, // 24 hours
 }));
 
-// Debug middleware for Lambda
-app.use((req, res, next) => {
-  console.log('[Debug] Raw request info:');
-  console.log('[Debug] Method:', req.method);
-  console.log('[Debug] URL:', req.url);
-  console.log('[Debug] Headers:', req.headers);
-  console.log('[Debug] Body (before parsing):', req.body);
-  next();
-});
+// Debug middleware for Lambda - disabled to reduce log noise
+// app.use((req, res, next) => {
+//   console.log('[Debug] Raw request info:');
+//   console.log('[Debug] Method:', req.method);
+//   console.log('[Debug] URL:', req.url);
+//   console.log('[Debug] Headers:', req.headers);
+//   console.log('[Debug] Body (before parsing):', req.body);
+//   next();
+// });
 
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
 
-// Debug middleware after body parsing
-app.use((req, res, next) => {
-  if (req.method === 'POST' && req.url.includes('/auth/login')) {
-    console.log('[Debug] After body parsing:');
-    console.log('[Debug] Body:', req.body);
-    console.log('[Debug] Body type:', typeof req.body);
-  }
-  next();
-});
+// Debug middleware after body parsing - disabled to reduce log noise
+// app.use((req, res, next) => {
+//   if (req.method === 'POST' && req.url.includes('/auth/login')) {
+//     console.log('[Debug] After body parsing:');
+//     console.log('[Debug] Body:', req.body);
+//     console.log('[Debug] Body type:', typeof req.body);
+//   }
+//   next();
+// });
 
 // Compression
 app.use(compression());
@@ -111,27 +115,30 @@ const limiter = rateLimit({
 // More lenient rate limit for status endpoints (polling)
 const statusLimiter = rateLimit({
   windowMs: 1 * 60 * 1000, // 1 minute
-  max: 60, // Allow 60 requests per minute (1 per second average)
+  max: 300, // Allow 300 requests per minute (5 per second)
   message: 'Too many status requests, please slow down polling',
   skipSuccessfulRequests: true, // Only count failed requests
+  standardHeaders: true,
+  legacyHeaders: false,
 });
 
 // Very lenient rate limit for logs endpoint (high frequency polling)
 const logsLimiter = rateLimit({
   windowMs: 1 * 60 * 1000, // 1 minute
-  max: 200, // Allow 200 requests per minute (3.3 per second for 500ms polling)
+  max: 600, // Allow 600 requests per minute (10 per second)
   message: 'Too many log requests',
   skipSuccessfulRequests: true, // Only count failed requests
+  standardHeaders: true,
+  legacyHeaders: false,
 });
 
 // Apply status limiter to specific endpoints before general limiter
-if (!isDevelopment) {
-  app.use('/api/price-matching/:jobId/status', statusLimiter);
-  app.use('/api/price-matching/processor/status', statusLimiter);
-  app.use('/api/projects/:projectId/jobs', statusLimiter);
-  app.use('/api/jobs/:jobId/status', statusLimiter);
-  app.use('/api/jobs/:jobId/logs', logsLimiter);  // Special limiter for logs
-}
+// Apply these limiters in all environments for now
+app.use('/api/price-matching/:jobId/status', statusLimiter);
+app.use('/api/price-matching/processor/status', statusLimiter);
+app.use('/api/projects/:projectId/jobs', statusLimiter);
+app.use('/api/jobs/:jobId/status', statusLimiter);
+app.use('/api/jobs/:jobId/logs', logsLimiter);  // Special limiter for logs
 
 // File upload rate limiter (more restrictive)
 const uploadLimiter = rateLimit({
@@ -145,10 +152,13 @@ app.use('/api/projects/upload-and-match', uploadLimiter);
 app.use('/api/price-matching/upload', uploadLimiter);
 app.use('/api/price-matching/upload-and-match', uploadLimiter);
 
-// Apply general rate limiting in production
-if (!isDevelopment) {
-  app.use('/api', limiter);
-}
+// Apply Convex-specific rate limiting
+app.use(convexRateLimiter.middleware());
+
+// Apply general rate limiting in production - TEMPORARILY DISABLED for debugging
+// if (!isDevelopment) {
+//   app.use('/api', limiter);
+// }
 
 // Routes
 app.use('/api/auth', authRoutes);
@@ -198,7 +208,7 @@ const PORT = env.PORT || 5000;
 
 // Initialize services
 fileStorage.initialize().catch(console.error);
-console.log('[Server] Job processor initialized:', jobProcessor ? 'ready' : 'failed');
+// Removed console.log for job processor to reduce log noise
 
 // For local development
 if (process.env.NODE_ENV !== 'production') {
