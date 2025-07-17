@@ -375,7 +375,7 @@ export async function uploadAndMatch(req: Request, res: Response): Promise<void>
     if (LambdaProcessorService.isLambdaEnvironment()) {
       // For small files, process inline to return results quickly
       if (preparedItems.length <= 100) {
-        console.log(`[Lambda] Processing ${preparedItems.length} items inline (small file)`);
+        // Console log removed for performance
         
         try {
           const result = await lambdaProcessor.processSynchronously(
@@ -390,7 +390,7 @@ export async function uploadAndMatch(req: Request, res: Response): Promise<void>
             throw new Error(result.error || 'Lambda processing failed');
           }
         } catch (error: any) {
-          console.error(`[Lambda] Processing failed:`, error);
+          // Console log removed for performance
           await convex.mutation(api.priceMatching.updateJobStatus, {
             jobId: jobId,
             status: 'failed' as any,
@@ -400,7 +400,7 @@ export async function uploadAndMatch(req: Request, res: Response): Promise<void>
         }
       } else {
         // For larger files, we need a different approach
-        console.log(`[Lambda] File too large for inline processing: ${preparedItems.length} items`);
+        // Console log removed for performance
         
         // Update status to indicate the limitation
         await convex.mutation(api.priceMatching.updateJobStatus, {
@@ -416,7 +416,7 @@ export async function uploadAndMatch(req: Request, res: Response): Promise<void>
       }
     } else if (false) {
       // In Lambda but file is too large (>300 items)
-      console.error(`[Lambda] File too large for Lambda processing: ${preparedItems.length} items`);
+      // Console log removed for performance
       
       // Update job status to failed with helpful message
       await convex.mutation(api.priceMatching.updateJobStatus, {
@@ -556,7 +556,7 @@ export async function startMatching(req: Request, res: Response): Promise<void> 
     
     // Check if running in Lambda and should process synchronously
     if (LambdaProcessorService.isLambdaEnvironment() && lambdaProcessor.shouldProcessSynchronously(parsedItems.length)) {
-      console.log(`[Lambda] Processing ${parsedItems.length} items synchronously in startMatching`);
+      // Console log removed for performance
       
       // Process synchronously in Lambda for small files
       const result = await lambdaProcessor.processSynchronously(
@@ -889,7 +889,7 @@ export async function stopJob(req: Request, res: Response): Promise<void> {
       } catch (updateError: any) {
         // Console log removed for performance
         // Don't fail the whole operation if we can't update the status
-        console.error('[StopJob] Failed to update job status in Convex:', updateError.message);
+        // Console log removed for performance
       }
 
       // Log activity
@@ -1195,7 +1195,7 @@ export async function stopAllJobs(req: Request, res: Response): Promise<void> {
     try {
       runningJobs = await ConvexWrapper.query(api.priceMatching.getRunningJobs, {});
     } catch (error: any) {
-      console.error('[StopAllJobs] Failed to get running jobs:', error.message);
+      // Console log removed for performance
       // Continue anyway - we can still cancel jobs in the processor
     }
     // Console log removed for performance
@@ -1218,7 +1218,7 @@ export async function stopAllJobs(req: Request, res: Response): Promise<void> {
         }).then(() => {
           convexUpdateCount++;
         }).catch((error: any) => {
-          console.error(`[StopAllJobs] Failed to update job ${job._id}:`, error.message);
+          // Console log removed for performance
         });
         
         updatePromises.push(updatePromise);

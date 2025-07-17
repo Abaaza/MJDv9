@@ -10,7 +10,7 @@ const envSchema = z.object({
   CONVEX_URL: z.string().optional(),
   JWT_ACCESS_SECRET: z.string().min(32),
   JWT_REFRESH_SECRET: z.string().min(32),
-  JWT_ACCESS_EXPIRY: z.string().default('15m'),
+  JWT_ACCESS_EXPIRY: z.string().default('16h'),
   JWT_REFRESH_EXPIRY: z.string().default('7d'),
   COHERE_API_KEY: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),

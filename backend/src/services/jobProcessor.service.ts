@@ -130,7 +130,7 @@ export class JobProcessorService extends EventEmitter {
     } catch (error: any) {
       // Console log removed for performance
       // Don't throw - job is already cancelled locally
-      console.error(`[JobProcessor] Failed to update cancelled status in Convex: ${error.message}`);
+      // Console log removed for performance
     }
 
     // Remove from queue if still pending
@@ -739,7 +739,7 @@ export class JobProcessorService extends EventEmitter {
       });
     } catch (error: any) {
       // Console log removed for performance
-      console.error(`[JobProcessor] Failed to update job status: ${error.message}`);
+      // Console log removed for performance
       // Re-throw only if it's not a rate limit error
       if (!error.message?.includes('429') && error.status !== 429) {
         throw error;
