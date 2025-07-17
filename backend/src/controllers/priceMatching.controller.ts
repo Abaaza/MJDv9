@@ -849,7 +849,10 @@ export async function stopJob(req: Request, res: Response): Promise<void> {
     
     if (!job) {
       // Console log removed for performance
-      res.status(404).json({ error: 'Job not found' });
+      res.status(404).json({ 
+        error: 'Job not found',
+        message: 'This job does not exist in the current database. It may have been created before a database migration or configuration change.'
+      });
       return;
     }
 
