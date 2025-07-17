@@ -77,13 +77,13 @@ export function useJobPolling() {
           toast.success(`Job completed! Matched ${status.matchedCount} of ${status.itemCount} items`);
           // Stop polling after completion
           stopPolling(jobId);
-          // Remove from progress after delay
+          // Keep the completed status in memory for longer
           setTimeout(() => {
             setJobProgress(prev => {
               const { [jobId]: _, ...rest } = prev;
               return rest;
             });
-          }, 5000);
+          }, 60000); // Keep for 1 minute instead of 5 seconds
         } else if (status.status === 'failed') {
           toast.error(`Job failed: ${status.errors?.[0] || 'Unknown error'}`);
           stopPolling(jobId);

@@ -629,14 +629,15 @@ export async function getJobStatus(req: Request, res: Response): Promise<void> {
     }
 
     // Merge in-memory status with database status
-    // In-memory status takes precedence for active jobs
+    // For completed jobs, prefer database status to avoid stale in-memory data
+    const isCompleted = job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled';
     const status = {
       _id: job._id,
-      status: inMemoryJob?.status || job.status,
-      progress: inMemoryJob?.progress ?? job.progress,
-      progressMessage: inMemoryJob?.progressMessage || job.progressMessage,
-      itemCount: inMemoryJob?.itemCount || job.itemCount,
-      matchedCount: inMemoryJob?.matchedCount ?? job.matchedCount,
+      status: isCompleted ? job.status : (inMemoryJob?.status || job.status),
+      progress: isCompleted ? job.progress : (inMemoryJob?.progress ?? job.progress),
+      progressMessage: isCompleted ? job.progressMessage : (inMemoryJob?.progressMessage || job.progressMessage),
+      itemCount: isCompleted ? job.itemCount : (inMemoryJob?.itemCount || job.itemCount),
+      matchedCount: isCompleted ? job.matchedCount : (inMemoryJob?.matchedCount ?? job.matchedCount),
       error: job.error,
       startedAt: job.startedAt,
       completedAt: job.completedAt,

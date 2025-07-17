@@ -220,11 +220,14 @@ export default function Projects() {
   const memoryProgress = logData?.progress;
 
   // Merge WebSocket progress with job status
+  // Don't override completed status with polling data
   const currentJobProgress = selectedJobId ? jobProgress[selectedJobId] : null;
-  const mergedJobStatus = currentJobProgress ? {
-    ...jobStatus,
-    ...currentJobProgress,
-  } : jobStatus;
+  const mergedJobStatus = jobStatus && jobStatus.status === 'completed' ? 
+    jobStatus : // Keep the completed status from database
+    (currentJobProgress ? {
+      ...jobStatus,
+      ...currentJobProgress,
+    } : jobStatus);
 
   // Get the selected job to access its matching method
   const selectedJob = jobs?.find(job => job._id === selectedJobId);
