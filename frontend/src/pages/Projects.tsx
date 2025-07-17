@@ -133,7 +133,7 @@ export default function Projects() {
   
   useEffect(() => {
     if (urlJobId && !selectedJobId) {
-      console.log('[Projects] Opening job from URL:', urlJobId);
+      // Opening job from URL
       setSelectedJobId(urlJobId);
       setShowResultsModal(true);
     }
@@ -162,10 +162,10 @@ export default function Projects() {
   // Subscribe to WebSocket updates for selected job
   useEffect(() => {
     if (selectedJobId) {
-      console.log('[Projects] Subscribing to job:', selectedJobId);
+      // Subscribing to job
       subscribeToJob(selectedJobId);
       return () => {
-        console.log('[Projects] Unsubscribing from job:', selectedJobId);
+        // Unsubscribing from job
         unsubscribeFromJob(selectedJobId);
       };
     }
@@ -207,12 +207,12 @@ export default function Projects() {
         const response = await api.get(`/jobs/${selectedJobId}/logs`);
         return response.data;
       } catch (error) {
-        console.error('Failed to fetch job logs:', error);
+        // Silently handle log fetch errors
         return { logs: [], progress: null };
       }
     },
     enabled: !!selectedJobId,
-    refetchInterval: 500, // Poll every 500ms for smooth updates
+    refetchInterval: 10000, // Poll every 10 seconds to avoid rate limits
     staleTime: 0, // Always fresh
   });
 
@@ -286,7 +286,7 @@ export default function Projects() {
       return response.data;
     },
     onError: (error) => {
-      console.error('Autosave failed:', error);
+      // Autosave failed silently
     },
   });
 
@@ -473,7 +473,7 @@ export default function Projects() {
       delete previousMatchTypesRef.current[variables.resultId];
     },
     onError: (error, variables) => {
-      console.error(`Failed to apply ${variables.matchType} match:`, error);
+      // Failed to apply match silently
       toast.error(`Failed to apply ${variables.matchType} match`);
       // Revert the match type on error
       const previousType = previousMatchTypesRef.current[variables.resultId];
@@ -838,7 +838,7 @@ export default function Projects() {
                 <div
                   key={job._id}
                   onClick={() => {
-                    console.log('[Projects] Selected job:', job._id, job);
+                    // Job selected
                     setSelectedJobId(job._id);
                   }}
                   className={cn(
@@ -1021,7 +1021,7 @@ export default function Projects() {
                 <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
                   <Button
                     onClick={() => {
-                      console.log('[Projects] Opening results modal for job:', selectedJobId);
+                      // Opening results modal
                       setShowResultsModal(true);
                     }}
                     className="flex-1 text-sm"

@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { retryWithBackoff } from '../utils/retryWithBackoff';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
@@ -61,21 +62,32 @@ api.interceptors.response.use(
       isRefreshing = true;
 
       try {
-        console.log('[API] Token expired, attempting refresh...');
-        const response = await api.post('/auth/refresh');
+        const response = await retryWithBackoff(
+          () => api.post('/auth/refresh'),
+          {
+            maxRetries: 2,
+            initialDelay: 1000,
+            shouldRetry: (error) => {
+              // Don't retry 401 on refresh - token is invalid
+              return error?.response?.status !== 401 &&
+                     (error?.code === 'ERR_NETWORK' || 
+                      error?.code === 'ERR_CONNECTION_REFUSED');
+            }
+          }
+        );
         const { accessToken } = response.data;
         localStorage.setItem('accessToken', accessToken);
-        console.log('[API] Token refresh successful');
         onRefreshed(accessToken);
         isRefreshing = false;
         originalRequest.headers.Authorization = `Bearer ${accessToken}`;
         return api(originalRequest);
-      } catch (refreshError) {
-        console.error('[API] Token refresh failed:', refreshError);
+      } catch (refreshError: any) {
         isRefreshing = false;
         localStorage.removeItem('accessToken');
-        // Only redirect to login if we're not already there
-        if (window.location.pathname !== '/login') {
+        // Only redirect to login if we're not already there and it's not a network error
+        if (window.location.pathname !== '/login' && 
+            refreshError?.code !== 'ERR_NETWORK' && 
+            refreshError?.code !== 'ERR_CONNECTION_REFUSED') {
           window.location.href = '/login';
         }
         return Promise.reject(refreshError);

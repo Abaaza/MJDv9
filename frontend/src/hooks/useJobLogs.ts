@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { api } from '../lib/api';
+import { retryWithBackoff } from '../utils/retryWithBackoff';
 
 interface JobLog {
   timestamp: string; // ISO date string from backend
@@ -14,7 +15,7 @@ interface LogCache {
 }
 
 const LOG_CACHE_DURATION = 10000; // Cache logs for 10 seconds
-const LOG_POLL_INTERVAL = 2000; // Poll every 2 seconds for logs (faster updates)
+const LOG_POLL_INTERVAL = 10000; // Poll every 10 seconds to reduce load
 const MAX_LOGS_PER_JOB = 500; // Keep last 500 logs for better history
 
 export function useJobLogs() {
@@ -35,9 +36,19 @@ export function useJobLogs() {
     try {
       // Only fetch new logs since last timestamp
       const lastTimestamp = cached?.lastTimestamp || null;
-      const response = await api.get(`/jobs/${jobId}/logs`, {
-        params: lastTimestamp ? { since: lastTimestamp } : {}
-      });
+      const response = await retryWithBackoff(
+        () => api.get(`/jobs/${jobId}/logs`, {
+          params: lastTimestamp ? { since: lastTimestamp } : {}
+        }),
+        {
+          maxRetries: 2,
+          initialDelay: 3000,
+          shouldRetry: (error) => {
+            return error?.response?.status === 429 || 
+                   error?.code === 'ERR_NETWORK';
+          }
+        }
+      );
       
       const newLogs: JobLog[] = response.data.logs || [];
       
@@ -57,8 +68,12 @@ export function useJobLogs() {
       });
       
       return mergedLogs;
-    } catch (error) {
-      console.error('[JobLogs] Error fetching logs:', error);
+    } catch (error: any) {
+      // Silently handle 429 errors - just return cached logs
+      if (error?.response?.status === 429) {
+        return cached?.logs || [];
+      }
+      // For other errors, return cached logs without logging
       return cached?.logs || [];
     }
   }, []);

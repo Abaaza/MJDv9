@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { api } from '../lib/api';
 import { toast } from 'react-hot-toast';
+import { retryWithBackoff } from '../utils/retryWithBackoff';
 
 interface JobProgress {
   jobId: string;
@@ -30,19 +31,28 @@ export function useJobPolling() {
   const activePolls = useRef<Map<string, NodeJS.Timeout>>(new Map());
   const lastStatusRef = useRef<Map<string, string>>(new Map());
 
-  // Poll job status
+  // Poll job status with retry logic
   const pollJobStatus = useCallback(async (jobId: string) => {
     try {
-      const response = await api.get(`/jobs/${jobId}/status`);
+      const response = await retryWithBackoff(
+        () => api.get(`/jobs/${jobId}/status`),
+        {
+          maxRetries: 3,
+          initialDelay: 2000,
+          shouldRetry: (error) => {
+            // Retry on 429 or connection errors
+            return error?.response?.status === 429 || 
+                   error?.code === 'ERR_NETWORK' ||
+                   error?.code === 'ERR_CONNECTION_REFUSED';
+          }
+        }
+      );
       const status: JobStatus = response.data;
       
       // Get previous status first
       const previousStatus = lastStatusRef.current.get(jobId);
       
-      // Reduce console logging - only log important state changes
-      if (process.env.NODE_ENV === 'development' && previousStatus !== status.status) {
-        console.log(`[JobPolling] Status change for job ${jobId}: ${status.status} (${status.progress}%)`);
-      }
+      // Remove console logging for production
       
       // Update progress
       setJobProgress(prev => ({
@@ -100,9 +110,17 @@ export function useJobPolling() {
       
       return false; // Stop polling
       
-    } catch (error) {
-      console.error('[JobPolling] Error polling job status:', error);
-      return true; // Continue polling on error
+    } catch (error: any) {
+      // Handle specific error types
+      if (error?.response?.status === 429) {
+        // Rate limited - increase polling interval temporarily
+        return true;
+      } else if (error?.code === 'ERR_CONNECTION_REFUSED' || error?.code === 'ERR_NETWORK') {
+        // Connection error - continue polling but don't spam errors
+        return true;
+      }
+      // For other errors, stop polling
+      return false;
     }
   }, []);
 
@@ -118,9 +136,6 @@ export function useJobPolling() {
 
   // Subscribe to job updates (start polling)
   const subscribeToJob = useCallback((jobId: string) => {
-    if (process.env.NODE_ENV === 'development') {
-      console.log('Starting polling for job:', jobId);
-    }
     
     // Stop any existing polling for this job
     stopPolling(jobId);
@@ -134,16 +149,13 @@ export function useJobPolling() {
       if (!shouldContinue) {
         stopPolling(jobId);
       }
-    }, 3000); // 3 second intervals
+    }, 5000); // 5 second intervals to reduce server load
     
     activePolls.current.set(jobId, interval);
   }, [pollJobStatus, stopPolling]);
 
   // Unsubscribe from job updates (stop polling)
   const unsubscribeFromJob = useCallback((jobId: string) => {
-    if (process.env.NODE_ENV === 'development') {
-      console.log('Stopping polling for job:', jobId);
-    }
     stopPolling(jobId);
   }, [stopPolling]);
 
