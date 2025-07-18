@@ -652,6 +652,8 @@ export function AIMatchResultsModal({ jobId, jobMatchingMethod, onClose }: AIMat
     try {
       const updatePromises = actualItems.map(result => {
         const displayMatch = getDisplayMatch(result);
+        const matchType = selectedMatchTypes[result._id] || 'AI';
+        
         if (displayMatch?.matchedRate) {
           const adjustment = (displayMatch.matchedRate * percentage) / 100;
           const newRate = type === 'discount' 
@@ -660,11 +662,40 @@ export function AIMatchResultsModal({ jobId, jobMatchingMethod, onClose }: AIMat
           
           const newTotalPrice = (result.originalQuantity || 0) * newRate;
           
+          // Update the match data store with the new rate
+          const updatedMatchData = {
+            ...displayMatch,
+            matchedRate: newRate,
+            totalPrice: newTotalPrice,
+          };
+          
+          // Update the appropriate store based on current match type
+          setMatchDataStore(prev => {
+            const newStore = { ...prev };
+            
+            if (matchType === 'MANUAL') {
+              newStore.manual = { ...prev.manual, [result._id]: updatedMatchData };
+            } else if (matchType === 'LOCAL') {
+              newStore.local = { ...prev.local, [result._id]: updatedMatchData };
+            } else {
+              newStore.ai = { ...prev.ai, [result._id]: updatedMatchData };
+            }
+            
+            return newStore;
+          });
+          
+          // Send the complete match data in the update
           return updateResultMutation.mutateAsync({
             resultId: result._id,
             updates: {
+              matchedDescription: displayMatch.matchedDescription,
+              matchedCode: displayMatch.matchedCode,
+              matchedUnit: displayMatch.matchedUnit,
               matchedRate: newRate,
               totalPrice: newTotalPrice,
+              confidence: displayMatch.confidence,
+              isManuallyEdited: matchType === 'MANUAL',
+              matchMethod: matchType === 'AI' ? jobMatchingMethod : matchType,
               notes: `${type === 'discount' ? 'Discount' : 'Markup'} of ${percentage}% applied`,
             },
           });
