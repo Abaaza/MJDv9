@@ -23,9 +23,10 @@ export const getStats = query({
         job.completedAt >= todayMidnight
     );
 
-    // Get total price items (all items, not just active)
+    // Get total price items (only active items)
     const priceItems = await ctx.db
       .query("priceItems")
+      .filter((q) => q.eq(q.field("isActive"), true))
       .collect();
 
     // Get total clients
