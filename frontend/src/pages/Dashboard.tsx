@@ -104,6 +104,16 @@ export default function Dashboard() {
     staleTime: 0, // Always fetch fresh data
   });
 
+  // Fetch actual price list count
+  const { data: priceListData, isLoading: priceListLoading } = useQuery({
+    queryKey: ['price-items-count', refreshKey],
+    queryFn: async () => {
+      const response = await api.get('/price-list');
+      return response.data;
+    },
+    refetchInterval: 30000, // Refetch every 30 seconds
+  });
+
   // Fetch recent jobs
   const { data: recentJobs, isLoading: jobsLoading } = useQuery<RecentJob[]>({
     queryKey: ['recent-jobs', refreshKey],
@@ -244,7 +254,7 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {statsLoading ? <Loader2 className="h-6 w-6 animate-spin" /> : stats?.priceItems || 0}
+              {priceListLoading ? <Loader2 className="h-6 w-6 animate-spin" /> : (priceListData as any[])?.length || 0}
             </div>
             <p className="text-xs text-muted-foreground">
               Construction materials ({symbol})
