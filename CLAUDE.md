@@ -418,3 +418,61 @@ JWT_ACCESS_EXPIRY: z.string().default('16h'),  // Change this value
    - Adjust matching algorithms
 
 Remember: Always test thoroughly in a staging environment before going to production!
+
+## Critical CORS Fix (IMPORTANT!)
+
+### Issue: CORS Errors After Deployment
+If you encounter CORS errors like:
+```
+Access to XMLHttpRequest at 'https://13.218.146.247/api/auth/me' from origin 'https://main.d3j084kic0l1ff.amplifyapp.com' has been blocked by CORS policy
+```
+
+### Root Cause
+The wrong `index.js` file gets deployed to EC2. The Lambda handler version gets deployed instead of the EC2 Express server version.
+
+### Solution
+Always use the correct `index.js` for EC2 deployment:
+
+1. **Correct EC2 index.js** (saved as `backend/index-ec2.js`):
+```javascript
+// Add fetch polyfill for Node 16
+require("cross-fetch/polyfill");
+
+// Set required environment variables
+process.env.JWT_ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || "mjd-boq-matching-access-secret-key-2025-secure";
+process.env.JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || "mjd-boq-matching-refresh-secret-key-2025-secure";
+process.env.CONVEX_URL = process.env.CONVEX_URL || "https://good-dolphin-454.convex.cloud";
+process.env.FRONTEND_URL = process.env.FRONTEND_URL || "https://main.d3j084kic0l1ff.amplifyapp.com";
+process.env.NODE_ENV = process.env.NODE_ENV || "production";
+process.env.PORT = process.env.PORT || "5000";
+process.env.CORS_ORIGIN = process.env.CORS_ORIGIN || "https://main.d3j084kic0l1ff.amplifyapp.com";
+
+const { app } = require("./dist/server");
+
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+  console.log(`CORS enabled for: ${process.env.CORS_ORIGIN}`);
+});
+```
+
+2. **Fix CORS Immediately**:
+```bash
+# Copy correct index.js to EC2
+scp -i boq-key-202507161911.pem backend/index-ec2.js ec2-user@13.218.146.247:/home/ec2-user/app/backend/index.js
+
+# Restart PM2
+ssh -i boq-key-202507161911.pem ec2-user@13.218.146.247 "pm2 restart boq-backend"
+```
+
+3. **Verify CORS Headers**:
+```bash
+curl -k -X OPTIONS https://13.218.146.247/api/auth/me \
+  -H "Origin: https://main.d3j084kic0l1ff.amplifyapp.com" \
+  -H "Access-Control-Request-Method: GET" -v
+```
+
+### Prevention
+- Always ensure deployment scripts use `index-ec2.js` for EC2, not the Lambda handler
+- Test CORS headers after every deployment
+- Keep the correct index.js backed up

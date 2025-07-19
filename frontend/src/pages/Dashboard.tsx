@@ -425,7 +425,7 @@ export default function Dashboard() {
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Activities</span>
-                      <span className="font-medium">{timeframeData.activities || 0}</span>
+                      <span className="font-medium">{activeTimeframe === 'today' ? (stats?.activitiesToday || 0) : (timeframeData.activities || 0)}</span>
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Price Items Added</span>
