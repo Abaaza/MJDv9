@@ -41,18 +41,39 @@ export class MatchingService {
   }
 
   private async ensureClientsInitialized() {
-    if (this.cohereClient && this.openaiClient) return;
-    
     const settings = await this.convex.query(api.applicationSettings.getAll);
     const cohereKey = settings.find(s => s.key === 'COHERE_API_KEY')?.value;
     const openaiKey = settings.find(s => s.key === 'OPENAI_API_KEY')?.value;
     
-    if (cohereKey && !this.cohereClient) {
-      this.cohereClient = new CohereClient({ token: cohereKey });
+    console.log('[MatchingService] Checking API Keys:', {
+      hasCohere: !!cohereKey,
+      hasOpenAI: !!openaiKey,
+      cohereKeyLength: cohereKey?.length || 0,
+      openaiKeyLength: openaiKey?.length || 0,
+      currentCohereClient: !!this.cohereClient,
+      currentOpenAIClient: !!this.openaiClient
+    });
+    
+    // Always try to initialize Cohere if we have a key
+    if (cohereKey) {
+      try {
+        this.cohereClient = new CohereClient({ token: cohereKey });
+        console.log('[MatchingService] Cohere client initialized successfully');
+      } catch (error) {
+        console.error('[MatchingService] Failed to initialize Cohere:', error);
+        this.cohereClient = null;
+      }
     }
     
-    if (openaiKey && !this.openaiClient) {
-      this.openaiClient = new OpenAI({ apiKey: openaiKey });
+    // Always try to initialize OpenAI if we have a key
+    if (openaiKey) {
+      try {
+        this.openaiClient = new OpenAI({ apiKey: openaiKey });
+        console.log('[MatchingService] OpenAI client initialized successfully');
+      } catch (error) {
+        console.error('[MatchingService] Failed to initialize OpenAI:', error);
+        this.openaiClient = null;
+      }
     }
   }
 
@@ -452,7 +473,10 @@ export class MatchingService {
     priceItems: PriceItem[],
     contextHeaders?: string[]
   ): Promise<MatchingResult> {
+    console.log('[cohereMatch] Starting with client:', !!this.cohereClient);
+    
     if (!this.cohereClient) {
+      console.log('[cohereMatch] No Cohere client available, falling back to LOCAL');
       return this.localMatch(description, priceItems, contextHeaders);
     }
 
@@ -486,11 +510,15 @@ export class MatchingService {
         queryEmbedding = response.embeddings[0];
         this.embeddingCache.set(queryCacheKey, queryEmbedding);
       } catch (error) {
+        console.error('[cohereMatch] Failed to generate query embedding:', error);
         return this.localMatch(description, priceItems, contextHeaders);
       }
     }
 
     // Score all items
+    let preComputedCount = 0;
+    let generatedCount = 0;
+    
     const scoredItems = await Promise.all(
       priceItems.map(async (item) => {
         const itemText = this.createSimpleText(item);
@@ -500,6 +528,7 @@ export class MatchingService {
         if (!embedding && item.embedding && item.embeddingProvider === 'cohere') {
           embedding = item.embedding;
           this.embeddingCache.set(cacheKey, embedding);
+          preComputedCount++;
         }
         
         if (!embedding) {
@@ -512,6 +541,7 @@ export class MatchingService {
             });
             embedding = response.embeddings[0];
             this.embeddingCache.set(cacheKey, embedding);
+            generatedCount++;
           } catch {
             return null;
           }
@@ -544,6 +574,13 @@ export class MatchingService {
     const validMatches = scoredItems.filter(m => m !== null) as Array<{item: PriceItem, score: number}>;
     validMatches.sort((a, b) => b.score - a.score);
     
+    console.log('[cohereMatch] Embedding stats:', {
+      totalItems: priceItems.length,
+      preComputedCohere: preComputedCount,
+      generatedCohere: generatedCount,
+      validMatches: validMatches.length
+    });
+    
     if (validMatches.length === 0) {
       return this.localMatch(description, priceItems, contextHeaders);
     }
@@ -569,7 +606,10 @@ export class MatchingService {
     priceItems: PriceItem[],
     contextHeaders?: string[]
   ): Promise<MatchingResult> {
+    console.log('[openAIMatch] Starting with client:', !!this.openaiClient);
+    
     if (!this.openaiClient) {
+      console.log('[openAIMatch] No OpenAI client available, falling back to LOCAL');
       return this.localMatch(description, priceItems, contextHeaders);
     }
 
@@ -598,14 +638,46 @@ export class MatchingService {
       );
       queryEmbedding = response.data[0].embedding;
     } catch (error) {
+      console.error('[openAIMatch] Failed to generate query embedding:', error);
       return this.localMatch(description, priceItems, contextHeaders);
     }
 
-    // Score items that have embeddings
-    const scoredItems = priceItems
-      .filter(item => item.embedding && item.embeddingProvider === 'openai')
-      .map(item => {
-        const similarity = this.cosineSimilarity(queryEmbedding, item.embedding!);
+    // Score all items - generate embeddings if needed
+    let preComputedOpenAI = 0;
+    let generatedOpenAI = 0;
+    
+    const scoredItems = await Promise.all(
+      priceItems.map(async (item) => {
+        const itemText = this.createSimpleText(item);
+        const cacheKey = `openai_${itemText}`;
+        let embedding = this.embeddingCache.get(cacheKey);
+        
+        // First check if item has pre-computed OpenAI embedding
+        if (!embedding && item.embedding && item.embeddingProvider === 'openai') {
+          embedding = item.embedding;
+          this.embeddingCache.set(cacheKey, embedding);
+          preComputedOpenAI++;
+        }
+        
+        // If no embedding found, generate one
+        if (!embedding) {
+          try {
+            const response = await this.openaiClient!.embeddings.create({
+              input: itemText,
+              model: 'text-embedding-3-small',
+            });
+            embedding = response.data[0].embedding;
+            this.embeddingCache.set(cacheKey, embedding);
+            generatedOpenAI++;
+          } catch {
+            return null;
+          }
+        }
+        
+        if (!embedding) return null;
+        
+        // Calculate cosine similarity
+        const similarity = this.cosineSimilarity(queryEmbedding, embedding);
         
         // Strong unit boost for OpenAI matching
         let finalScore = similarity;
@@ -622,15 +694,25 @@ export class MatchingService {
         }
         
         return { item, score: finalScore };
-      });
+      })
+    );
 
-    if (scoredItems.length === 0) {
+    // Filter out nulls and sort
+    const validMatches = scoredItems.filter(m => m !== null) as Array<{item: PriceItem, score: number}>;
+    validMatches.sort((a, b) => b.score - a.score);
+    
+    console.log('[openAIMatch] Embedding stats:', {
+      totalItems: priceItems.length,
+      preComputedOpenAI: preComputedOpenAI,
+      generatedOpenAI: generatedOpenAI,
+      validMatches: validMatches.length
+    });
+    
+    if (validMatches.length === 0) {
       return this.localMatch(description, priceItems, contextHeaders);
     }
 
-    // Sort and get best match
-    scoredItems.sort((a, b) => b.score - a.score);
-    const bestMatch = scoredItems[0];
+    const bestMatch = validMatches[0];
     
     return {
       matchedItemId: bestMatch.item._id,

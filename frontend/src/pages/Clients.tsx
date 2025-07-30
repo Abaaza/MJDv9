@@ -127,36 +127,30 @@ export default function Clients() {
     },
   });
 
-  // Group jobs by client ID first, then map to names
-  const jobsByClient = React.useMemo(() => {
-    // First group by client ID
-    const groupedById: Record<string, number> = {};
+  // Group jobs by client ID
+  const jobsByClientId = React.useMemo(() => {
+    const grouped: Record<string, number> = {};
+    
     allJobs.forEach((job: any) => {
-      const clientId = job.clientId;
+      // clientId could be a Convex ID object or string
+      const clientId = typeof job.clientId === 'string' ? job.clientId : job.clientId?._id || job.clientId?.id;
+      
       if (clientId) {
-        groupedById[clientId] = (groupedById[clientId] || 0) + 1;
+        grouped[clientId] = (grouped[clientId] || 0) + 1;
       }
     });
     
-    // Then map IDs to names
-    const groupedByName: Record<string, number> = {};
-    clients.forEach((client: Client) => {
-      const count = groupedById[client._id] || 0;
-      if (count > 0) {
-        groupedByName[client.name] = count;
-      }
-    });
+    console.log('[Clients] Jobs grouped by ID:', grouped);
+    console.log('[Clients] Total jobs:', allJobs.length);
+    console.log('[Clients] Jobs with clientId:', allJobs.filter((j: any) => j.clientId).length);
     
-    console.log('[Clients] Jobs grouped by ID:', groupedById);
-    console.log('[Clients] Jobs grouped by name:', groupedByName);
-    console.log('[Clients] Client mapping:', clients.map((c: Client) => ({ id: c._id, name: c.name })));
-    
-    return groupedByName;
-  }, [allJobs, clients]);
+    return grouped;
+  }, [allJobs]);
 
-  const getProjectsCount = (clientName: string) => {
-    console.log('[Clients] Getting project count for:', clientName, 'Result:', jobsByClient[clientName]);
-    return jobsByClient[clientName] || 0;
+  const getProjectsCount = (clientId: string) => {
+    const count = jobsByClientId[clientId] || 0;
+    console.log('[Clients] Getting project count for clientId:', clientId, 'Result:', count);
+    return count;
   };
 
   const handleOpenDialog = (client?: Client) => {
@@ -320,7 +314,7 @@ export default function Clients() {
                   </div>
                 )}
                 <div className="pt-2 text-sm text-muted-foreground">
-                  {getProjectsCount(client.name)} projects
+                  {getProjectsCount(client._id)} projects
                 </div>
               </CardContent>
             </Card>

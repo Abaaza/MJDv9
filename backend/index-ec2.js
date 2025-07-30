@@ -1,6 +1,18 @@
 // Add fetch polyfill for Node 16
 require("cross-fetch/polyfill");
 
+// Add Blob polyfill for OpenAI SDK
+if (!global.Blob) {
+  const { Blob } = require('buffer');
+  global.Blob = Blob;
+}
+
+// Add FormData polyfill for OpenAI SDK
+if (!global.FormData) {
+  const { FormData } = require('formdata-node');
+  global.FormData = FormData;
+}
+
 // Set required environment variables with proper lengths
 process.env.JWT_ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || "mjd-boq-matching-access-secret-key-2025-secure";
 process.env.JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || "mjd-boq-matching-refresh-secret-key-2025-secure";

@@ -272,7 +272,7 @@ export default function Dashboard() {
               {statsLoading ? <Loader2 className="h-6 w-6 animate-spin" /> : stats?.clients || 0}
             </div>
             <p className="text-xs text-muted-foreground">
-              Total companies
+              Active companies
             </p>
           </CardContent>
         </Card>
