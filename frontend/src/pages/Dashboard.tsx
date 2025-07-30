@@ -1,3 +1,4 @@
+import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { 
@@ -103,6 +104,21 @@ export default function Dashboard() {
     refetchInterval: 30000, // Refetch every 30 seconds
     staleTime: 0, // Always fetch fresh data
   });
+
+  // Fetch all clients to filter active ones on frontend
+  const { data: allClients = [], isLoading: clientsLoading } = useQuery({
+    queryKey: ['all-clients', refreshKey],
+    queryFn: async () => {
+      const response = await api.get('/clients');
+      return response.data;
+    },
+    refetchInterval: 30000, // Refetch every 30 seconds
+  });
+
+  // Calculate active clients count on frontend
+  const activeClientsCount = React.useMemo(() => {
+    return allClients.filter((client: any) => client.isActive !== false).length;
+  }, [allClients]);
 
   // Fetch actual price list count
   const { data: priceListData, isLoading: priceListLoading } = useQuery({
@@ -269,7 +285,7 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {statsLoading ? <Loader2 className="h-6 w-6 animate-spin" /> : stats?.clients || 0}
+              {clientsLoading ? <Loader2 className="h-6 w-6 animate-spin" /> : activeClientsCount}
             </div>
             <p className="text-xs text-muted-foreground">
               Active companies

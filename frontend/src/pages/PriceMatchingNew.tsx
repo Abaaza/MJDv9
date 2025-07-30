@@ -72,14 +72,17 @@ export default function PriceMatchingNew() {
     file: null,
   });
 
-  // Fetch active clients only
-  const { data: clients = [] } = useQuery({
-    queryKey: ['active-clients'],
+  // Fetch all clients and filter active ones on frontend
+  const { data: allClients = [] } = useQuery({
+    queryKey: ['clients'],
     queryFn: async () => {
-      const response = await api.get('/clients/active');
+      const response = await api.get('/clients');
       return response.data;
     },
   });
+
+  // Filter to show only active clients
+  const clients = allClients.filter((client: any) => client.isActive !== false);
 
   // Subscribe to job updates and logs for current job
   useEffect(() => {
