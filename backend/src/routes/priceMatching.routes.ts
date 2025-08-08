@@ -19,6 +19,7 @@ import {
   getProcessorStatus,
   getMatchingMethods,
   testLocalMatch,
+  getLearningStatistics,
 } from '../controllers/priceMatching.controller';
 
 const router = Router();
@@ -79,5 +80,8 @@ router.get('/matching-methods', getMatchingMethods);
 
 // Test local match for single item (instant test)
 router.post('/test/local', testLocalMatch);
+
+// Get learning statistics
+router.get('/learning/statistics', getLearningStatistics);
 
 export default router;

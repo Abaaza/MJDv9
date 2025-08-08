@@ -12,6 +12,7 @@ import {
   deleteAllPriceItems,
   getImportStatus,
   searchPriceItems,
+  bulkUpdatePriceItems,
 } from '../controllers/priceList.controller';
 
 const router = Router();
@@ -33,6 +34,9 @@ router.post('/search', searchPriceItems);
 
 // Create new price item (admin only)
 router.post('/', requireAdmin, createPriceItem);
+
+// Bulk update price items (admin only)
+router.post('/bulk-update', requireAdmin, bulkUpdatePriceItems);
 
 // Update price item (admin only)
 router.patch('/:id', requireAdmin, updatePriceItem);

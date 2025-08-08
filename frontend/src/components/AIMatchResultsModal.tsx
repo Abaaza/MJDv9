@@ -38,6 +38,7 @@ interface MatchResult {
   confidence: number;
   matchMethod: string;
   isManuallyEdited: boolean;
+  isLearnedMatch?: boolean;
   totalPrice?: number;
   notes?: string;
   isDeleted?: boolean;
@@ -872,7 +873,9 @@ export function AIMatchResultsModal({ jobId, jobMatchingMethod, onClose }: AIMat
                                     "rounded-lg p-3 border bg-gradient-to-r transition-all",
                                     matchType === 'LOCAL' && "from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 border-green-500",
                                     matchType === 'MANUAL' && "from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 border-purple-500",
-                                    matchType === 'AI' && "from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 border-blue-500",
+                                    matchType === 'AI' && result.isLearnedMatch 
+                                      ? "from-amber-50 to-amber-100 dark:from-amber-900/20 dark:to-amber-800/20 border-amber-500"
+                                      : "from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 border-blue-500",
                                     runningLocalTests[result._id] && "opacity-50"
                                   )}>
                                     {runningLocalTests[result._id] ? (
@@ -882,7 +885,14 @@ export function AIMatchResultsModal({ jobId, jobMatchingMethod, onClose }: AIMat
                                       </div>
                                     ) : displayMatch ? (
                                       <div className="space-y-1">
-                                        <p className="font-medium text-sm">{displayMatch.matchedDescription}</p>
+                                        <div className="flex items-center gap-2">
+                                          <p className="font-medium text-sm">{displayMatch.matchedDescription}</p>
+                                          {result.isLearnedMatch && matchType === 'AI' && (
+                                            <span className="px-1.5 py-0.5 text-xs font-medium bg-amber-200 dark:bg-amber-800 text-amber-800 dark:text-amber-200 rounded-md">
+                                              Learned
+                                            </span>
+                                          )}
+                                        </div>
                                       </div>
                                     ) : (
                                       <p className="text-sm text-muted-foreground italic">No match found</p>

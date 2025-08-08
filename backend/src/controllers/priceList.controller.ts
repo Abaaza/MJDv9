@@ -637,3 +637,94 @@ export async function getImportStatus(req: Request, res: Response): Promise<void
     res.status(500).json({ error: 'Failed to get import status' });
   }
 }
+
+export async function bulkUpdatePriceItems(req: Request, res: Response): Promise<void> {
+  try {
+    if (!req.user) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+
+    const { updates } = req.body;
+    
+    if (!Array.isArray(updates) || updates.length === 0) {
+      res.status(400).json({ error: 'Invalid updates array' });
+      return;
+    }
+
+    const results = {
+      updated: 0,
+      created: 0,
+      errors: [] as string[],
+    };
+
+    // Process updates in smaller batches to avoid rate limits
+    const batchSize = 10;
+    for (let i = 0; i < updates.length; i += batchSize) {
+      const batch = updates.slice(i, i + batchSize);
+      
+      const updatePromises = batch.map(async (item) => {
+        try {
+          if (item._id && !item._id.startsWith('new_')) {
+            // Update existing item
+            await convex.mutation(api.priceItems.update, {
+              _id: toConvexId<'priceItems'>(item._id),
+              ...item,
+            });
+            return { success: true, type: 'update' };
+          } else {
+            // Create new item
+            const itemData = {
+              ...item,
+              id: item.id || `item-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+              userId: toConvexId<'users'>(req.user!.id),
+            };
+            delete itemData._id; // Remove temporary ID
+            
+            await convex.mutation(api.priceItems.create, itemData);
+            return { success: true, type: 'create' };
+          }
+        } catch (err: any) {
+          console.error(`Failed to update/create item:`, err);
+          return { success: false, error: `Item ${item._id || item.description}: ${err.message}` };
+        }
+      });
+
+      const batchResults = await Promise.all(updatePromises);
+      
+      // Count results
+      batchResults.forEach(result => {
+        if (result.success) {
+          if (result.type === 'update') {
+            results.updated++;
+          } else if (result.type === 'create') {
+            results.created++;
+          }
+        } else if (result.error) {
+          results.errors.push(result.error);
+        }
+      });
+      
+      // Add delay between batches to avoid rate limits
+      if (i + batchSize < updates.length) {
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+    }
+
+    // Create activity log
+    await convex.mutation(api.activityLogs.create, {
+      userId: toConvexId<'users'>(req.user.id),
+      action: 'bulk_updated_price_items',
+      entityType: 'priceItems',
+      details: `Bulk update: Created ${results.created}, Updated ${results.updated} items`,
+    });
+
+    res.json({
+      message: 'Bulk update completed',
+      ...results,
+    });
+  } catch (error) {
+    console.error('Bulk update price items error:', error);
+    res.status(500).json({ error: 'Failed to bulk update price items' });
+  }
+}

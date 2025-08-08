@@ -317,6 +317,13 @@ export const createBatch = mutation({
   },
 });
 
+export const getById = query({
+  args: { id: v.id("priceItems") },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.id);
+  },
+});
+
 export const getCategories = query({
   handler: async (ctx) => {
     const items = await ctx.db

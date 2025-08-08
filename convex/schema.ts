@@ -127,6 +127,7 @@ export default defineSchema({
     confidence: v.number(),
     matchMethod: v.string(),
     isManuallyEdited: v.optional(v.boolean()),
+    isLearnedMatch: v.optional(v.boolean()),
     totalPrice: v.optional(v.number()),
     notes: v.optional(v.string()),
   })
@@ -210,4 +211,35 @@ export default defineSchema({
     .index("by_job", ["jobId"])
     .index("by_job_timestamp", ["jobId", "timestamp"])
     .index("by_timestamp", ["timestamp"]),
+
+  matchingPatterns: defineTable({
+    originalDescription: v.string(),
+    originalUnit: v.optional(v.string()),
+    originalCategory: v.optional(v.string()),
+    originalSubcategory: v.optional(v.string()),
+    originalContextHeaders: v.optional(v.array(v.string())),
+    matchedItemId: v.id("priceItems"),
+    matchedDescription: v.string(),
+    matchedCode: v.optional(v.string()),
+    matchedUnit: v.optional(v.string()),
+    matchedRate: v.number(),
+    embedding: v.optional(v.array(v.number())),
+    embeddingProvider: v.optional(v.union(v.literal("cohere"), v.literal("openai"))),
+    matchConfidence: v.number(),
+    usageCount: v.number(),
+    lastUsedAt: v.number(),
+    createdAt: v.number(),
+    createdBy: v.id("users"),
+    jobId: v.optional(v.id("aiMatchingJobs")),
+    projectId: v.optional(v.id("projects")),
+    isActive: v.boolean(),
+  })
+    .index("by_description", ["originalDescription"])
+    .index("by_matched_item", ["matchedItemId"])
+    .index("by_usage", ["usageCount"])
+    .index("by_active", ["isActive"])
+    .searchIndex("search_patterns", {
+      searchField: "originalDescription",
+      filterFields: ["originalCategory", "originalSubcategory", "isActive"]
+    }),
 });

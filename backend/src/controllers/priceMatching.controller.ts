@@ -3,6 +3,7 @@ import { getConvexClient } from '../config/convex';
 import { api } from '../lib/convex-api';
 import { ExcelService } from '../services/excel.service';
 import { MatchingService } from '../services/matching.service';
+import { LearningMatcherService } from '../services/learningMatcher.service';
 import { jobProcessor } from '../services/jobProcessor.service';
 import { lambdaProcessor, LambdaProcessorService } from '../services/lambdaProcessor.service';
 import { toConvexId } from '../utils/convexId';
@@ -15,6 +16,7 @@ import { ConvexWrapper } from '../utils/convexWrapper';
 const convex = getConvexClient();
 const excelService = new ExcelService();
 const matchingService = MatchingService.getInstance();
+const learningMatcher = LearningMatcherService.getInstance();
 
 // Helper function to sanitize field names for Convex
 function sanitizeFieldName(name: string): string {
@@ -749,6 +751,38 @@ export async function updateMatchResult(req: Request, res: Response): Promise<vo
         userId: toConvexId<'users'>(req.user.id),
       });
 
+      // If this is a manual edit, record it for learning
+      if (updates.isManuallyEdited && updates.matchedItemId) {
+        try {
+          // Get the price item details
+          const priceItem = await convex.query(api.priceItems.getById, {
+            id: toConvexId<'priceItems'>(updates.matchedItemId),
+          });
+
+          if (priceItem) {
+            // Record this manual edit as a learning pattern
+            await learningMatcher.recordManualEdit(
+              result.originalDescription,
+              updates.matchedItemId,
+              {
+                description: updates.matchedDescription || priceItem.description,
+                code: updates.matchedCode || priceItem.code,
+                unit: updates.matchedUnit || priceItem.unit,
+                rate: updates.matchedRate || priceItem.rate,
+              },
+              updates.confidence || 1.0, // Manual edits have high confidence
+              result.contextHeaders,
+              req.user.id,
+              job._id,
+              job.projectId
+            );
+          }
+        } catch (learningError) {
+          // Don't fail the update if learning fails
+          console.error('[updateMatchResult] Failed to record learning pattern:', learningError);
+        }
+      }
+
       // Console log removed for performance
     } catch (mutationError) {
       // Console log removed for performance
@@ -1260,4 +1294,16 @@ export async function stopAllJobs(req: Request, res: Response): Promise<void> {
   }
 }
 
+export async function getLearningStatistics(req: Request, res: Response): Promise<void> {
+  try {
+    if (!req.user) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
 
+    const stats = await learningMatcher.getPatternStatistics();
+    res.json(stats);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to get learning statistics' });
+  }
+}

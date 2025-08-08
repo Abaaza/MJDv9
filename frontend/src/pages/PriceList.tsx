@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { 
   Search, 
@@ -17,7 +18,9 @@ import {
   XCircle,
   Plus,
   Edit2,
-  X
+  X,
+  FileSpreadsheet,
+  TableIcon
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -67,6 +70,7 @@ type SortDirection = 'asc' | 'desc';
 
 export default function PriceList() {
   const convex = useConvex();
+  const navigate = useNavigate();
   const { formatPrice } = useCurrency();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -546,6 +550,15 @@ export default function PriceList() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+          <Button 
+            onClick={() => navigate('/price-list-spreadsheet')}
+            variant="outline"
+            className="w-full sm:w-auto"
+            title="Switch to Enhanced Spreadsheet View"
+          >
+            <FileSpreadsheet className="h-4 w-4 mr-2" />
+            Enhanced Spreadsheet
+          </Button>
           <Button onClick={handleCreate} className="w-full sm:w-auto">
             <Plus className="h-4 w-4 mr-2" />
             Add Item

@@ -2,6 +2,7 @@
 import { getConvexClient } from '../config/convex';
 import { api } from '../lib/convex-api';
 import { MatchingService } from './matching.service';
+import { LearningMatcherService } from './learningMatcher.service';
 import { logStorage } from './logStorage.service';
 import { ConvexBatchProcessor } from '../utils/convexBatch';
 import { PerformanceLogger } from '../utils/performanceLogger';
@@ -29,6 +30,7 @@ export class JobProcessorService extends EventEmitter {
   private isProcessing = false;
   private convex = getConvexClient();
   private matchingService = MatchingService.getInstance();
+  private learningMatcher = LearningMatcherService.getInstance();
   
   // Batch configuration
   private readonly BATCH_SIZE = 5; // Reduced batch size
@@ -600,28 +602,16 @@ export class JobProcessorService extends EventEmitter {
         const matchStartTime = Date.now();
         let matchResult;
         
-        // Always use regular matching for now since price items don't have pre-computed embeddings
-        // TODO: Re-enable this once price items have embeddings in the database
-        /*
-        if (batchEmbeddings && batchEmbeddings.has(item.description) && ['COHERE', 'OPENAI'].includes(job.method)) {
-          const embedding = batchEmbeddings.get(item.description)!;
-          matchResult = await this.matchingService.matchItemWithEmbedding(
-            item.description,
-            this.translateMethodForMatchingService(job.method) as 'COHERE' | 'OPENAI',
-            embedding,
-            priceItems,
-            item.contextHeaders
-          );
-        } else {
-        */
-          // Use regular matching which generates embeddings on-the-fly
-          matchResult = await this.matchingService.matchItem(
-            item.description,
-            this.translateMethodForMatchingService(job.method),
-            priceItems,
-            item.contextHeaders
-          );
-        //}
+        // Use learning matcher which checks for previous patterns first
+        matchResult = await this.learningMatcher.matchWithLearning(
+          item.description,
+          this.translateMethodForMatchingService(job.method),
+          priceItems,
+          item.contextHeaders,
+          job.userId,
+          job.jobId,
+          undefined // projectId if available
+        );
         
         const matchDuration = Date.now() - matchStartTime;
 
@@ -651,6 +641,7 @@ export class JobProcessorService extends EventEmitter {
           matchedRate: matchResult.matchedRate || 0,
           confidence: matchResult.confidence || 0,
           isManuallyEdited: false, // Set to false for new matches
+          isLearnedMatch: (matchResult as any).isLearnedMatch || false, // Add learned match flag
           matchMethod: job.method,
           totalPrice: (item.quantity || 0) * (matchResult.matchedRate || 0),
           notes: '',
