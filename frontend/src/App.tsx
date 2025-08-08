@@ -78,7 +78,7 @@ function App() {
                 <Route path="dashboard" element={<Dashboard />} />
                 <Route path="price-matching" element={<PriceMatchingNew />} />
                 <Route path="price-list" element={<PriceList />} />
-                <Route path="price-list-spreadsheet" element={<PriceListSpreadsheet />} />
+                <Route path="price-list-spreadsheet" element={<PriceListSpreadsheetEnhanced />} />
                 <Route path="projects" element={<Projects />} />
                 <Route path="clients" element={<Clients />} />
                 <Route path="activity" element={<Activity />} />
