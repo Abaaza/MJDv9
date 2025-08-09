@@ -54,13 +54,18 @@ export const useAuthStore = create<AuthState>((set) => ({
     try {
       const token = localStorage.getItem('accessToken');
       if (!token) {
-        set({ isLoading: false });
+        set({ isLoading: false, user: null, isAuthenticated: false });
         return;
       }
 
       const response = await api.get('/auth/me');
-      set({ user: response.data.user, isAuthenticated: true, isLoading: false });
+      if (response.data?.user) {
+        set({ user: response.data.user, isAuthenticated: true, isLoading: false });
+      } else {
+        throw new Error('Invalid user data received');
+      }
     } catch (error) {
+      console.error('Auth check failed:', error);
       localStorage.removeItem('accessToken');
       set({ user: null, isAuthenticated: false, isLoading: false });
     }

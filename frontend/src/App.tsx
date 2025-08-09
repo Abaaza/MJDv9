@@ -5,6 +5,7 @@ import { Toaster } from 'react-hot-toast';
 import { useAuthStore } from './stores/auth.store';
 import { ThemeProvider } from './providers/theme-provider';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import AuthErrorBoundary from './components/AuthErrorBoundary';
 import Layout from './components/Layout';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -26,12 +27,17 @@ import './styles/animations.css';
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const isLoading = useAuthStore((state) => state.isLoading);
+  const user = useAuthStore((state) => state.user);
 
   if (isLoading) {
     return <div className="flex items-center justify-center min-h-screen">Loading...</div>;
   }
 
-  return isAuthenticated ? <>{children}</> : <Navigate to="/login" replace />;
+  return isAuthenticated && user ? (
+    <AuthErrorBoundary>{children}</AuthErrorBoundary>
+  ) : (
+    <Navigate to="/login" replace />
+  );
 }
 
 function AdminRoute({ children }: { children: React.ReactNode }) {

@@ -25,7 +25,7 @@ export default function UserSettings() {
     queryFn: async () => {
       if (!user) return [];
       const logs = await convex.query(convexApi.activityLogs.getByUser, {
-        userId: user.id as any,
+        userId: user?.id as any,
         limit: 20,
       });
       return logs;
