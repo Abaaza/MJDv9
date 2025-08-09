@@ -14,6 +14,7 @@ import PriceMatchingNew from './pages/PriceMatchingNew';
 import PriceList from './pages/PriceList';
 import PriceListSpreadsheet from './pages/PriceListSpreadsheet';
 import PriceListSpreadsheetEnhanced from './pages/PriceListSpreadsheetEnhanced';
+import PriceListSpreadsheetSafe from './pages/PriceListSpreadsheetSafe';
 import Projects from './pages/Projects';
 import Clients from './pages/Clients';
 import AdminSettings from './pages/AdminSettings';
@@ -84,7 +85,7 @@ function App() {
                 <Route path="dashboard" element={<Dashboard />} />
                 <Route path="price-matching" element={<PriceMatchingNew />} />
                 <Route path="price-list" element={<PriceList />} />
-                <Route path="price-list-spreadsheet" element={<PriceListSpreadsheetEnhanced />} />
+                <Route path="price-list-spreadsheet" element={<PriceListSpreadsheetSafe />} />
                 <Route path="projects" element={<Projects />} />
                 <Route path="clients" element={<Clients />} />
                 <Route path="activity" element={<Activity />} />
