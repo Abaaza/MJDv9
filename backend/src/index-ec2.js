@@ -19,6 +19,7 @@ app.use(cors({
   origin: [
     'https://main.d3j084kic0l1ff.amplifyapp.com',
     'https://d3j084kic0l1ff.cloudfront.net',
+    'https://mjd.braunwell.io',
     'http://localhost:5173',
     'http://localhost:5174',
     'http://localhost:5175',
