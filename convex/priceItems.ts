@@ -94,6 +94,97 @@ export const update = mutation({
   },
 });
 
+// New: Find item by code
+export const findByCode = query({
+  args: { code: v.string() },
+  handler: async (ctx, args) => {
+    if (!args.code || args.code.trim() === '') {
+      return null;
+    }
+    
+    const items = await ctx.db
+      .query("priceItems")
+      .filter((q) => 
+        q.and(
+          q.eq(q.field("isActive"), true),
+          q.eq(q.field("code"), args.code)
+        )
+      )
+      .first();
+    
+    return items;
+  },
+});
+
+// New: Upsert - create or update based on code
+export const upsert = mutation({
+  args: {
+    code: v.optional(v.string()),
+    ref: v.optional(v.string()),
+    description: v.string(),
+    keywords: v.optional(v.array(v.string())),
+    // Construction-specific fields
+    material_type: v.optional(v.string()),
+    material_grade: v.optional(v.string()),
+    material_size: v.optional(v.string()),
+    material_finish: v.optional(v.string()),
+    category: v.optional(v.string()),
+    subcategory: v.optional(v.string()),
+    work_type: v.optional(v.string()),
+    brand: v.optional(v.string()),
+    unit: v.optional(v.string()),
+    rate: v.number(),
+    labor_rate: v.optional(v.number()),
+    material_rate: v.optional(v.number()),
+    wastage_percentage: v.optional(v.number()),
+    // Supplier info
+    supplier: v.optional(v.string()),
+    location: v.optional(v.string()),
+    availability: v.optional(v.string()),
+    remark: v.optional(v.string()),
+    userId: v.id("users"),
+  },
+  handler: async (ctx, args) => {
+    const { userId, code, ...itemData } = args;
+    
+    // If code is provided, check if item exists
+    if (code && code.trim() !== '') {
+      const existingItem = await ctx.db
+        .query("priceItems")
+        .filter((q) => 
+          q.and(
+            q.eq(q.field("isActive"), true),
+            q.eq(q.field("code"), code)
+          )
+        )
+        .first();
+      
+      if (existingItem) {
+        // Update existing item
+        await ctx.db.patch(existingItem._id, {
+          ...itemData,
+          code,
+          updatedAt: Date.now(),
+        });
+        return { id: existingItem._id, action: 'updated' };
+      }
+    }
+    
+    // Create new item
+    const newItemId = await ctx.db.insert("priceItems", {
+      ...itemData,
+      code,
+      id: `item-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      isActive: true,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      createdBy: userId,
+    });
+    
+    return { id: newItemId, action: 'created' };
+  },
+});
+
 export const getAll = query({
   handler: async (ctx) => {
     return await ctx.db
@@ -203,6 +294,10 @@ export const search = query({
       else if (category.includes(searchQuery)) {
         score = 30;
       }
+      // Check keywords
+      else if (item.keywords?.some(k => k.toLowerCase().includes(searchQuery))) {
+        score = 25;
+      }
       // Check other fields
       else {
         const otherFields = [
@@ -231,23 +326,9 @@ export const search = query({
   },
 });
 
-export const setActive = mutation({
-  args: {
-    id: v.id("priceItems"),
-    isActive: v.boolean(),
-  },
-  handler: async (ctx, args) => {
-    await ctx.db.patch(args.id, {
-      isActive: args.isActive,
-      updatedAt: Date.now(),
-    });
-  },
-});
-
 export const deleteItem = mutation({
   args: { id: v.id("priceItems") },
   handler: async (ctx, args) => {
-    // Instead of deleting, we'll mark as inactive
     await ctx.db.patch(args.id, {
       isActive: false,
       updatedAt: Date.now(),
@@ -255,7 +336,7 @@ export const deleteItem = mutation({
   },
 });
 
-export const deleteBatch = mutation({
+export const bulkDelete = mutation({
   args: { ids: v.array(v.id("priceItems")) },
   handler: async (ctx, args) => {
     for (const id of args.ids) {
@@ -267,145 +348,12 @@ export const deleteBatch = mutation({
   },
 });
 
-export const createBatch = mutation({
-  args: {
-    items: v.array(v.object({
-      id: v.string(),
-      code: v.optional(v.string()),
-      ref: v.optional(v.string()),
-      description: v.string(),
-      keywords: v.optional(v.array(v.string())),
-      material_type: v.optional(v.string()),
-      material_grade: v.optional(v.string()),
-      material_size: v.optional(v.string()),
-      material_finish: v.optional(v.string()),
-      category: v.optional(v.string()),
-      subcategory: v.optional(v.string()),
-      work_type: v.optional(v.string()),
-      brand: v.optional(v.string()),
-      unit: v.optional(v.string()),
-      rate: v.number(),
-      labor_rate: v.optional(v.number()),
-      material_rate: v.optional(v.number()),
-      wastage_percentage: v.optional(v.number()),
-      supplier: v.optional(v.string()),
-      location: v.optional(v.string()),
-      availability: v.optional(v.string()),
-      remark: v.optional(v.string()),
-      subCategoryCode: v.optional(v.string()),
-      subCategoryName: v.optional(v.string()),
-      sub_category: v.optional(v.string()),
-      type: v.optional(v.string()),
-      vehicle_type: v.optional(v.string()),
-      vendor: v.optional(v.string()),
-    })),
-    userId: v.id("users"),
-  },
-  handler: async (ctx, { items, userId }) => {
-    const created = [];
-    for (const item of items) {
-      const id = await ctx.db.insert("priceItems", {
-        ...item,
-        isActive: true,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        createdBy: userId,
-      });
-      created.push(id);
-    }
-    return created;
-  },
-});
-
-export const getById = query({
-  args: { id: v.id("priceItems") },
-  handler: async (ctx, args) => {
-    return await ctx.db.get(args.id);
-  },
-});
-
-export const getCategories = query({
+// Internal query for getting items without pagination
+export const getAllInternal = internalQuery({
   handler: async (ctx) => {
-    const items = await ctx.db
+    return await ctx.db
       .query("priceItems")
       .filter((q) => q.eq(q.field("isActive"), true))
       .collect();
-    
-    const categories = new Set<string>();
-    items.forEach(item => {
-      if (item.category) {
-        categories.add(item.category);
-      }
-    });
-    
-    return Array.from(categories).sort();
-  },
-});
-
-export const getCategorySubcategories = query({
-  handler: async (ctx) => {
-    const items = await ctx.db
-      .query("priceItems")
-      .filter((q) => q.eq(q.field("isActive"), true))
-      .collect();
-    
-    const categorySubcategories: Record<string, string[]> = {};
-    items.forEach(item => {
-      if (item.category && item.subcategory) {
-        if (!categorySubcategories[item.category]) {
-          categorySubcategories[item.category] = [];
-        }
-        if (!categorySubcategories[item.category].includes(item.subcategory)) {
-          categorySubcategories[item.category].push(item.subcategory);
-        }
-      }
-    });
-    
-    // Sort subcategories within each category
-    Object.keys(categorySubcategories).forEach(category => {
-      categorySubcategories[category].sort();
-    });
-    
-    return categorySubcategories;
-  },
-});
-
-// Internal query for getting items with embeddings
-export const getItemsForEmbedding = internalQuery({
-  args: {
-    provider: v.union(v.literal("cohere"), v.literal("openai")),
-    limit: v.optional(v.number()),
-  },
-  handler: async (ctx, args) => {
-    const query = ctx.db
-      .query("priceItems")
-      .filter((q) => q.eq(q.field("isActive"), true));
-    
-    const items = await query.collect();
-    
-    // Filter items that don't have embeddings or have embeddings from a different provider
-    const itemsNeedingEmbedding = items.filter(item => 
-      !item.embedding || item.embeddingProvider !== args.provider
-    );
-    
-    return args.limit 
-      ? itemsNeedingEmbedding.slice(0, args.limit)
-      : itemsNeedingEmbedding;
-  },
-});
-
-// Update item with embedding
-export const updateEmbedding = mutation({
-  args: {
-    id: v.id("priceItems"),
-    embedding: v.array(v.number()),
-    embeddingProvider: v.union(v.literal("cohere"), v.literal("openai")),
-  },
-  handler: async (ctx, args) => {
-    await ctx.db.patch(args.id, {
-      embedding: args.embedding,
-      embeddingProvider: args.embeddingProvider,
-      updatedAt: Date.now(),
-    });
   },
 });

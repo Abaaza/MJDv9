@@ -8,6 +8,7 @@ import path from 'path';
 import { Id } from '../lib/convex-api';
 import { toConvexId } from '../utils/convexId';
 import { logActivity } from '../utils/activityLogger';
+import { BatchProcessor } from '../utils/batchProcessor';
 
 const convex = getConvexClient();
 
@@ -261,35 +262,108 @@ export async function importCSV(req: Request, res: Response): Promise<void> {
 
 export async function exportCSV(req: Request, res: Response): Promise<void> {
   try {
+    const { format = 'xlsx' } = req.query;
     const items = await convex.query(api.priceItems.getAll);
     
-    const csvData = items.map(item => ({
-      _id: item._id,
-      code: item.code || '',
-      ref: item.ref || '',
-      description: item.description,
-      category: item.category || '',
-      subcategory: item.subcategory || '',
-      unit: item.unit || '',
-      rate: item.rate,
-      keywords: item.keywords?.join(',') || '',
-      remark: item.remark || '',
-    }));
+    if (format === 'csv') {
+      // Export as CSV
+      const csvData = items.map(item => ({
+        code: item.code || '',
+        ref: item.ref || '',
+        description: item.description,
+        category: item.category || '',
+        subcategory: item.subcategory || '',
+        unit: item.unit || '',
+        rate: item.rate || 0,
+        labor_rate: item.labor_rate || 0,
+        material_rate: item.material_rate || 0,
+        material_type: item.material_type || '',
+        material_grade: item.material_grade || '',
+        work_type: item.work_type || '',
+        supplier: item.supplier || '',
+        location: item.location || '',
+        brand: item.brand || '',
+        availability: item.availability || '',
+        remark: item.remark || '',
+      }));
 
-    const csv = stringify(csvData, {
-      header: true,
-      columns: [
-        '_id', 'code', 'ref', 'description', 'category', 
-        'subcategory', 'unit', 'rate', 'keywords', 'remark'
-      ],
-    });
+      const csv = stringify(csvData, {
+        header: true,
+        columns: [
+          'code', 'ref', 'description', 'category', 'subcategory', 'unit', 
+          'rate', 'labor_rate', 'material_rate', 'material_type', 
+          'material_grade', 'work_type', 'supplier', 'location', 
+          'brand', 'availability', 'remark'
+        ],
+      });
 
-    res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', 'attachment; filename="price_list.csv"');
-    res.send(csv);
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', 'attachment; filename="price_list.csv"');
+      res.send(csv);
+    } else {
+      // Export as Excel (default)
+      const workbook = XLSX.utils.book_new();
+      
+      // Prepare data for Excel
+      const excelData = items.map(item => ({
+        'Code': item.code || '',
+        'Reference': item.ref || '',
+        'Description': item.description,
+        'Category': item.category || '',
+        'Subcategory': item.subcategory || '',
+        'Unit': item.unit || '',
+        'Rate': item.rate || 0,
+        'Labor Rate': item.labor_rate || 0,
+        'Material Rate': item.material_rate || 0,
+        'Material Type': item.material_type || '',
+        'Material Grade': item.material_grade || '',
+        'Work Type': item.work_type || '',
+        'Supplier': item.supplier || '',
+        'Location': item.location || '',
+        'Brand': item.brand || '',
+        'Availability': item.availability || '',
+        'Remark': item.remark || '',
+      }));
+
+      // Create worksheet
+      const worksheet = XLSX.utils.json_to_sheet(excelData);
+      
+      // Auto-size columns
+      const maxWidth = 50;
+      const cols = [
+        { wch: 15 }, // Code
+        { wch: 15 }, // Reference
+        { wch: 40 }, // Description
+        { wch: 20 }, // Category
+        { wch: 20 }, // Subcategory
+        { wch: 10 }, // Unit
+        { wch: 12 }, // Rate
+        { wch: 12 }, // Labor Rate
+        { wch: 12 }, // Material Rate
+        { wch: 20 }, // Material Type
+        { wch: 15 }, // Material Grade
+        { wch: 20 }, // Work Type
+        { wch: 20 }, // Supplier
+        { wch: 20 }, // Location
+        { wch: 15 }, // Brand
+        { wch: 15 }, // Availability
+        { wch: 30 }, // Remark
+      ];
+      worksheet['!cols'] = cols;
+
+      // Add worksheet to workbook
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Price List');
+
+      // Generate buffer
+      const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="price_list_${new Date().toISOString().split('T')[0]}.xlsx"`);
+      res.send(buffer);
+    }
   } catch (error) {
-    console.error('Export CSV error:', error);
-    res.status(500).json({ error: 'Failed to export CSV' });
+    console.error('Export error:', error);
+    res.status(500).json({ error: 'Failed to export price list' });
   }
 }
 
@@ -543,7 +617,8 @@ async function processImportAsync(
       progress: 0,
     });
 
-    const batchSize = 25; // Reduced batch size to avoid Convex rate limits
+    const batchSize = 5; // Small batch size to avoid Convex rate limits
+    const delayBetweenBatches = 2000; // 2 seconds delay between batches
     const results = {
       created: 0,
       updated: 0,
@@ -551,43 +626,82 @@ async function processImportAsync(
       errors: [] as string[],
     };
 
+    // Add initial log
+    await convex.mutation(api.importJobs.addLog, {
+      jobId,
+      message: `Starting import of ${items.length} items from ${fileName}`,
+      level: 'info',
+    });
+
     // Process items in batches
     for (let i = 0; i < items.length; i += batchSize) {
       const batch = items.slice(i, i + batchSize);
+      const batchNumber = Math.floor(i / batchSize) + 1;
+      const totalBatches = Math.ceil(items.length / batchSize);
       
       try {
-        // Process items individually since bulkImport doesn't exist
+        // Log batch start
+        await convex.mutation(api.importJobs.addLog, {
+          jobId,
+          message: `Processing batch ${batchNumber} of ${totalBatches} (${batch.length} items)`,
+          level: 'info',
+        });
+
+        // Process items with upsert to handle duplicates
         for (const item of batch) {
           try {
-            await convex.mutation(api.priceItems.create, {
+            const result = await convex.mutation(api.priceItems.upsert, {
               ...item,
               userId: toConvexId<'users'>(userId),
             });
-            results.created++;
-          } catch (err: any) {
-            if (err.message?.includes('duplicate')) {
-              results.skipped++;
-            } else {
-              results.errors.push(`Item ${item.id}: ${err.message}`);
+            
+            if (result.action === 'created') {
+              results.created++;
+            } else if (result.action === 'updated') {
+              results.updated++;
             }
+          } catch (err: any) {
+            console.error(`Failed to process item ${item.code || item.description}:`, err);
+            results.errors.push(`${item.code || 'No code'}: ${err.message}`);
+            
+            // Add error log
+            await convex.mutation(api.importJobs.addLog, {
+              jobId,
+              message: `Error processing item ${item.code || item.description}: ${err.message}`,
+              level: 'error',
+            });
           }
         }
 
-        // Update progress
+        // Update progress with detailed stats
         const progress = Math.floor(((i + batch.length) / items.length) * 100);
         await convex.mutation(api.importJobs.updateProgress, {
           jobId,
           progress,
-          message: `Processed ${i + batch.length} of ${items.length} items (Created: ${results.created}, Updated: ${results.updated}, Skipped: ${results.skipped})`,
+          message: `Processed ${i + batch.length} of ${items.length} items (Created: ${results.created}, Updated: ${results.updated}, Errors: ${results.errors.length})`,
+        });
+
+        // Log batch completion
+        await convex.mutation(api.importJobs.addLog, {
+          jobId,
+          message: `Batch ${batchNumber} completed: ${results.created} created, ${results.updated} updated`,
+          level: 'info',
         });
       } catch (error: any) {
-        console.error(`Error processing batch ${i / batchSize + 1}:`, error);
-        results.errors.push(`Batch ${i / batchSize + 1}: ${error.message}`);
+        console.error(`Error processing batch ${batchNumber}:`, error);
+        results.errors.push(`Batch ${batchNumber}: ${error.message}`);
+        
+        // Log batch error
+        await convex.mutation(api.importJobs.addLog, {
+          jobId,
+          message: `Batch ${batchNumber} failed: ${error.message}`,
+          level: 'error',
+        });
       }
       
-      // Add a small delay between batches to avoid rate limits
+      // Add delay between batches to avoid rate limits
       if (i + batchSize < items.length) {
-        await new Promise(resolve => setTimeout(resolve, 500)); // 500ms delay
+        await new Promise(resolve => setTimeout(resolve, delayBetweenBatches));
       }
     }
 

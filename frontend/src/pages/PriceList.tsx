@@ -550,29 +550,30 @@ export default function PriceList() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-          <Button 
-            onClick={() => navigate('/price-list-spreadsheet')}
-            variant="outline"
-            className="w-full sm:w-auto"
-            title="Switch to Enhanced Spreadsheet View"
-          >
-            <FileSpreadsheet className="h-4 w-4 mr-2" />
-            Enhanced Spreadsheet
-          </Button>
           <Button onClick={handleCreate} className="w-full sm:w-auto">
             <Plus className="h-4 w-4 mr-2" />
             Add Item
           </Button>
-          <Button onClick={handleExport} variant="outline" className="w-full sm:w-auto">
-            <Download className="h-4 w-4 mr-2" />
-            Export
+          <Button 
+            onClick={handleExport} 
+            variant="outline" 
+            className="w-full sm:w-auto group"
+            title="Export all price list items to Excel"
+          >
+            <Download className="h-4 w-4 mr-2 group-hover:animate-bounce" />
+            Export Excel
           </Button>
           <Button 
-            className="w-full sm:w-auto"
+            className="w-full sm:w-auto group"
             onClick={() => fileInputRef.current?.click()}
             disabled={importMutation.isPending}
+            title="Import items from Excel or CSV. Items with matching codes will be updated."
           >
-            <Upload className="h-4 w-4 mr-2" />
+            {importMutation.isPending ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Upload className="h-4 w-4 mr-2 group-hover:animate-pulse" />
+            )}
             Import
           </Button>
           {priceItems && (priceItems as PriceItem[]).length > 0 && (
@@ -604,19 +605,26 @@ export default function PriceList() {
       <Dialog open={showImportDialog} onOpenChange={setShowImportDialog}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Importing Price List</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <Upload className="h-5 w-5 text-primary animate-pulse" />
+              Importing Price List
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             {importProgress && (
               <>
                 <div className="space-y-2">
                   <div className="flex justify-between text-sm">
-                    <span>Progress</span>
-                    <span>{importProgress.progress || 0}%</span>
+                    <span className="flex items-center gap-1">
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      Progress
+                    </span>
+                    <span className="font-medium">{importProgress.progress || 0}%</span>
                   </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
+                  <div className="relative w-full bg-gray-200 rounded-full h-3 dark:bg-gray-700 overflow-hidden">
+                    <div className="absolute inset-0 bg-primary/20 animate-pulse" />
                     <div 
-                      className="bg-blue-600 h-2.5 rounded-full transition-all duration-500"
+                      className="relative bg-primary h-3 rounded-full transition-all duration-500 ease-out"
                       style={{ width: `${importProgress.progress || 0}%` }}
                     />
                   </div>
@@ -629,50 +637,76 @@ export default function PriceList() {
                 )}
                 
                 {importProgress.status === 'completed' && importProgress.results && (
-                  <div className="border rounded-lg p-4 space-y-2">
+                  <div className="space-y-3">
                     <div className="flex items-center gap-2 text-green-600">
-                      <CheckCircle2 className="h-5 w-5" />
-                      <span className="font-medium">Import Complete!</span>
+                      <CheckCircle2 className="h-5 w-5 animate-bounce" />
+                      <span className="font-medium">Import completed successfully!</span>
                     </div>
-                    <div className="grid grid-cols-3 gap-2 text-sm">
-                      <div>
-                        <span className="text-muted-foreground">Created:</span>
-                        <p className="font-medium">{importProgress.results.created}</p>
+                    <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+                      <div className="grid grid-cols-2 gap-3 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Items Created:</span>
+                          <span className="font-medium text-green-600">{importProgress.results.created || 0}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Items Updated:</span>
+                          <span className="font-medium text-blue-600">{importProgress.results.updated || 0}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Items Skipped:</span>
+                          <span className="font-medium text-gray-600">{importProgress.results.skipped || 0}</span>
+                        </div>
+                        {importProgress.results.errors && importProgress.results.errors.length > 0 && (
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Errors:</span>
+                            <span className="font-medium text-red-600">{importProgress.results.errors.length}</span>
+                          </div>
+                        )}
                       </div>
-                      <div>
-                        <span className="text-muted-foreground">Updated:</span>
-                        <p className="font-medium">{importProgress.results.updated}</p>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">Skipped:</span>
-                        <p className="font-medium">{importProgress.results.skipped}</p>
-                      </div>
+                      {importProgress.results.errors && importProgress.results.errors.length > 0 && (
+                        <details className="mt-2">
+                          <summary className="text-sm text-red-600 cursor-pointer hover:underline">
+                            View error details
+                          </summary>
+                          <div className="mt-2 max-h-32 overflow-y-auto text-xs text-red-800 bg-red-50 p-2 rounded">
+                            {importProgress.results.errors.slice(0, 5).map((error: string, idx: number) => (
+                              <div key={idx}>{error}</div>
+                            ))}
+                            {importProgress.results.errors.length > 5 && (
+                              <div className="text-gray-600 mt-1">...and {importProgress.results.errors.length - 5} more</div>
+                            )}
+                          </div>
+                        </details>
+                      )}
                     </div>
-                    {importProgress.results.errors && importProgress.results.errors.length > 0 && (
-                      <div className="text-sm text-red-600">
-                        {importProgress.results.errors.length} errors occurred
+                  </div>
+                )}
+                
+                {importProgress.status === 'failed' && (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-red-600">
+                      <XCircle className="h-5 w-5" />
+                      <span className="font-medium">Import failed</span>
+                    </div>
+                    {importProgress.error && (
+                      <div className="bg-red-50 rounded-lg p-3">
+                        <p className="text-sm text-red-800">{importProgress.error}</p>
                       </div>
                     )}
                   </div>
                 )}
                 
-                {importProgress.status === 'failed' && (
-                  <div className="flex items-center gap-2 text-red-600">
-                    <XCircle className="h-5 w-5" />
-                    <span>{importProgress.error || 'Import failed'}</span>
-                  </div>
-                )}
-                
                 {importProgress.status === 'processing' && (
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 text-blue-600">
                     <Loader2 className="h-5 w-5 animate-spin" />
-                    <span>Processing items...</span>
+                    <span className="animate-pulse">Processing items...</span>
                   </div>
                 )}
                 
                 {importRateLimited && (
-                  <div className="text-sm text-amber-600">
-                    Rate limited - slowing down to avoid errors...
+                  <div className="flex items-center gap-2 text-sm text-amber-600 bg-amber-50 p-2 rounded">
+                    <Clock className="h-4 w-4" />
+                    <span>Rate limited - slowing down to avoid errors...</span>
                   </div>
                 )}
               </>

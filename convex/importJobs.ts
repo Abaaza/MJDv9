@@ -114,3 +114,32 @@ export const getActive = query({
       .collect();
   },
 });
+
+export const addLog = mutation({
+  args: {
+    jobId: v.id("importJobs"),
+    message: v.string(),
+    level: v.union(v.literal("info"), v.literal("warn"), v.literal("error")),
+  },
+  handler: async (ctx, args) => {
+    const job = await ctx.db.get(args.jobId);
+    if (!job) return;
+    
+    const logs = job.logs || [];
+    logs.push({
+      timestamp: Date.now(),
+      level: args.level,
+      message: args.message,
+    });
+    
+    // Keep only last 100 logs
+    if (logs.length > 100) {
+      logs.splice(0, logs.length - 100);
+    }
+    
+    await ctx.db.patch(args.jobId, { 
+      logs,
+      updatedAt: Date.now(),
+    });
+  },
+});
