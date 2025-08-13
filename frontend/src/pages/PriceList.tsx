@@ -37,7 +37,7 @@ import { api as convexApi } from '../../convex/_generated/api';
 import { useForm } from 'react-hook-form';
 import { useCurrency } from '../hooks/useCurrency';
 import { ClientPriceListModalFixed as ClientPriceListModal } from '../components/ClientPriceListModalFixed';
-import { DebugClientPriceLists } from '../components/DebugClientPriceLists';
+import { SimplePriceListDebug } from '../components/SimplePriceListDebug';
 
 interface PriceItem {
   _id: string;
@@ -554,7 +554,7 @@ export default function PriceList() {
   return (
     <div className="space-y-6">
       {/* Debug Component - Remove after testing */}
-      <DebugClientPriceLists />
+      <SimplePriceListDebug />
       
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">

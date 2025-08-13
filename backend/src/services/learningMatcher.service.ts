@@ -54,7 +54,7 @@ export class LearningMatcherService {
    */
   async matchWithLearning(
     description: string,
-    method: string,
+    method: 'LOCAL' | 'COHERE' | 'OPENAI' | 'COHERE_RERANK',
     providedPriceItems?: any[],
     contextHeaders?: string[],
     userId?: string,

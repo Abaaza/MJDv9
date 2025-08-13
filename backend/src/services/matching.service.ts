@@ -334,12 +334,12 @@ export class MatchingService {
    */
   async matchItem(
     description: string,
-    method: 'LOCAL' | 'COHERE' | 'OPENAI',
+    method: 'LOCAL' | 'COHERE' | 'OPENAI' | 'COHERE_RERANK',
     providedPriceItems?: PriceItem[],
     contextHeaders?: string[]
   ): Promise<MatchingResult> {
     // Initialize AI clients if needed
-    if (['COHERE', 'OPENAI'].includes(method)) {
+    if (['COHERE', 'OPENAI', 'COHERE_RERANK'].includes(method)) {
       await this.ensureClientsInitialized();
     }
 
@@ -349,7 +349,9 @@ export class MatchingService {
       case 'LOCAL':
         return this.localMatch(description, priceItems, contextHeaders);
       case 'COHERE':
-        return this.cohereMatch(description, priceItems, contextHeaders);
+        return this.cohereEmbeddingMatch(description, priceItems, contextHeaders);
+      case 'COHERE_RERANK':
+        return this.cohereRerankMatch(description, priceItems, contextHeaders);
       case 'OPENAI':
         return this.openAIMatch(description, priceItems, contextHeaders);
       default:
@@ -543,12 +545,240 @@ export class MatchingService {
   }
 
   /**
-   * COHERE MATCH - Using Rerank v3.5 for superior matching
+   * COHERE HYBRID MATCH - Embeddings + Rerank v3.5 for best accuracy
+   * Step 1: Use embeddings to find top 50 semantically similar items
+   * Step 2: Use Rerank v3.5 to precisely rank those candidates
+   */
+  private async cohereEmbeddingMatch(
+    description: string,
+    priceItems: PriceItem[],
+    contextHeaders?: string[]
+  ): Promise<MatchingResult> {
+    console.log('[cohereHybridMatch] Starting hybrid approach (embeddings + rerank), client:', !!this.cohereClient);
+    
+    if (!this.cohereClient) {
+      console.log('[cohereHybridMatch] No Cohere client available, falling back to LOCAL');
+      return this.localMatch(description, priceItems, contextHeaders);
+    }
+
+    const queryUnit = this.extractUnit(description);
+    
+    // Enhanced query text with category context
+    let queryText = description;
+    if (contextHeaders && contextHeaders.length > 0) {
+      const categoryContext = contextHeaders.filter(h => h).join(' > ');
+      queryText = `${categoryContext}: ${description}`;
+    }
+    if (queryUnit) {
+      queryText += ` (Unit: ${queryUnit})`;
+    }
+
+    // STEP 1: Use embeddings to find top candidates
+    console.log('[cohereHybridMatch] Step 1: Finding candidates with embeddings...');
+    
+    // Get or generate query embedding
+    const queryCacheKey = `cohere_embed_${queryText}`;
+    let queryEmbedding = this.embeddingCache.get(queryCacheKey);
+    
+    if (!queryEmbedding) {
+      try {
+        const response = await withRetry(
+          () => this.cohereClient!.embed({
+            texts: [queryText],
+            model: 'embed-v4.0',
+            embeddingTypes: ['float'],
+            inputType: 'search_query',
+          }),
+          { maxAttempts: 2, delayMs: 1000, timeout: 10000 }
+        );
+        queryEmbedding = response.embeddings.float[0];
+        this.embeddingCache.set(queryCacheKey, queryEmbedding);
+      } catch (error) {
+        console.error('[cohereHybridMatch] Failed to generate query embedding:', error);
+        return this.localMatch(description, priceItems, contextHeaders);
+      }
+    }
+
+    // Score all items with embeddings
+    const embeddingScores = await Promise.all(
+      priceItems.map(async (item) => {
+        const itemText = this.createSimpleText(item);
+        const cacheKey = `cohere_embed_${itemText}`;
+        let embedding = this.embeddingCache.get(cacheKey);
+        
+        if (!embedding && item.embedding && item.embeddingProvider === 'cohere') {
+          embedding = item.embedding;
+          this.embeddingCache.set(cacheKey, embedding);
+        }
+        
+        if (!embedding) {
+          // Generate embedding for this item
+          try {
+            const response = await this.cohereClient!.embed({
+              texts: [itemText],
+              model: 'embed-v4.0',
+              embeddingTypes: ['float'],
+              inputType: 'search_document',
+            });
+            embedding = response.embeddings.float[0];
+            this.embeddingCache.set(cacheKey, embedding);
+          } catch {
+            return null;
+          }
+        }
+        
+        if (!embedding) return null;
+        
+        // Calculate cosine similarity
+        const similarity = this.cosineSimilarity(queryEmbedding!, embedding);
+        return { item, score: similarity };
+      })
+    );
+
+    // Filter and sort by embedding similarity
+    const validEmbeddingMatches = embeddingScores.filter(m => m !== null) as Array<{item: PriceItem, score: number}>;
+    validEmbeddingMatches.sort((a, b) => b.score - a.score);
+    
+    // Take top 50 candidates from embeddings
+    const topCandidates = validEmbeddingMatches.slice(0, 50).map(m => m.item);
+    
+    if (topCandidates.length === 0) {
+      console.log('[cohereHybridMatch] No embedding candidates, falling back to LOCAL');
+      return this.localMatch(description, priceItems, contextHeaders);
+    }
+    
+    console.log(`[cohereHybridMatch] Found ${topCandidates.length} candidates with embeddings`);
+    
+    // STEP 2: Use Rerank v3.5 to precisely rank the top candidates
+    console.log('[cohereHybridMatch] Step 2: Reranking candidates with Rerank v3.5...');
+    
+    // Check rerank cache
+    const rerankCacheKey = `rerank_hybrid_${queryText}_${topCandidates.map(c => c._id).join(',')}`;
+    const cachedResult = this.rerankCache.get(rerankCacheKey);
+    
+    if (cachedResult && Date.now() - cachedResult.timestamp < this.RERANK_CACHE_DURATION) {
+      console.log('[cohereHybridMatch] Using cached rerank results');
+      const bestResult = cachedResult.results[0];
+      const bestMatch = topCandidates[bestResult.index];
+      
+      return {
+        matchedItemId: bestMatch._id,
+        matchedDescription: bestMatch.description,
+        matchedCode: bestMatch.code || '',
+        matchedUnit: bestMatch.unit || '',
+        matchedRate: bestMatch.rate,
+        confidence: bestResult.relevanceScore,
+        method: 'COHERE'
+      };
+    }
+
+    // Prepare documents for reranking
+    const documents = topCandidates.map(item => {
+      const parts = [item.description];
+      
+      if (item.category || item.subcategory) {
+        const categoryPath = [item.category, item.subcategory].filter(Boolean).join(' > ');
+        parts.push(`Category: ${categoryPath}`);
+      }
+      
+      if (item.unit) {
+        parts.push(`Unit: ${item.unit}`);
+      }
+      
+      if (item.code) {
+        parts.push(`Code: ${item.code}`);
+      }
+      
+      return parts.join(' | ');
+    });
+
+    try {
+      // Call Cohere Rerank v3.5
+      const rerankResponse = await withRetry(
+        () => this.cohereClient!.rerank({
+          model: 'rerank-v3.5',
+          query: queryText,
+          documents: documents,
+          topN: Math.min(10, documents.length),
+          returnDocuments: false,
+          maxTokensPerDoc: 512
+        }),
+        { maxAttempts: 2, delayMs: 1000, timeout: 15000 }
+      );
+
+      if (!rerankResponse.results || rerankResponse.results.length === 0) {
+        console.log('[cohereHybridMatch] No rerank results, using embedding results');
+        const bestMatch = topCandidates[0];
+        return {
+          matchedItemId: bestMatch._id,
+          matchedDescription: bestMatch.description,
+          matchedCode: bestMatch.code || '',
+          matchedUnit: bestMatch.unit || '',
+          matchedRate: bestMatch.rate,
+          confidence: validEmbeddingMatches[0].score,
+          method: 'COHERE'
+        };
+      }
+
+      // Cache the results
+      this.rerankCache.set(rerankCacheKey, {
+        results: rerankResponse.results,
+        timestamp: Date.now()
+      });
+
+      // Get the best match from rerank
+      const bestResult = rerankResponse.results[0];
+      const bestMatch = topCandidates[bestResult.index];
+      
+      console.log('[cohereHybridMatch] Top 3 reranked results:');
+      rerankResponse.results.slice(0, 3).forEach((result, idx) => {
+        const item = topCandidates[result.index];
+        console.log(`  ${idx + 1}. Score: ${result.relevanceScore.toFixed(3)}, Desc: ${item.description.substring(0, 50)}..., Unit: ${item.unit || 'N/A'}`);
+      });
+
+      // Apply unit boost to confidence
+      let finalConfidence = bestResult.relevanceScore;
+      if (queryUnit && bestMatch.unit) {
+        const normalizedQuery = this.normalizeUnit(queryUnit);
+        const normalizedItem = this.normalizeUnit(bestMatch.unit);
+        if (normalizedQuery === normalizedItem) {
+          finalConfidence = Math.min(finalConfidence * 1.1, 0.99);
+        }
+      }
+
+      return {
+        matchedItemId: bestMatch._id,
+        matchedDescription: bestMatch.description,
+        matchedCode: bestMatch.code || '',
+        matchedUnit: bestMatch.unit || '',
+        matchedRate: bestMatch.rate,
+        confidence: finalConfidence,
+        method: 'COHERE'
+      };
+      
+    } catch (error) {
+      console.error('[cohereHybridMatch] Rerank API error, using embedding results:', error);
+      // Fall back to best embedding match
+      const bestMatch = topCandidates[0];
+      return {
+        matchedItemId: bestMatch._id,
+        matchedDescription: bestMatch.description,
+        matchedCode: bestMatch.code || '',
+        matchedUnit: bestMatch.unit || '',
+        matchedRate: bestMatch.rate,
+        confidence: validEmbeddingMatches[0].score,
+        method: 'COHERE'
+      };
+    }
+  }
+
+  /**
+   * COHERE RERANK MATCH - Using Rerank v3.5 for superior matching
    * Model: rerank-v3.5
    * Context length: 4096 tokens
    * Much more accurate than embeddings-based matching
    */
-  private async cohereMatch(
+  private async cohereRerankMatch(
     description: string,
     priceItems: PriceItem[],
     contextHeaders?: string[]

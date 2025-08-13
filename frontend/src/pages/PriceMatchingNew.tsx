@@ -39,11 +39,12 @@ interface JobStatus {
   startedAt?: number;
 }
 
-type MatchingMethod = 'LOCAL' | 'COHERE' | 'OPENAI';
+type MatchingMethod = 'LOCAL' | 'COHERE' | 'OPENAI' | 'COHERE_RERANK';
 
 const matchingMethods = [
   { value: 'LOCAL', label: 'Local Matching', description: 'Fast fuzzy string matching' },
-  { value: 'COHERE', label: 'Cohere AI', description: 'Neural semantic matching' },
+  { value: 'COHERE', label: 'Cohere Hybrid', description: 'Embeddings + Rerank v3.5 (best accuracy)' },
+  { value: 'COHERE_RERANK', label: 'Cohere Rerank Only', description: 'Direct Rerank v3.5 (faster)' },
   { value: 'OPENAI', label: 'OpenAI', description: 'GPT-powered matching' },
 ];
 
