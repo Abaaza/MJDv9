@@ -270,9 +270,10 @@ export class ImprovedMatchingService {
     try {
       // Get embedding for the description
       const embeddingResponse = await withRetry(
-        () => this.cohereClient!.embed({
+        () => this.cohereClient!.v2.embed({
           texts: [description],
-          model: 'embed-english-v3.0',
+          model: 'embed-v4.0',
+          embeddingTypes: ['float'],
           inputType: 'search_query',
         }),
         {
@@ -577,9 +578,10 @@ export class ImprovedMatchingService {
 
     try {
       if (provider === 'cohere' && this.cohereClient) {
-        const response = await this.cohereClient.embed({
+        const response = await this.cohereClient.v2.embed({
           texts,
-          model: 'embed-english-v3.0',
+          model: 'embed-v4.0',
+          embeddingTypes: ['float'],
           inputType: 'search_document',
         });
         // Handle Cohere's embedding response format

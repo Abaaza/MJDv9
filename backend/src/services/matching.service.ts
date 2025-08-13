@@ -466,7 +466,10 @@ export class MatchingService {
   }
 
   /**
-   * COHERE MATCH - Simple semantic matching
+   * COHERE MATCH - Semantic matching with Cohere v4
+   * Model: embed-v4.0
+   * Dimensions: 1536 (upgraded from 1024 in v3)
+   * Max tokens: 128,000 (upgraded from 512 in v3)
    */
   private async cohereMatch(
     description: string,
@@ -500,14 +503,15 @@ export class MatchingService {
     if (!queryEmbedding) {
       try {
         const response = await withRetry(
-          () => this.cohereClient!.embed({
+          () => this.cohereClient!.v2.embed({
             texts: [queryText],
-            model: 'embed-english-v3.0',
+            model: 'embed-v4.0',
+            embeddingTypes: ['float'],
             inputType: 'search_query',
           }),
           { maxAttempts: 2, delayMs: 1000, timeout: 10000 }
         );
-        queryEmbedding = response.embeddings[0];
+        queryEmbedding = response.embeddings.float[0];
         this.embeddingCache.set(queryCacheKey, queryEmbedding);
       } catch (error) {
         console.error('[cohereMatch] Failed to generate query embedding:', error);
@@ -534,12 +538,13 @@ export class MatchingService {
         if (!embedding) {
           // Generate embedding for this item
           try {
-            const response = await this.cohereClient!.embed({
+            const response = await this.cohereClient!.v2.embed({
               texts: [itemText],
-              model: 'embed-english-v3.0',
+              model: 'embed-v4.0',
+              embeddingTypes: ['float'],
               inputType: 'search_document',
             });
-            embedding = response.embeddings[0];
+            embedding = response.embeddings.float[0];
             this.embeddingCache.set(cacheKey, embedding);
             generatedCount++;
           } catch {
@@ -599,7 +604,10 @@ export class MatchingService {
   }
 
   /**
-   * OPENAI MATCH - Simple semantic matching
+   * OPENAI MATCH - Semantic matching with OpenAI Large
+   * Model: text-embedding-3-large
+   * Dimensions: 3072 (upgraded from 1536 in small)
+   * Max tokens: 8,191
    */
   private async openAIMatch(
     description: string,
@@ -632,7 +640,7 @@ export class MatchingService {
       const response = await withRetry(
         () => this.openaiClient!.embeddings.create({
           input: queryText,
-          model: 'text-embedding-3-small', // Use smaller, faster model
+          model: 'text-embedding-3-large',
         }),
         { maxAttempts: 2, delayMs: 1000, timeout: 10000 }
       );
@@ -664,7 +672,7 @@ export class MatchingService {
           try {
             const response = await this.openaiClient!.embeddings.create({
               input: itemText,
-              model: 'text-embedding-3-small',
+              model: 'text-embedding-3-large',
             });
             embedding = response.data[0].embedding;
             this.embeddingCache.set(cacheKey, embedding);
@@ -747,6 +755,8 @@ export class MatchingService {
 
   /**
    * Generate embeddings for BOQ items (for price list)
+   * Cohere v4: 1536 dimensions, 128k max tokens
+   * OpenAI Large: 3072 dimensions, 8,191 max tokens
    */
   async generateBOQEmbeddings(
     items: Array<{ description: string; category?: string; subcategory?: string; unit?: string }>,
@@ -773,14 +783,15 @@ export class MatchingService {
           return parts.join(' ');
         });
         
-        const response = await this.cohereClient.embed({
+        const response = await this.cohereClient.v2.embed({
           texts,
-          model: 'embed-english-v3.0',
+          model: 'embed-v4.0',
+          embeddingTypes: ['float'],
           inputType: 'search_document',
         });
         
         items.forEach((item, index) => {
-          embeddings.set(item.description, response.embeddings[index]);
+          embeddings.set(item.description, response.embeddings.float[index]);
         });
       } catch (error) {
         // Silently fail - embeddings not critical
@@ -805,7 +816,7 @@ export class MatchingService {
         
         const response = await this.openaiClient.embeddings.create({
           input: texts,
-          model: 'text-embedding-3-small',
+          model: 'text-embedding-3-large',
         });
         
         items.forEach((item, index) => {
@@ -821,6 +832,8 @@ export class MatchingService {
 
   /**
    * Generate batch embeddings for matching
+   * Cohere v4: 1536 dimensions, 128k max tokens
+   * OpenAI Large: 3072 dimensions, 8,191 max tokens
    */
   async generateBatchEmbeddings(
     descriptions: string[],
@@ -831,14 +844,15 @@ export class MatchingService {
 
     if (method === 'COHERE' && this.cohereClient) {
       try {
-        const response = await this.cohereClient.embed({
+        const response = await this.cohereClient.v2.embed({
           texts: descriptions,
-          model: 'embed-english-v3.0',
+          model: 'embed-v4.0',
+          embeddingTypes: ['float'],
           inputType: 'search_query',
         });
         
         descriptions.forEach((desc, index) => {
-          embeddings.set(desc, response.embeddings[index]);
+          embeddings.set(desc, response.embeddings.float[index]);
         });
       } catch (error) {
         // Silently fail - return empty map
@@ -847,7 +861,7 @@ export class MatchingService {
       try {
         const response = await this.openaiClient.embeddings.create({
           input: descriptions,
-          model: 'text-embedding-3-small',
+          model: 'text-embedding-3-large',
         });
         
         descriptions.forEach((desc, index) => {

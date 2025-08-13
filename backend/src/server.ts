@@ -18,6 +18,7 @@ import projectsRoutes from './routes/projects.routes';
 import jobsRoutes from './routes/jobs.routes';
 import healthRoutes from './routes/health.routes';
 import monitoringRoutes from './routes/monitoring.routes';
+import clientPriceListRoutes from './routes/clientPriceList.routes';
 // import asyncJobsRoutes from './routes/asyncJobs.routes';
 import { fileStorage } from './services/fileStorage.service';
 import { jobProcessor } from './services/jobProcessor.service';
@@ -170,6 +171,7 @@ app.use('/api/clients', clientsRoutes);
 app.use('/api/projects', projectsRoutes);
 app.use('/api/jobs', jobsRoutes);
 app.use('/api/monitoring', monitoringRoutes);
+app.use('/api/client-prices', clientPriceListRoutes);
 // app.use('/api/async-jobs', asyncJobsRoutes);
 app.use('/api', healthRoutes);
 

@@ -242,4 +242,91 @@ export default defineSchema({
       searchField: "originalDescription",
       filterFields: ["originalCategory", "originalSubcategory", "isActive"]
     }),
+
+  // Client-specific price lists
+  clientPriceLists: defineTable({
+    clientId: v.id("clients"),
+    name: v.string(), // e.g., "Q1 2025 Rates", "Special Project Rates"
+    description: v.optional(v.string()),
+    isDefault: v.boolean(), // Default price list for this client
+    isActive: v.boolean(),
+    effectiveFrom: v.optional(v.number()), // Date when these prices become effective
+    effectiveTo: v.optional(v.number()), // Date when these prices expire
+    sourceFileName: v.optional(v.string()), // Original Excel file name
+    sourceFileUrl: v.optional(v.string()), // URL to original Excel file
+    lastSyncedAt: v.optional(v.number()), // Last time prices were synced from Excel
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    createdBy: v.id("users"),
+  })
+    .index("by_client", ["clientId"])
+    .index("by_client_default", ["clientId", "isDefault"])
+    .index("by_active", ["isActive"])
+    .index("by_effective_date", ["effectiveFrom"]),
+
+  // Client-specific price items (overrides base price items)
+  clientPriceItems: defineTable({
+    priceListId: v.id("clientPriceLists"),
+    basePriceItemId: v.id("priceItems"), // Reference to base price item
+    clientId: v.id("clients"), // Denormalized for faster queries
+    
+    // Override fields - only rate typically changes per client
+    rate: v.number(),
+    labor_rate: v.optional(v.number()),
+    material_rate: v.optional(v.number()),
+    wastage_percentage: v.optional(v.number()),
+    
+    // Excel mapping fields
+    excelRow: v.optional(v.number()), // Row number in Excel sheet
+    excelSheet: v.optional(v.string()), // Sheet name in Excel
+    excelCellRef: v.optional(v.string()), // Cell reference for rate (e.g., "G15")
+    excelFormula: v.optional(v.string()), // Original Excel formula if any
+    
+    // Additional client-specific fields
+    discount: v.optional(v.number()), // Client-specific discount percentage
+    markup: v.optional(v.number()), // Client-specific markup percentage
+    notes: v.optional(v.string()),
+    
+    isActive: v.boolean(),
+    lastModified: v.number(),
+    modifiedBy: v.id("users"),
+  })
+    .index("by_price_list", ["priceListId"])
+    .index("by_base_item", ["basePriceItemId"])
+    .index("by_client", ["clientId"])
+    .index("by_price_list_item", ["priceListId", "basePriceItemId"]),
+
+  // Excel sheet mappings for maintaining formula integrity
+  excelMappings: defineTable({
+    priceListId: v.id("clientPriceLists"),
+    priceItemId: v.id("priceItems"),
+    
+    // Excel location
+    fileName: v.string(),
+    sheetName: v.string(),
+    rowNumber: v.number(),
+    
+    // Column mappings
+    codeColumn: v.optional(v.string()), // e.g., "A"
+    descriptionColumn: v.optional(v.string()), // e.g., "B"
+    unitColumn: v.optional(v.string()), // e.g., "C"
+    rateColumn: v.optional(v.string()), // e.g., "G"
+    
+    // Original Excel values
+    originalCode: v.optional(v.string()),
+    originalDescription: v.optional(v.string()),
+    originalUnit: v.optional(v.string()),
+    originalRate: v.optional(v.any()), // Can be number or formula
+    
+    // Mapping confidence
+    mappingConfidence: v.number(),
+    mappingMethod: v.string(), // "code", "description", "manual"
+    isVerified: v.boolean(),
+    
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_price_list", ["priceListId"])
+    .index("by_item", ["priceItemId"])
+    .index("by_sheet", ["fileName", "sheetName"]),
 });

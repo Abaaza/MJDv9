@@ -20,7 +20,9 @@ import {
   Edit2,
   X,
   FileSpreadsheet,
-  TableIcon
+  TableIcon,
+  Users,
+  DollarSign
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -34,6 +36,7 @@ import { useConvex } from 'convex/react';
 import { api as convexApi } from '../../convex/_generated/api';
 import { useForm } from 'react-hook-form';
 import { useCurrency } from '../hooks/useCurrency';
+import { ClientPriceListModal } from '../components/ClientPriceListModal';
 
 interface PriceItem {
   _id: string;
@@ -88,6 +91,7 @@ export default function PriceList() {
   const [sortField, setSortField] = useState<SortField>('description');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [currentPage, setCurrentPage] = useState(1);
+  const [showClientPriceModal, setShowClientPriceModal] = useState(false);
   const itemsPerPage = 200;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
@@ -575,6 +579,15 @@ export default function PriceList() {
               <Upload className="h-4 w-4 mr-2 group-hover:animate-pulse" />
             )}
             Import
+          </Button>
+          <Button 
+            className="w-full sm:w-auto group"
+            onClick={() => setShowClientPriceModal(true)}
+            variant="secondary"
+            title="Manage client-specific price lists"
+          >
+            <Users className="h-4 w-4 mr-2" />
+            Client Prices
           </Button>
           {priceItems && (priceItems as PriceItem[]).length > 0 && (
             <Button 
@@ -1369,6 +1382,16 @@ export default function PriceList() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Client Price List Modal */}
+      <ClientPriceListModal
+        isOpen={showClientPriceModal}
+        onClose={() => setShowClientPriceModal(false)}
+        onSuccess={() => {
+          setShowClientPriceModal(false);
+          refetch();
+        }}
+      />
     </div>
   );
 }

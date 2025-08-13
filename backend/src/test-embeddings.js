@@ -29,14 +29,15 @@ async function testEmbeddings() {
     console.log('\n1. Testing Cohere embeddings...');
     try {
       const cohereClient = new CohereClient({ token: cohereKey });
-      const response = await cohereClient.embed({
+      const response = await cohereClient.v2.embed({
         texts: [testText],
-        model: 'embed-english-v3.0',
+        model: 'embed-v4.0',
+        embeddingTypes: ['float'],
         inputType: 'search_query',
       });
       console.log('✓ Cohere SUCCESS:', {
-        embeddingLength: response.embeddings[0].length,
-        firstValues: response.embeddings[0].slice(0, 5)
+        embeddingLength: response.embeddings.float[0].length,
+        firstValues: response.embeddings.float[0].slice(0, 5)
       });
     } catch (error) {
       console.log('✗ Cohere FAILED:', error.message);
@@ -53,7 +54,7 @@ async function testEmbeddings() {
       const openaiClient = new OpenAI({ apiKey: openaiKey });
       const response = await openaiClient.embeddings.create({
         input: testText,
-        model: 'text-embedding-3-small',
+        model: 'text-embedding-3-large',
       });
       console.log('✓ OpenAI SUCCESS:', {
         embeddingLength: response.data[0].embedding.length,

@@ -547,9 +547,10 @@ export class MatchingService {
     try {
       debugLog.log('COHERE', 'Generating query embedding...');
       const response = await withRetry(
-        () => this.cohereClient!.embed({
+        () => this.cohereClient!.v2.embed({
           texts: [enrichedQuery],
-          model: 'embed-english-v3.0',
+          model: 'embed-v4.0',
+          embeddingTypes: ['float'],
           inputType: 'search_query',
           truncate: 'END'
         }),
@@ -968,9 +969,10 @@ export class MatchingService {
           });
           
           const response = await withRetry(
-            () => this.cohereClient!.embed({
+            () => this.cohereClient!.v2.embed({
               texts,
-              model: 'embed-english-v3.0',
+              model: 'embed-v4.0',
+              embeddingTypes: ['float'],
               inputType: 'search_query',
               truncate: 'END'
             }),
@@ -1056,9 +1058,10 @@ export class MatchingService {
         
         if (provider === 'cohere' && this.cohereClient) {
           const response = await withRetry(
-            () => this.cohereClient!.embed({
+            () => this.cohereClient!.v2.embed({
               texts,
-              model: 'embed-english-v3.0',
+              model: 'embed-v4.0',
+              embeddingTypes: ['float'],
               inputType: 'search_document',
               truncate: 'END'
             }),

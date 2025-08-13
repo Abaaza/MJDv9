@@ -251,14 +251,15 @@ export class SimplifiedMatchingService {
     if (!queryEmbedding) {
       try {
         const response = await withRetry(
-          () => this.cohereClient!.embed({
+          () => this.cohereClient!.v2.embed({
             texts: [queryText],
-            model: 'embed-english-v3.0',
+            model: 'embed-v4.0',
+            embeddingTypes: ['float'],
             inputType: 'search_query',
           }),
           { maxAttempts: 2, delayMs: 1000, timeout: 10000 }
         );
-        queryEmbedding = response.embeddings[0];
+        queryEmbedding = response.embeddings.float[0];
         this.embeddingCache.set(queryCacheKey, queryEmbedding);
       } catch (error) {
         return this.localMatch(description, priceItems, contextHeaders);
@@ -280,12 +281,13 @@ export class SimplifiedMatchingService {
         if (!embedding) {
           // Generate embedding for this item
           try {
-            const response = await this.cohereClient!.embed({
+            const response = await this.cohereClient!.v2.embed({
               texts: [itemText],
-              model: 'embed-english-v3.0',
+              model: 'embed-v4.0',
+              embeddingTypes: ['float'],
               inputType: 'search_document',
             });
-            embedding = response.embeddings[0];
+            embedding = response.embeddings.float[0];
             this.embeddingCache.set(cacheKey, embedding);
           } catch {
             return null;
@@ -358,7 +360,7 @@ export class SimplifiedMatchingService {
       const response = await withRetry(
         () => this.openaiClient!.embeddings.create({
           input: queryText,
-          model: 'text-embedding-3-small', // Use smaller, faster model
+          model: 'text-embedding-3-large',
         }),
         { maxAttempts: 2, delayMs: 1000, timeout: 10000 }
       );
