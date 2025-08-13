@@ -1,16 +1,23 @@
 import { Router } from 'express';
 import multer from 'multer';
 import path from 'path';
+import fs from 'fs';
 import { ClientPriceListController } from '../controllers/clientPriceList.controller';
-import { authMiddleware } from '../middleware/auth';
+import { authenticate } from '../middleware/auth';
 
 const router = Router();
 const controller = new ClientPriceListController();
 
+// Ensure temp_uploads directory exists
+const uploadDir = path.join(process.cwd(), 'temp_uploads');
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
+
 // Configure multer for Excel file uploads
 const storage = multer.diskStorage({
   destination: async (req, file, cb) => {
-    cb(null, path.join(process.cwd(), 'temp_uploads'));
+    cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
@@ -35,7 +42,7 @@ const upload = multer({
 });
 
 // All routes require authentication
-router.use(authMiddleware);
+router.use(authenticate);
 
 // Create a new price list
 router.post('/price-lists', controller.createPriceList.bind(controller));
