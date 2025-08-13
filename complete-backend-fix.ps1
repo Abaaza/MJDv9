@@ -1,5 +1,5 @@
 # Complete Backend Fix
-param([string]$IP = "13.218.146.247")
+param([string]$IP = "54.82.88.31")
 
 $key = Get-ChildItem -Path . -Filter "*.pem" | Select-Object -First 1
 

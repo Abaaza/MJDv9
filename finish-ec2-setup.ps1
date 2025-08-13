@@ -1,5 +1,5 @@
 # Finish EC2 Setup
-param([string]$IP = "13.218.146.247")
+param([string]$IP = "54.82.88.31")
 
 Write-Host "Finishing EC2 Setup" -ForegroundColor Green
 Write-Host "==================" -ForegroundColor Green

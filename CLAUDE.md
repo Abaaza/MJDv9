@@ -82,7 +82,7 @@ COOKIE_SECURE=true
 
 **Frontend (.env)**
 ```env
-VITE_API_URL=https://13.218.146.247/api
+VITE_API_URL=https://54.82.88.31/api
 VITE_CONVEX_URL=https://good-dolphin-454.convex.cloud
 ```
 
@@ -156,7 +156,7 @@ git push origin main
 ### EC2 Management
 ```bash
 # SSH into EC2
-ssh -i boq-key-202507161911.pem ec2-user@13.218.146.247
+ssh -i boq-key-202507161911.pem ec2-user@54.82.88.31
 
 # Check backend status
 pm2 status
@@ -305,7 +305,7 @@ await retryWithBackoff(
 
 1. **Check Backend Health**:
 ```bash
-curl -k https://13.218.146.247/api/health
+curl -k https://54.82.88.31/api/health
 ```
 
 2. **View Logs**:
@@ -330,12 +330,12 @@ tail -f /home/ec2-user/.pm2/logs/boq-backend-error.log
 ### API Testing
 ```bash
 # Login
-curl -k -X POST https://13.218.146.247/api/auth/login \
+curl -k -X POST https://54.82.88.31/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"abaza@mjd.com","password":"abaza123"}'
 
 # Health check
-curl -k https://13.218.146.247/api/health
+curl -k https://54.82.88.31/api/health
 ```
 
 ## Deployment Checklist
@@ -424,7 +424,7 @@ Remember: Always test thoroughly in a staging environment before going to produc
 ### Issue: CORS Errors After Deployment
 If you encounter CORS errors like:
 ```
-Access to XMLHttpRequest at 'https://13.218.146.247/api/auth/me' from origin 'https://main.d3j084kic0l1ff.amplifyapp.com' has been blocked by CORS policy
+Access to XMLHttpRequest at 'https://54.82.88.31/api/auth/me' from origin 'https://main.d3j084kic0l1ff.amplifyapp.com' has been blocked by CORS policy
 ```
 
 ### Root Cause
@@ -459,15 +459,15 @@ app.listen(PORT, () => {
 2. **Fix CORS Immediately**:
 ```bash
 # Copy correct index.js to EC2
-scp -i boq-key-202507161911.pem backend/index-ec2.js ec2-user@13.218.146.247:/home/ec2-user/app/backend/index.js
+scp -i boq-key-202507161911.pem backend/index-ec2.js ec2-user@54.82.88.31:/home/ec2-user/app/backend/index.js
 
 # Restart PM2
-ssh -i boq-key-202507161911.pem ec2-user@13.218.146.247 "pm2 restart boq-backend"
+ssh -i boq-key-202507161911.pem ec2-user@54.82.88.31 "pm2 restart boq-backend"
 ```
 
 3. **Verify CORS Headers**:
 ```bash
-curl -k -X OPTIONS https://13.218.146.247/api/auth/me \
+curl -k -X OPTIONS https://54.82.88.31/api/auth/me \
   -H "Origin: https://main.d3j084kic0l1ff.amplifyapp.com" \
   -H "Access-Control-Request-Method: GET" -v
 ```

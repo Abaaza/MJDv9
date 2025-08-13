@@ -8,7 +8,7 @@ echo "Creating SSL certificate..."
 sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
   -keyout /etc/pki/tls/private/nginx-selfsigned.key \
   -out /etc/pki/tls/certs/nginx-selfsigned.crt \
-  -subj "/C=US/ST=State/L=City/O=Organization/CN=13.218.146.247"
+  -subj "/C=US/ST=State/L=City/O=Organization/CN=54.82.88.31"
 
 # 2. Create strong Diffie-Hellman group
 echo "Creating DH parameters (this takes a minute)..."
@@ -89,15 +89,15 @@ echo ""
 echo "=== ✅ HTTPS Setup Complete! ==="
 echo ""
 echo "Your API is now available at:"
-echo "  https://13.218.146.247/api/health"
+echo "  https://54.82.88.31/api/health"
 echo ""
 echo "⚠️  IMPORTANT NEXT STEPS:"
 echo "1. Update your Amplify environment variable:"
-echo "   REACT_APP_API_URL=https://13.218.146.247/api"
+echo "   REACT_APP_API_URL=https://54.82.88.31/api"
 echo ""
 echo "2. Your browser will show a certificate warning (normal for self-signed certs)"
 echo "   Click 'Advanced' → 'Proceed to site'"
 echo ""
 echo "3. For production, consider using a real domain with Let's Encrypt"
 echo ""
-echo "Test with: curl -k https://13.218.146.247/api/health"
+echo "Test with: curl -k https://54.82.88.31/api/health"

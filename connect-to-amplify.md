@@ -1,7 +1,7 @@
 # 🔗 Connecting EC2 Backend to AWS Amplify Frontend
 
 ## 📋 Current Setup
-- **Backend API**: http://13.218.146.247/api (EC2)
+- **Backend API**: http://54.82.88.31/api (EC2)
 - **Frontend**: Can be deployed on AWS Amplify
 - **Architecture**: Decoupled frontend/backend
 
@@ -20,7 +20,7 @@ const API_CONFIG = {
   },
   // For production (your EC2 instance)
   production: {
-    baseURL: 'http://13.218.146.247/api'
+    baseURL: 'http://54.82.88.31/api'
   }
 };
 
@@ -91,7 +91,7 @@ amplify publish
 #### A. Quick Fix - Use CloudFront (Free Tier Eligible)
 ```bash
 # 1. Create CloudFront distribution for your EC2
-# 2. Point it to 13.218.146.247
+# 2. Point it to 54.82.88.31
 # 3. Enable HTTPS
 # 4. Update frontend to use CloudFront URL
 ```
@@ -113,7 +113,7 @@ amplify publish
 cd frontend
 
 # Create environment file
-echo "REACT_APP_API_URL=http://13.218.146.247/api" > .env.production
+echo "REACT_APP_API_URL=http://54.82.88.31/api" > .env.production
 
 # Update your API calls to use process.env.REACT_APP_API_URL
 ```
@@ -125,7 +125,7 @@ echo "REACT_APP_API_URL=http://13.218.146.247/api" > .env.production
 2. Click "New app" > "Host web app"
 3. Choose "Deploy without Git provider"
 4. Upload your build folder
-5. Set environment variable: `REACT_APP_API_URL = http://13.218.146.247/api`
+5. Set environment variable: `REACT_APP_API_URL = http://54.82.88.31/api`
 
 **Option B: Via Amplify CLI**
 ```bash
@@ -165,7 +165,7 @@ Make sure your backend allows Amplify domain:
 app.use(cors({
   origin: [
     'http://localhost:3000',
-    'http://13.218.146.247',
+    'http://54.82.88.31',
     'https://your-amplify-app.amplifyapp.com', // Add your Amplify URL
     /\.amplifyapp\.com$/ // Or allow all Amplify domains
   ],
@@ -175,7 +175,7 @@ app.use(cors({
 
 Then redeploy your backend:
 ```bash
-ssh -i boq-key-202507161911.pem ec2-user@13.218.146.247
+ssh -i boq-key-202507161911.pem ec2-user@54.82.88.31
 cd /home/ec2-user/app/backend
 # Edit server.js to add CORS
 pm2 restart all
@@ -186,7 +186,7 @@ pm2 restart all
 In Amplify Console, add these environment variables:
 
 ```
-REACT_APP_API_URL=http://13.218.146.247/api
+REACT_APP_API_URL=http://54.82.88.31/api
 REACT_APP_ENV=production
 ```
 
@@ -225,7 +225,7 @@ Consider using API Gateway instead of direct EC2:
 ```bash
 # 1. Update frontend API URL
 cd frontend
-echo "REACT_APP_API_URL=http://13.218.146.247/api" > .env.production
+echo "REACT_APP_API_URL=http://54.82.88.31/api" > .env.production
 
 # 2. Build frontend
 npm run build
@@ -236,7 +236,7 @@ amplify add hosting
 amplify publish
 
 # 4. Update backend CORS
-ssh -i boq-key-202507161911.pem ec2-user@13.218.146.247
+ssh -i boq-key-202507161911.pem ec2-user@54.82.88.31
 # Add Amplify URL to CORS whitelist
 pm2 restart all
 ```

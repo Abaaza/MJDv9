@@ -7,13 +7,13 @@ Your browser is blocking the HTTPS request because it doesn't trust the self-sig
 
 ### Step 1: Visit the API Directly
 1. Open a new browser tab
-2. Go to: **https://13.218.146.247/api/health**
+2. Go to: **https://54.82.88.31/api/health**
 3. You should see a certificate warning page
 
 ### Step 2: Accept the Certificate
 **Chrome:**
 - Click "Advanced"
-- Click "Proceed to 13.218.146.247 (unsafe)"
+- Click "Proceed to 54.82.88.31 (unsafe)"
 
 **Firefox:**
 - Click "Advanced"
@@ -21,7 +21,7 @@ Your browser is blocking the HTTPS request because it doesn't trust the self-sig
 
 **Edge:**
 - Click "Advanced"
-- Click "Continue to 13.218.146.247 (unsafe)"
+- Click "Continue to 54.82.88.31 (unsafe)"
 
 **Safari:**
 - Click "Show Details"
@@ -39,8 +39,8 @@ Now go back to https://main.d3j084kic0l1ff.amplifyapp.com and try logging in aga
 ## Alternative Solution: Direct Browser Navigation
 
 If the above doesn't work, try these URLs in order:
-1. https://13.218.146.247/ (accept certificate)
-2. https://13.218.146.247/api/health (should show JSON)
+1. https://54.82.88.31/ (accept certificate)
+2. https://54.82.88.31/api/health (should show JSON)
 3. Then try your app again
 
 ## Why This Happens

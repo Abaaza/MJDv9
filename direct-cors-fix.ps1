@@ -4,7 +4,7 @@ Write-Host "Applying CORS fix directly..." -ForegroundColor Yellow
 
 # Fix nginx configuration
 Write-Host "1. Updating nginx configuration..." -ForegroundColor Cyan
-& ssh -i $sshKey -o StrictHostKeyChecking=no ec2-user@13.218.146.247 @'
+& ssh -i $sshKey -o StrictHostKeyChecking=no ec2-user@54.82.88.31 @'
 sudo bash -c "cat > /etc/nginx/conf.d/app.conf" << 'EOF'
 server {
     listen 443 ssl;
@@ -48,11 +48,11 @@ EOF
 
 # Remove old configs and reload nginx
 Write-Host "2. Cleaning old configs and reloading nginx..." -ForegroundColor Cyan
-& ssh -i $sshKey -o StrictHostKeyChecking=no ec2-user@13.218.146.247 "sudo rm -f /etc/nginx/conf.d/ssl.conf /etc/nginx/conf.d/cors*.conf /etc/nginx/conf.d/working.conf && sudo nginx -t && sudo systemctl reload nginx"
+& ssh -i $sshKey -o StrictHostKeyChecking=no ec2-user@54.82.88.31 "sudo rm -f /etc/nginx/conf.d/ssl.conf /etc/nginx/conf.d/cors*.conf /etc/nginx/conf.d/working.conf && sudo nginx -t && sudo systemctl reload nginx"
 
 # Start backend
 Write-Host "3. Starting backend server..." -ForegroundColor Cyan
-& ssh -i $sshKey -o StrictHostKeyChecking=no ec2-user@13.218.146.247 @'
+& ssh -i $sshKey -o StrictHostKeyChecking=no ec2-user@54.82.88.31 @'
 cd /home/ec2-user/app/backend
 pm2 delete all 2>/dev/null || true
 pm2 start dist/server.js --name boq-server
@@ -64,7 +64,7 @@ pm2 list
 Write-Host "`n4. Testing CORS headers..." -ForegroundColor Cyan
 Start-Sleep -Seconds 3
 
-& ssh -i $sshKey -o StrictHostKeyChecking=no ec2-user@13.218.146.247 @'
+& ssh -i $sshKey -o StrictHostKeyChecking=no ec2-user@54.82.88.31 @'
 echo "Testing OPTIONS request:"
 curl -s -I -X OPTIONS https://localhost/api/auth/login -H "Origin: https://main.d3j084kic0l1ff.amplifyapp.com" -H "Access-Control-Request-Method: POST" -k | grep -i access-control
 echo ""

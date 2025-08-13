@@ -19,7 +19,7 @@ https://console.aws.amazon.com/amplify/
 
 ### 4. Update or Add:
 ```
-REACT_APP_API_URL=https://13.218.146.247/api
+REACT_APP_API_URL=https://54.82.88.31/api
 ```
 (Change from http:// to https://)
 
@@ -31,11 +31,11 @@ Amplify will automatically redeploy (takes ~2 minutes)
 ### Certificate Warning
 When you first access the API, you'll see a certificate warning:
 - This is NORMAL for self-signed certificates
-- Click "Advanced" → "Proceed to 13.218.146.247"
+- Click "Advanced" → "Proceed to 54.82.88.31"
 - Your browser will remember this
 
 ### Test Your API:
-1. Direct API: https://13.218.146.247/api/health
+1. Direct API: https://54.82.88.31/api/health
 2. Your App: https://main.d3j084kic0l1ff.amplifyapp.com
 
 ## 🔧 Troubleshooting:
@@ -44,7 +44,7 @@ If login still doesn't work:
 1. **Clear browser cache** (Ctrl+Shift+Delete)
 2. **Check browser console** for errors
 3. **Visit the API directly** first to accept certificate:
-   https://13.218.146.247/api/health
+   https://54.82.88.31/api/health
 
 ## 📊 Current Setup:
 ```
@@ -63,7 +63,7 @@ Consider these improvements:
 
 If the self-signed certificate causes too many issues:
 1. Create CloudFront distribution
-2. Point to 13.218.146.247 (HTTP)
+2. Point to 54.82.88.31 (HTTP)
 3. Use CloudFront URL in Amplify (automatic HTTPS)
 
 Your BOQ Matching System is now ready for secure communication between Amplify and your backend!

@@ -10,7 +10,7 @@ Your Amplify app (HTTPS) is blocked from calling your EC2 API (HTTP).
 1. **Open AWS Console** → Search "CloudFront" → Click "Create Distribution"
 
 2. **Configure Origin:**
-   - Origin domain: `13.218.146.247` (your EC2 IP)
+   - Origin domain: `54.82.88.31` (your EC2 IP)
    - Protocol: **HTTP only**
    - HTTP port: **80**
    - Origin path: Leave empty
@@ -103,7 +103,7 @@ sudo mkdir -p /etc/nginx/ssl
 sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
   -keyout /etc/nginx/ssl/nginx.key \
   -out /etc/nginx/ssl/nginx.crt \
-  -subj "/CN=13.218.146.247"
+  -subj "/CN=54.82.88.31"
 ```
 
 But CloudFront is easier and better!

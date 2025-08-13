@@ -5,7 +5,7 @@
 
 set -e
 
-SERVER_IP="${1:-13.218.146.247}"
+SERVER_IP="${1:-54.82.88.31}"
 DEPLOY_PACKAGE="backend/deploy.tar.gz"
 PROJECT_DIR="$(pwd)"
 PEM_FILE=""

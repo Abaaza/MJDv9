@@ -4,11 +4,11 @@ Write-Host "Debugging why backend isn't listening..." -ForegroundColor Yellow
 
 # Check server.js around the listen call
 Write-Host "1. Server.js listen code:" -ForegroundColor Cyan
-& ssh -i $sshKey -o StrictHostKeyChecking=no ec2-user@13.218.146.247 "tail -20 /home/ec2-user/app/backend/dist/server.js"
+& ssh -i $sshKey -o StrictHostKeyChecking=no ec2-user@54.82.88.31 "tail -20 /home/ec2-user/app/backend/dist/server.js"
 
 # Kill existing and start minimal server
 Write-Host "`n2. Starting minimal test server:" -ForegroundColor Cyan
-& ssh -i $sshKey -o StrictHostKeyChecking=no ec2-user@13.218.146.247 "pkill node; cd /home/ec2-user && npm install express"
+& ssh -i $sshKey -o StrictHostKeyChecking=no ec2-user@54.82.88.31 "pkill node; cd /home/ec2-user && npm install express"
 
 $minimalServer = @'
 cd /home/ec2-user
@@ -37,14 +37,14 @@ sleep 3
 curl http://localhost:5000/api/health
 '@
 
-& ssh -i $sshKey -o StrictHostKeyChecking=no ec2-user@13.218.146.247 $minimalServer
+& ssh -i $sshKey -o StrictHostKeyChecking=no ec2-user@54.82.88.31 $minimalServer
 
 # Check if it's running
 Write-Host "`n3. Checking test server:" -ForegroundColor Cyan
-& ssh -i $sshKey -o StrictHostKeyChecking=no ec2-user@13.218.146.247 "ps aux | grep node && sudo netstat -tlpn | grep 5000"
+& ssh -i $sshKey -o StrictHostKeyChecking=no ec2-user@54.82.88.31 "ps aux | grep node && sudo netstat -tlpn | grep 5000"
 
 # Test through nginx
 Write-Host "`n4. Testing through HTTPS:" -ForegroundColor Cyan
-& ssh -i $sshKey -o StrictHostKeyChecking=no ec2-user@13.218.146.247 "curl -k https://localhost/api/health"
+& ssh -i $sshKey -o StrictHostKeyChecking=no ec2-user@54.82.88.31 "curl -k https://localhost/api/health"
 
 Write-Host "`nMinimal server should be running. Try logging in!" -ForegroundColor Green

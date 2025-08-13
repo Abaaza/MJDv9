@@ -16,7 +16,7 @@ The application is failing to start because the Convex credentials are missing. 
 
 ### 1. SSH into your EC2 instance:
 ```bash
-ssh -i boq-key-202507161911.pem ec2-user@13.218.146.247
+ssh -i boq-key-202507161911.pem ec2-user@54.82.88.31
 ```
 
 ### 2. Edit the .env file:
@@ -71,8 +71,8 @@ curl http://localhost:5000/api/health
 ## 🌐 Access Your Application:
 
 Once you've updated the .env file and restarted:
-- Application URL: http://13.218.146.247
-- API endpoint: http://13.218.146.247/api
+- Application URL: http://54.82.88.31
+- API endpoint: http://54.82.88.31/api
 
 ## 🔍 Troubleshooting:
 

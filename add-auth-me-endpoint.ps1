@@ -4,7 +4,7 @@ Write-Host "Adding auth/me endpoint..." -ForegroundColor Yellow
 
 # Check current server
 Write-Host "1. Current server status:" -ForegroundColor Cyan
-& ssh -i $sshKey -o StrictHostKeyChecking=no ec2-user@13.218.146.247 "ps aux | grep node | grep -v grep; sudo lsof -i :5000"
+& ssh -i $sshKey -o StrictHostKeyChecking=no ec2-user@54.82.88.31 "ps aux | grep node | grep -v grep; sudo lsof -i :5000"
 
 # Create a complete working server with auth/me
 Write-Host "`n2. Creating complete server with auth/me..." -ForegroundColor Cyan
@@ -94,18 +94,18 @@ server.listen(5000, () => {
 '@
 
 $completeServer | Out-File -FilePath "complete-server.js" -Encoding ASCII
-& scp -i $sshKey -o StrictHostKeyChecking=no complete-server.js ec2-user@13.218.146.247:/home/ec2-user/complete-server.js
+& scp -i $sshKey -o StrictHostKeyChecking=no complete-server.js ec2-user@54.82.88.31:/home/ec2-user/complete-server.js
 Remove-Item complete-server.js
 
 # Stop old and start new
 Write-Host "`n3. Restarting with complete server..." -ForegroundColor Cyan
-& ssh -i $sshKey -o StrictHostKeyChecking=no ec2-user@13.218.146.247 "pkill node; cd /home/ec2-user && node complete-server.js > complete.log 2>&1 & echo 'Started complete server'"
+& ssh -i $sshKey -o StrictHostKeyChecking=no ec2-user@54.82.88.31 "pkill node; cd /home/ec2-user && node complete-server.js > complete.log 2>&1 & echo 'Started complete server'"
 
 Start-Sleep -Seconds 2
 
 # Test auth/me
 Write-Host "`n4. Testing auth/me endpoint..." -ForegroundColor Cyan
-& ssh -i $sshKey -o StrictHostKeyChecking=no ec2-user@13.218.146.247 "curl -s http://localhost:5000/api/auth/me"
+& ssh -i $sshKey -o StrictHostKeyChecking=no ec2-user@54.82.88.31 "curl -s http://localhost:5000/api/auth/me"
 
 Write-Host "`n`nServer is now running with auth/me endpoint!" -ForegroundColor Green
 Write-Host "Your dashboard should work properly now." -ForegroundColor Green

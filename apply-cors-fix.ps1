@@ -46,17 +46,17 @@ $tempFile = [System.IO.Path]::GetTempFileName()
 $nginxConfig | Set-Content $tempFile -Encoding UTF8
 
 Write-Host "Uploading nginx configuration..." -ForegroundColor Yellow
-& scp -i $sshKey -o StrictHostKeyChecking=no $tempFile ec2-user@13.218.146.247:/tmp/nginx.conf
+& scp -i $sshKey -o StrictHostKeyChecking=no $tempFile ec2-user@54.82.88.31:/tmp/nginx.conf
 
 Write-Host "Applying configuration..." -ForegroundColor Yellow
-& ssh -i $sshKey -o StrictHostKeyChecking=no ec2-user@13.218.146.247 @'
+& ssh -i $sshKey -o StrictHostKeyChecking=no ec2-user@54.82.88.31 @'
 sudo cp /tmp/nginx.conf /etc/nginx/conf.d/app.conf
 sudo rm -f /etc/nginx/conf.d/ssl.conf /etc/nginx/conf.d/cors*.conf /etc/nginx/conf.d/working.conf
 sudo nginx -t && sudo systemctl restart nginx
 '@
 
 Write-Host "`nChecking backend..." -ForegroundColor Yellow
-& ssh -i $sshKey -o StrictHostKeyChecking=no ec2-user@13.218.146.247 @'
+& ssh -i $sshKey -o StrictHostKeyChecking=no ec2-user@54.82.88.31 @'
 # Check if PM2 is running with correct user
 ps aux | grep pm2
 cd /home/ec2-user/backend
@@ -68,7 +68,7 @@ pm2 list
 '@
 
 Write-Host "`nTesting CORS headers..." -ForegroundColor Yellow  
-& ssh -i $sshKey -o StrictHostKeyChecking=no ec2-user@13.218.146.247 @'
+& ssh -i $sshKey -o StrictHostKeyChecking=no ec2-user@54.82.88.31 @'
 echo "OPTIONS request test:"
 curl -I -X OPTIONS https://localhost/api/auth/login -H "Origin: https://main.d3j084kic0l1ff.amplifyapp.com" -k 2>&1 | grep -i "access-control"
 echo ""

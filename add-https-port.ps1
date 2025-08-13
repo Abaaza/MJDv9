@@ -1,5 +1,5 @@
 # Add HTTPS Port 443 to EC2 Security Group
-param([string]$IP = "13.218.146.247")
+param([string]$IP = "54.82.88.31")
 
 Write-Host "Adding HTTPS (port 443) to EC2 Security Group" -ForegroundColor Green
 Write-Host "=============================================" -ForegroundColor Green

@@ -4,15 +4,15 @@ Write-Host "Investigating why server isn't listening..." -ForegroundColor Yellow
 
 # Check the server.ts file around the listen call
 Write-Host "1. Server.ts listen code:" -ForegroundColor Cyan
-& ssh -i $sshKey -o StrictHostKeyChecking=no ec2-user@13.218.146.247 "grep -A10 -B10 'app.listen' /home/ec2-user/app/backend/src/server.ts"
+& ssh -i $sshKey -o StrictHostKeyChecking=no ec2-user@54.82.88.31 "grep -A10 -B10 'app.listen' /home/ec2-user/app/backend/src/server.ts"
 
 # Check if there's an async initialization
 Write-Host "`n2. Looking for async initialization:" -ForegroundColor Cyan
-& ssh -i $sshKey -o StrictHostKeyChecking=no ec2-user@13.218.146.247 "grep -n 'async\|await\|then' /home/ec2-user/app/backend/src/server.ts | tail -20"
+& ssh -i $sshKey -o StrictHostKeyChecking=no ec2-user@54.82.88.31 "grep -n 'async\|await\|then' /home/ec2-user/app/backend/src/server.ts | tail -20"
 
 # Kill existing and create a guaranteed working server
 Write-Host "`n3. Creating guaranteed working server:" -ForegroundColor Cyan
-& ssh -i $sshKey -o StrictHostKeyChecking=no ec2-user@13.218.146.247 "pkill node || true"
+& ssh -i $sshKey -o StrictHostKeyChecking=no ec2-user@54.82.88.31 "pkill node || true"
 
 $workingServer = @"
 cd /home/ec2-user
@@ -58,25 +58,25 @@ EOF
 node working-server.js &
 "@
 
-& ssh -i $sshKey -o StrictHostKeyChecking=no ec2-user@13.218.146.247 $workingServer
+& ssh -i $sshKey -o StrictHostKeyChecking=no ec2-user@54.82.88.31 $workingServer
 
 Start-Sleep -Seconds 3
 
 # Verify it's running
 Write-Host "`n4. Verifying server:" -ForegroundColor Cyan
-& ssh -i $sshKey -o StrictHostKeyChecking=no ec2-user@13.218.146.247 "ps aux | grep 'working-server' | grep -v grep"
-& ssh -i $sshKey -o StrictHostKeyChecking=no ec2-user@13.218.146.247 "sudo lsof -i :5000"
+& ssh -i $sshKey -o StrictHostKeyChecking=no ec2-user@54.82.88.31 "ps aux | grep 'working-server' | grep -v grep"
+& ssh -i $sshKey -o StrictHostKeyChecking=no ec2-user@54.82.88.31 "sudo lsof -i :5000"
 
 # Test it
 Write-Host "`n5. Testing server:" -ForegroundColor Cyan
-& ssh -i $sshKey -o StrictHostKeyChecking=no ec2-user@13.218.146.247 "curl -s http://localhost:5000/api/health"
+& ssh -i $sshKey -o StrictHostKeyChecking=no ec2-user@54.82.88.31 "curl -s http://localhost:5000/api/health"
 
 # Test through HTTPS
 Write-Host "`n6. Testing through HTTPS:" -ForegroundColor Cyan
-& ssh -i $sshKey -o StrictHostKeyChecking=no ec2-user@13.218.146.247 "curl -s -k https://localhost/api/health || echo 'HTTPS proxy issue'"
+& ssh -i $sshKey -o StrictHostKeyChecking=no ec2-user@54.82.88.31 "curl -s -k https://localhost/api/health || echo 'HTTPS proxy issue'"
 
 # Check nginx config
 Write-Host "`n7. Checking nginx configs:" -ForegroundColor Cyan
-& ssh -i $sshKey -o StrictHostKeyChecking=no ec2-user@13.218.146.247 "grep -l 'listen 443' /etc/nginx/conf.d/* 2>/dev/null || echo 'No SSL config found'"
+& ssh -i $sshKey -o StrictHostKeyChecking=no ec2-user@54.82.88.31 "grep -l 'listen 443' /etc/nginx/conf.d/* 2>/dev/null || echo 'No SSL config found'"
 
 Write-Host "`nInvestigation complete. Server should be running on port 5000." -ForegroundColor Green

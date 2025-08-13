@@ -2,15 +2,15 @@
 
 ## ✅ System Status
 - **API Status**: ✅ ONLINE AND WORKING
-- **API URL**: http://13.218.146.247/api
-- **Health Check**: http://13.218.146.247/api/health
+- **API URL**: http://54.82.88.31/api
+- **Health Check**: http://54.82.88.31/api/health
 
 ## 🌍 Who Can Access Your System?
 
 **ANYONE ON THE INTERNET CAN ACCESS YOUR API!**
 
 Your system is publicly accessible because:
-- ✅ EC2 has a public IP address (13.218.146.247)
+- ✅ EC2 has a public IP address (54.82.88.31)
 - ✅ Security Group allows HTTP traffic from 0.0.0.0/0 (all IPs)
 - ✅ No VPN or special network access required
 - ✅ Works from any country, any network, any device
@@ -19,46 +19,46 @@ Your system is publicly accessible because:
 
 ### Public Endpoints (No Auth Required):
 ```
-GET  http://13.218.146.247/api/health
-POST http://13.218.146.247/api/auth/register
-POST http://13.218.146.247/api/auth/login
+GET  http://54.82.88.31/api/health
+POST http://54.82.88.31/api/auth/register
+POST http://54.82.88.31/api/auth/login
 ```
 
 ### Protected Endpoints (Require Auth Token):
 ```
-GET  http://13.218.146.247/api/price-matching/jobs
-POST http://13.218.146.247/api/price-matching/upload-and-match
-GET  http://13.218.146.247/api/price-matching/:jobId/status
-GET  http://13.218.146.247/api/price-matching/:jobId/results
-GET  http://13.218.146.247/api/price-list
+GET  http://54.82.88.31/api/price-matching/jobs
+POST http://54.82.88.31/api/price-matching/upload-and-match
+GET  http://54.82.88.31/api/price-matching/:jobId/status
+GET  http://54.82.88.31/api/price-matching/:jobId/results
+GET  http://54.82.88.31/api/price-list
 ```
 
 ## 🚀 How to Use Your API
 
 ### 1. Register a New User:
 ```bash
-curl -X POST http://13.218.146.247/api/auth/register \
+curl -X POST http://54.82.88.31/api/auth/register \
   -H "Content-Type: application/json" \
   -d '{"email":"user@example.com","password":"password123","name":"Test User"}'
 ```
 
 ### 2. Login to Get Token:
 ```bash
-curl -X POST http://13.218.146.247/api/auth/login \
+curl -X POST http://54.82.88.31/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"user@example.com","password":"password123"}'
 ```
 
 ### 3. Use Token for Protected Endpoints:
 ```bash
-curl -X GET http://13.218.146.247/api/price-matching/jobs \
+curl -X GET http://54.82.88.31/api/price-matching/jobs \
   -H "Authorization: Bearer YOUR_TOKEN_HERE"
 ```
 
 ## 🔧 Current Issues & Solutions
 
 ### Frontend 500 Error
-The root URL (http://13.218.146.247/) returns 500 because there's no frontend built. This is NORMAL for an API-only deployment.
+The root URL (http://54.82.88.31/) returns 500 because there's no frontend built. This is NORMAL for an API-only deployment.
 
 **Solutions:**
 1. Use the API endpoints directly
@@ -97,7 +97,7 @@ The system can now handle:
 
 ### Check Server Status:
 ```bash
-ssh -i boq-key-202507161911.pem ec2-user@13.218.146.247
+ssh -i boq-key-202507161911.pem ec2-user@54.82.88.31
 pm2 status
 pm2 logs
 ```

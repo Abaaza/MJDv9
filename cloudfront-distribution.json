@@ -1,0 +1,65 @@
+{
+  "CallerReference": "mjd-api-cf-2025-08-09",
+  "Aliases": {
+    "Quantity": 1,
+    "Items": ["api.mjd.braunwell.io"]
+  },
+  "DefaultRootObject": "",
+  "Origins": {
+    "Quantity": 1,
+    "Items": [
+      {
+        "Id": "mjd-backend-ec2",
+        "DomainName": "54.82.88.31",
+        "CustomOriginConfig": {
+          "HTTPPort": 5000,
+          "HTTPSPort": 443,
+          "OriginProtocolPolicy": "http-only",
+          "OriginSslProtocols": {
+            "Quantity": 3,
+            "Items": ["TLSv1", "TLSv1.1", "TLSv1.2"]
+          },
+          "OriginReadTimeout": 60,
+          "OriginKeepaliveTimeout": 5
+        },
+        "ConnectionAttempts": 3,
+        "ConnectionTimeout": 10
+      }
+    ]
+  },
+  "DefaultCacheBehavior": {
+    "TargetOriginId": "mjd-backend-ec2",
+    "ViewerProtocolPolicy": "redirect-to-https",
+    "TrustedSigners": {
+      "Enabled": false,
+      "Quantity": 0
+    },
+    "TrustedKeyGroups": {
+      "Enabled": false,
+      "Quantity": 0
+    },
+    "AllowedMethods": {
+      "Quantity": 7,
+      "Items": ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"],
+      "CachedMethods": {
+        "Quantity": 2,
+        "Items": ["GET", "HEAD"]
+      }
+    },
+    "Compress": true,
+    "CachePolicyId": "4135ea2d-6df8-44a3-9df3-4b5a84be39ad",
+    "OriginRequestPolicyId": "88a5eaf4-2fd4-4709-b370-b4c650ea3fcf"
+  },
+  "Comment": "MJD API Backend CloudFront Distribution",
+  "Enabled": true,
+  "ViewerCertificate": {
+    "ACMCertificateArn": "arn:aws:acm:us-east-1:911167890928:certificate/07bb7af4-d914-4721-ac22-f8706474e912",
+    "SSLSupportMethod": "sni-only",
+    "MinimumProtocolVersion": "TLSv1.2_2021",
+    "Certificate": "arn:aws:acm:us-east-1:911167890928:certificate/07bb7af4-d914-4721-ac22-f8706474e912",
+    "CertificateSource": "acm"
+  },
+  "HttpVersion": "http2",
+  "IsIPV6Enabled": true,
+  "PriceClass": "PriceClass_100"
+}

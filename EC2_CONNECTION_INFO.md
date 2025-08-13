@@ -3,7 +3,7 @@
 ## Instance Details
 - **Instance ID**: i-08aaff0571cba4906
 - **Public IP**: 54.82.88.31 (NEW - Changed after restart)
-- **Old IP**: 13.218.146.247 (no longer valid)
+- **Old IP**: 54.82.88.31 (no longer valid)
 - **Region**: us-east-1
 - **Security Group**: sg-01e6d76ec6665d76e (boq-matching-sg)
 
@@ -31,7 +31,7 @@ ssh -i ../mjd-backend-key-us.pem ec2-user@54.82.88.31 "cd /home/ec2-user/app/bac
 - **Health Check**: http://54.82.88.31:3000/health
 
 ## Important Notes
-1. The IP address changed from 13.218.146.247 to 54.82.88.31 after instance restart
+1. The IP address changed from 54.82.88.31 to 54.82.88.31 after instance restart
 2. Both old key (boq-key-202507161911.pem) and new key (mjd-backend-key-us.pem) work
 3. SSH access is allowed from IP: 41.69.152.54/32
 4. Update your frontend .env file with the new IP address
