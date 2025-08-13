@@ -1,7 +1,7 @@
 import { getConvexClient } from '../config/convex';
 import { api } from '../lib/convex-api';
 import { PriceItem } from '../types/priceItem.types';
-import { CohereClient } from 'cohere-ai';
+import { CohereClientV2 } from 'cohere-ai';
 import OpenAI from 'openai';
 import * as fuzz from 'fuzzball';
 import { LRUCache } from 'lru-cache';
@@ -20,16 +20,22 @@ interface MatchingResult {
 export class MatchingService {
   private static instance: MatchingService;
   private convex = getConvexClient();
-  private cohereClient: CohereClient | null = null;
+  private cohereClient: CohereClientV2 | null = null;
   private openaiClient: OpenAI | null = null;
   private embeddingCache: LRUCache<string, number[]>;
+  private rerankCache: LRUCache<string, { results: any[], timestamp: number }>;
   private priceItemsCache: { items: PriceItem[], timestamp: number } | null = null;
   private readonly CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+  private readonly RERANK_CACHE_DURATION = 30 * 60 * 1000; // 30 minutes for rerank cache
 
   private constructor() {
     this.embeddingCache = new LRUCache<string, number[]>({
       max: 10000, // Increased cache size
       ttl: 1000 * 60 * 60 * 2, // 2 hours - longer TTL for Lambda
+    });
+    this.rerankCache = new LRUCache<string, { results: any[], timestamp: number }>({
+      max: 5000, // Store rerank results
+      ttl: this.RERANK_CACHE_DURATION,
     });
   }
 
@@ -57,10 +63,10 @@ export class MatchingService {
     // Always try to initialize Cohere if we have a key
     if (cohereKey) {
       try {
-        this.cohereClient = new CohereClient({ token: cohereKey });
-        console.log('[MatchingService] Cohere client initialized successfully');
+        this.cohereClient = new CohereClientV2({ token: cohereKey });
+        console.log('[MatchingService] Cohere V2 client initialized successfully');
       } catch (error) {
-        console.error('[MatchingService] Failed to initialize Cohere:', error);
+        console.error('[MatchingService] Failed to initialize Cohere V2:', error);
         this.cohereClient = null;
       }
     }
@@ -466,17 +472,88 @@ export class MatchingService {
   }
 
   /**
-   * COHERE MATCH - Semantic matching with Cohere v4
-   * Model: embed-v4.0
-   * Dimensions: 1536 (upgraded from 1024 in v3)
-   * Max tokens: 128,000 (upgraded from 512 in v3)
+   * Clean description for better matching
+   */
+  private cleanDescription(description: string): string {
+    return description
+      .toLowerCase()
+      .replace(/[^\w\s]/g, ' ')  // Remove special characters
+      .replace(/\s+/g, ' ')       // Normalize whitespace
+      .trim();
+  }
+
+  /**
+   * Pre-filter candidates for reranking using fuzzy matching
+   * This reduces the number of documents sent to the rerank API
+   */
+  private preFilterCandidates(
+    description: string,
+    priceItems: PriceItem[],
+    maxCandidates: number = 200,
+    contextHeaders?: string[]
+  ): PriceItem[] {
+    const queryUnit = this.extractUnit(description);
+    const cleanedQuery = this.cleanDescription(description);
+    
+    // Extract category context from headers
+    const targetCategory = contextHeaders?.[0]?.toLowerCase() || '';
+    const targetSubcategory = contextHeaders?.[1]?.toLowerCase() || '';
+    
+    // Score all items with fuzzy matching
+    const scoredItems = priceItems.map(item => {
+      const cleanedItem = this.cleanDescription(item.description);
+      const fuzzyScore = fuzz.token_set_ratio(cleanedQuery, cleanedItem) * 0.9;
+      
+      // Bonus for unit match
+      let unitBonus = 0;
+      if (queryUnit && item.unit) {
+        const normalizedQuery = this.normalizeUnit(queryUnit);
+        const normalizedItem = this.normalizeUnit(item.unit);
+        if (normalizedQuery === normalizedItem) {
+          unitBonus = 20;
+        }
+      }
+      
+      // Bonus for category match
+      let categoryBonus = 0;
+      if (targetCategory || targetSubcategory) {
+        const itemCategory = (item.category || '').toLowerCase();
+        const itemSubcategory = (item.subcategory || '').toLowerCase();
+        
+        if (targetCategory && targetSubcategory &&
+            itemCategory.includes(targetCategory) && 
+            itemSubcategory.includes(targetSubcategory)) {
+          categoryBonus = 15;
+        } else if (targetSubcategory && itemSubcategory.includes(targetSubcategory)) {
+          categoryBonus = 10;
+        } else if (targetCategory && itemCategory.includes(targetCategory)) {
+          categoryBonus = 5;
+        }
+      }
+      
+      return {
+        item,
+        score: fuzzyScore + unitBonus + categoryBonus
+      };
+    });
+    
+    // Sort by score and return top candidates
+    scoredItems.sort((a, b) => b.score - a.score);
+    return scoredItems.slice(0, maxCandidates).map(s => s.item);
+  }
+
+  /**
+   * COHERE MATCH - Using Rerank v3.5 for superior matching
+   * Model: rerank-v3.5
+   * Context length: 4096 tokens
+   * Much more accurate than embeddings-based matching
    */
   private async cohereMatch(
     description: string,
     priceItems: PriceItem[],
     contextHeaders?: string[]
   ): Promise<MatchingResult> {
-    console.log('[cohereMatch] Starting with client:', !!this.cohereClient);
+    console.log('[cohereMatch] Starting with Rerank v3.5, client:', !!this.cohereClient);
     
     if (!this.cohereClient) {
       console.log('[cohereMatch] No Cohere client available, falling back to LOCAL');
@@ -485,122 +562,132 @@ export class MatchingService {
 
     const queryUnit = this.extractUnit(description);
     
-    // Enhanced query text with category+subcategory context
+    // Build enhanced query with context
     let queryText = description;
     if (contextHeaders && contextHeaders.length > 0) {
-      // Join category and subcategory as a single context
-      const categoryContext = contextHeaders.slice(0, 2).join(' ');
-      queryText = `${categoryContext} ${description}`;
-      // Also add individual parts for better matching
-      if (contextHeaders[0]) queryText += ` ${contextHeaders[0]}`;
-      if (contextHeaders[1]) queryText += ` ${contextHeaders[1]}`;
+      const categoryContext = contextHeaders.filter(h => h).join(' > ');
+      queryText = `${categoryContext}: ${description}`;
+    }
+    // Add unit to query for better matching
+    if (queryUnit) {
+      queryText += ` (Unit: ${queryUnit})`;
     }
 
-    // Get or generate query embedding
-    const queryCacheKey = `cohere_${queryText}`;
-    let queryEmbedding = this.embeddingCache.get(queryCacheKey);
+    // Pre-filter candidates to reduce API calls
+    const candidates = this.preFilterCandidates(description, priceItems, 150, contextHeaders);
     
-    if (!queryEmbedding) {
-      try {
-        const response = await withRetry(
-          () => this.cohereClient!.v2.embed({
-            texts: [queryText],
-            model: 'embed-v4.0',
-            embeddingTypes: ['float'],
-            inputType: 'search_query',
-          }),
-          { maxAttempts: 2, delayMs: 1000, timeout: 10000 }
-        );
-        queryEmbedding = response.embeddings.float[0];
-        this.embeddingCache.set(queryCacheKey, queryEmbedding);
-      } catch (error) {
-        console.error('[cohereMatch] Failed to generate query embedding:', error);
-        return this.localMatch(description, priceItems, contextHeaders);
-      }
-    }
-
-    // Score all items
-    let preComputedCount = 0;
-    let generatedCount = 0;
-    
-    const scoredItems = await Promise.all(
-      priceItems.map(async (item) => {
-        const itemText = this.createSimpleText(item);
-        const cacheKey = `cohere_${itemText}`;
-        let embedding = this.embeddingCache.get(cacheKey);
-        
-        if (!embedding && item.embedding && item.embeddingProvider === 'cohere') {
-          embedding = item.embedding;
-          this.embeddingCache.set(cacheKey, embedding);
-          preComputedCount++;
-        }
-        
-        if (!embedding) {
-          // Generate embedding for this item
-          try {
-            const response = await this.cohereClient!.v2.embed({
-              texts: [itemText],
-              model: 'embed-v4.0',
-              embeddingTypes: ['float'],
-              inputType: 'search_document',
-            });
-            embedding = response.embeddings.float[0];
-            this.embeddingCache.set(cacheKey, embedding);
-            generatedCount++;
-          } catch {
-            return null;
-          }
-        }
-        
-        if (!embedding) return null;
-        
-        // Calculate cosine similarity
-        const similarity = this.cosineSimilarity(queryEmbedding!, embedding);
-        
-        // Strong unit boost for Cohere matching
-        let finalScore = similarity;
-        if (queryUnit && item.unit) {
-          const normalizedQuery = this.normalizeUnit(queryUnit);
-          const normalizedItem = this.normalizeUnit(item.unit);
-          if (normalizedQuery === normalizedItem) {
-            // Boost score significantly for unit match
-            finalScore = Math.min(similarity + 0.3, 0.99); // Add 30% boost
-          }
-        } else if (queryUnit && !item.unit) {
-          // Penalize items without units
-          finalScore = similarity * 0.7; // 30% penalty
-        }
-        
-        return { item, score: finalScore };
-      })
-    );
-
-    // Filter out nulls and sort
-    const validMatches = scoredItems.filter(m => m !== null) as Array<{item: PriceItem, score: number}>;
-    validMatches.sort((a, b) => b.score - a.score);
-    
-    console.log('[cohereMatch] Embedding stats:', {
-      totalItems: priceItems.length,
-      preComputedCohere: preComputedCount,
-      generatedCohere: generatedCount,
-      validMatches: validMatches.length
-    });
-    
-    if (validMatches.length === 0) {
+    if (candidates.length === 0) {
+      console.log('[cohereMatch] No candidates after pre-filtering, falling back to LOCAL');
       return this.localMatch(description, priceItems, contextHeaders);
     }
+
+    // Check rerank cache
+    const cacheKey = `rerank_${queryText}_${candidates.map(c => c._id).join(',')}`;
+    const cachedResult = this.rerankCache.get(cacheKey);
     
-    const bestMatch = validMatches[0];
-    
-    return {
-      matchedItemId: bestMatch.item._id,
-      matchedDescription: bestMatch.item.description,
-      matchedCode: bestMatch.item.code || '',
-      matchedUnit: bestMatch.item.unit || '',
-      matchedRate: bestMatch.item.rate,
-      confidence: bestMatch.score,
-      method: 'COHERE'
-    };
+    if (cachedResult && Date.now() - cachedResult.timestamp < this.RERANK_CACHE_DURATION) {
+      console.log('[cohereMatch] Using cached rerank results');
+      const bestResult = cachedResult.results[0];
+      const bestMatch = candidates[bestResult.index];
+      
+      return {
+        matchedItemId: bestMatch._id,
+        matchedDescription: bestMatch.description,
+        matchedCode: bestMatch.code || '',
+        matchedUnit: bestMatch.unit || '',
+        matchedRate: bestMatch.rate,
+        confidence: bestResult.relevanceScore,
+        method: 'COHERE_RERANK'
+      };
+    }
+
+    // Prepare documents for reranking
+    // Format: "Description | Category > Subcategory | Unit: XXX | Code: XXX"
+    const documents = candidates.map(item => {
+      const parts = [item.description];
+      
+      // Add category hierarchy if available
+      if (item.category || item.subcategory) {
+        const categoryPath = [item.category, item.subcategory].filter(Boolean).join(' > ');
+        parts.push(`Category: ${categoryPath}`);
+      }
+      
+      // Add unit information
+      if (item.unit) {
+        parts.push(`Unit: ${item.unit}`);
+      }
+      
+      // Add code if available
+      if (item.code) {
+        parts.push(`Code: ${item.code}`);
+      }
+      
+      return parts.join(' | ');
+    });
+
+    try {
+      console.log('[cohereMatch] Calling Rerank API with', documents.length, 'documents');
+      
+      // Call Cohere Rerank v3.5
+      const rerankResponse = await withRetry(
+        () => this.cohereClient!.rerank({
+          model: 'rerank-v3.5',
+          query: queryText,
+          documents: documents,
+          topN: Math.min(10, documents.length), // Get top 10 results
+          returnDocuments: false, // We don't need the text back
+          maxTokensPerDoc: 512 // Limit token usage per document
+        }),
+        { maxAttempts: 2, delayMs: 1000, timeout: 15000 }
+      );
+
+      if (!rerankResponse.results || rerankResponse.results.length === 0) {
+        console.log('[cohereMatch] No results from rerank, falling back to LOCAL');
+        return this.localMatch(description, priceItems, contextHeaders);
+      }
+
+      // Cache the results
+      this.rerankCache.set(cacheKey, {
+        results: rerankResponse.results,
+        timestamp: Date.now()
+      });
+
+      // Get the best match
+      const bestResult = rerankResponse.results[0];
+      const bestMatch = candidates[bestResult.index];
+      
+      console.log('[cohereMatch] Rerank top 3 results:');
+      rerankResponse.results.slice(0, 3).forEach((result, idx) => {
+        const item = candidates[result.index];
+        console.log(`  ${idx + 1}. Score: ${result.relevanceScore.toFixed(3)}, Desc: ${item.description.substring(0, 50)}..., Unit: ${item.unit || 'N/A'}`);
+      });
+
+      // Apply unit boost to confidence if units match
+      let finalConfidence = bestResult.relevanceScore;
+      if (queryUnit && bestMatch.unit) {
+        const normalizedQuery = this.normalizeUnit(queryUnit);
+        const normalizedItem = this.normalizeUnit(bestMatch.unit);
+        if (normalizedQuery === normalizedItem) {
+          // Boost confidence for unit match
+          finalConfidence = Math.min(finalConfidence * 1.15, 0.99);
+        }
+      }
+
+      return {
+        matchedItemId: bestMatch._id,
+        matchedDescription: bestMatch.description,
+        matchedCode: bestMatch.code || '',
+        matchedUnit: bestMatch.unit || '',
+        matchedRate: bestMatch.rate,
+        confidence: finalConfidence,
+        method: 'COHERE_RERANK'
+      };
+      
+    } catch (error) {
+      console.error('[cohereMatch] Rerank API error:', error);
+      console.log('[cohereMatch] Falling back to LOCAL matching');
+      return this.localMatch(description, priceItems, contextHeaders);
+    }
   }
 
   /**
@@ -783,7 +870,7 @@ export class MatchingService {
           return parts.join(' ');
         });
         
-        const response = await this.cohereClient.v2.embed({
+        const response = await this.cohereClient.embed({
           texts,
           model: 'embed-v4.0',
           embeddingTypes: ['float'],
@@ -844,7 +931,7 @@ export class MatchingService {
 
     if (method === 'COHERE' && this.cohereClient) {
       try {
-        const response = await this.cohereClient.v2.embed({
+        const response = await this.cohereClient.embed({
           texts: descriptions,
           model: 'embed-v4.0',
           embeddingTypes: ['float'],
