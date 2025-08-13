@@ -1,4 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useConvex } from 'convex/react';
+import { api } from '../../convex/_generated/api';
 import {
   Dialog,
   DialogContent,
@@ -46,21 +49,37 @@ interface ClientPriceListModalProps {
   onSuccess?: () => void;
 }
 
-// Mock data for testing when no clients exist
-const mockClients = [
-  { _id: 'mock1', name: 'Sample Client 1', email: 'client1@example.com', isActive: true },
-  { _id: 'mock2', name: 'Sample Client 2', email: 'client2@example.com', isActive: true },
-];
+interface Client {
+  _id: string;
+  name: string;
+  email?: string;
+  isActive: boolean;
+}
+
+interface PriceList {
+  _id: string;
+  name: string;
+  description?: string;
+  isDefault: boolean;
+  isActive: boolean;
+  effectiveFrom?: number;
+  effectiveTo?: number;
+  sourceFileName?: string;
+  lastSyncedAt?: number;
+  clientName?: string;
+}
 
 export const ClientPriceListModalFixed: React.FC<ClientPriceListModalProps> = ({
   isOpen,
   onClose,
   onSuccess,
 }) => {
+  const convex = useConvex();
   const { toast } = useToast();
   
   const [activeTab, setActiveTab] = useState('upload');
   const [selectedClient, setSelectedClient] = useState<string>('');
+  const [selectedPriceList, setSelectedPriceList] = useState<string>('');
   const [uploadMode, setUploadMode] = useState<'new' | 'update'>('new');
   const [priceListName, setPriceListName] = useState('');
   const [priceListDescription, setPriceListDescription] = useState('');
@@ -71,15 +90,45 @@ export const ClientPriceListModalFixed: React.FC<ClientPriceListModalProps> = ({
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   
-  // For now, use mock clients if database is empty
-  const clients = mockClients;
-  const clientPriceLists: any[] = [];
+  // Fetch actual clients from database
+  const { data: clients = [], isLoading: clientsLoading } = useQuery({
+    queryKey: ['clients'],
+    queryFn: async () => {
+      const result = await convex.query(api.clients.getActive);
+      return result as Client[];
+    },
+    enabled: isOpen,
+  });
+
+  // Fetch price lists for selected client
+  const { data: clientPriceLists = [], refetch: refetchPriceLists } = useQuery({
+    queryKey: ['clientPriceLists', selectedClient],
+    queryFn: async () => {
+      if (!selectedClient) return [];
+      const result = await convex.query(api.clientPriceLists.getByClient, {
+        clientId: selectedClient as any,
+      });
+      return result as PriceList[];
+    },
+    enabled: !!selectedClient,
+  });
+
+  // Fetch all price lists for management tab
+  const { data: allPriceLists = [], refetch: refetchAllPriceLists } = useQuery({
+    queryKey: ['allPriceLists'],
+    queryFn: async () => {
+      const result = await convex.query(api.clientPriceLists.getAllActive);
+      return result as PriceList[];
+    },
+    enabled: activeTab === 'manage',
+  });
 
   // Reset form when modal closes
   useEffect(() => {
     if (!isOpen) {
       setActiveTab('upload');
       setSelectedClient('');
+      setSelectedPriceList('');
       setUploadMode('new');
       setPriceListName('');
       setPriceListDescription('');
@@ -197,24 +246,32 @@ export const ClientPriceListModalFixed: React.FC<ClientPriceListModalProps> = ({
             {/* Client Selection */}
             <div>
               <Label htmlFor="client">Select Client</Label>
-              <Select value={selectedClient} onValueChange={setSelectedClient}>
+              <Select value={selectedClient} onValueChange={setSelectedClient} disabled={clientsLoading}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Choose a client" />
+                  <SelectValue placeholder={clientsLoading ? "Loading clients..." : "Choose a client"} />
                 </SelectTrigger>
                 <SelectContent>
-                  {clients.map((client) => (
-                    <SelectItem key={client._id} value={client._id}>
-                      <div className="flex items-center gap-2">
-                        <Users className="h-4 w-4" />
-                        {client.name}
-                      </div>
-                    </SelectItem>
-                  ))}
+                  {clients.length === 0 ? (
+                    <div className="px-2 py-4 text-sm text-muted-foreground text-center">
+                      No clients found. Please add clients first.
+                    </div>
+                  ) : (
+                    clients.map((client) => (
+                      <SelectItem key={client._id} value={client._id}>
+                        <div className="flex items-center gap-2">
+                          <Users className="h-4 w-4" />
+                          {client.name}
+                        </div>
+                      </SelectItem>
+                    ))
+                  )}
                 </SelectContent>
               </Select>
-              <p className="text-xs text-muted-foreground mt-1">
-                Don't see your client? Add them in the Clients section first.
-              </p>
+              {clients.length === 0 && !clientsLoading && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  No clients found. Please add clients in the Clients section first.
+                </p>
+              )}
             </div>
 
             {/* Upload Mode */}
@@ -353,18 +410,96 @@ export const ClientPriceListModalFixed: React.FC<ClientPriceListModalProps> = ({
           </TabsContent>
 
           <TabsContent value="manage" className="space-y-4">
-            <Alert>
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
-                No price lists found. Upload a price list for a client to get started.
-              </AlertDescription>
-            </Alert>
-            
-            <div className="text-center py-8">
-              <Button variant="outline" onClick={() => setActiveTab('upload')}>
-                <Plus className="mr-2 h-4 w-4" />
-                Upload First Price List
-              </Button>
+            <div className="space-y-4">
+              {allPriceLists.length === 0 ? (
+                <>
+                  <Alert>
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>
+                      No price lists found. Upload a price list for a client to get started.
+                    </AlertDescription>
+                  </Alert>
+                  
+                  <div className="text-center py-8">
+                    <Button variant="outline" onClick={() => setActiveTab('upload')}>
+                      <Plus className="mr-2 h-4 w-4" />
+                      Upload First Price List
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                allPriceLists.map((priceList) => (
+                  <Card key={priceList._id}>
+                    <CardHeader>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <CardTitle className="text-lg">{priceList.name}</CardTitle>
+                          <CardDescription className="flex items-center gap-2 mt-1">
+                            <Users className="h-3 w-3" />
+                            {priceList.clientName}
+                          </CardDescription>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {priceList.isDefault && (
+                            <Badge variant="secondary">Default</Badge>
+                          )}
+                          {priceList.isActive ? (
+                            <Badge variant="default">Active</Badge>
+                          ) : (
+                            <Badge variant="destructive">Inactive</Badge>
+                          )}
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                          <span className="text-muted-foreground">Source File:</span>
+                          <span className="ml-2">{priceList.sourceFileName || 'N/A'}</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Last Synced:</span>
+                          <span className="ml-2">
+                            {priceList.lastSyncedAt
+                              ? format(new Date(priceList.lastSyncedAt), 'MMM dd, yyyy HH:mm')
+                              : 'Never'}
+                          </span>
+                        </div>
+                        {priceList.effectiveFrom && (
+                          <div>
+                            <span className="text-muted-foreground">Effective From:</span>
+                            <span className="ml-2">
+                              {format(new Date(priceList.effectiveFrom), 'MMM dd, yyyy')}
+                            </span>
+                          </div>
+                        )}
+                        {priceList.effectiveTo && (
+                          <div>
+                            <span className="text-muted-foreground">Effective To:</span>
+                            <span className="ml-2">
+                              {format(new Date(priceList.effectiveTo), 'MMM dd, yyyy')}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex gap-2 mt-4">
+                        <Button size="sm" variant="outline">
+                          <RefreshCw className="mr-2 h-4 w-4" />
+                          Sync
+                        </Button>
+                        <Button size="sm" variant="outline">
+                          <Eye className="mr-2 h-4 w-4" />
+                          View Mappings
+                        </Button>
+                        <Button size="sm" variant="outline">
+                          <Download className="mr-2 h-4 w-4" />
+                          Export
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))
+              )}
             </div>
           </TabsContent>
         </Tabs>
