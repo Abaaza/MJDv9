@@ -16,8 +16,11 @@ import type {
 import type * as activityLogs from "../activityLogs.js";
 import type * as aiMatchingJobs from "../aiMatchingJobs.js";
 import type * as applicationSettings from "../applicationSettings.js";
+import type * as clientPriceItems from "../clientPriceItems.js";
+import type * as clientPriceLists from "../clientPriceLists.js";
 import type * as clients from "../clients.js";
 import type * as dashboard from "../dashboard.js";
+import type * as excelMappings from "../excelMappings.js";
 import type * as importJobs from "../importJobs.js";
 import type * as jobLogs from "../jobLogs.js";
 import type * as migrations from "../migrations.js";
@@ -38,8 +41,11 @@ declare const fullApi: ApiFromModules<{
   activityLogs: typeof activityLogs;
   aiMatchingJobs: typeof aiMatchingJobs;
   applicationSettings: typeof applicationSettings;
+  clientPriceItems: typeof clientPriceItems;
+  clientPriceLists: typeof clientPriceLists;
   clients: typeof clients;
   dashboard: typeof dashboard;
+  excelMappings: typeof excelMappings;
   importJobs: typeof importJobs;
   jobLogs: typeof jobLogs;
   migrations: typeof migrations;
