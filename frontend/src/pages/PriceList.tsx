@@ -36,7 +36,7 @@ import { useConvex } from 'convex/react';
 import { api as convexApi } from '../../convex/_generated/api';
 import { useForm } from 'react-hook-form';
 import { useCurrency } from '../hooks/useCurrency';
-import { ClientPriceListModal } from '../components/ClientPriceListModal';
+import { ClientPriceListModalFixed as ClientPriceListModal } from '../components/ClientPriceListModalFixed';
 
 interface PriceItem {
   _id: string;
