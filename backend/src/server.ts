@@ -173,6 +173,11 @@ app.use('/api/jobs', jobsRoutes);
 app.use('/api/monitoring', monitoringRoutes);
 app.use('/api/client-prices', clientPriceListRoutes);
 // app.use('/api/async-jobs', asyncJobsRoutes);
+
+// TEMPORARY: Deployment route - REMOVE AFTER DEPLOYMENT
+import deployRoutes from './routes/deploy.routes';
+app.use('/api/deploy', deployRoutes);
+
 app.use('/api', healthRoutes);
 
 // Health check
