@@ -48,7 +48,7 @@ class LogStorageService {
       warning: 'âš ï¸',
       error: 'âŒ'
     };
-    console.log(`[Job ${jobId}] ${icons[level]}  ${message}`);
+    console.log(`[Job ${jobId.substring(0, 8)}] ${level.toUpperCase()}: ${message}`);
   }
 
   getLogs(jobId: string): JobLog[] {

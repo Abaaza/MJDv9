@@ -39,12 +39,14 @@ interface JobStatus {
   startedAt?: number;
 }
 
-type MatchingMethod = 'LOCAL' | 'COHERE' | 'OPENAI' | 'COHERE_RERANK';
+type MatchingMethod = 'LOCAL' | 'COHERE' | 'OPENAI' | 'COHERE_RERANK' | 'QWEN' | 'QWEN_RERANK';
 
 const matchingMethods = [
   { value: 'LOCAL', label: 'Local Matching', description: 'Fast fuzzy string matching' },
-  { value: 'COHERE', label: 'Cohere Hybrid', description: 'Embeddings + Rerank v3.5 (best accuracy)' },
-  { value: 'COHERE_RERANK', label: 'Cohere Rerank Only', description: 'Direct Rerank v3.5 (faster)' },
+  { value: 'COHERE', label: 'Cohere Hybrid', description: 'Embeddings + Rerank v3.5' },
+  { value: 'COHERE_RERANK', label: 'Cohere Rerank', description: 'Direct Rerank v3.5' },
+  { value: 'QWEN', label: 'Qwen Hybrid', description: 'Cohere Embeddings + Qwen3-8B' },
+  { value: 'QWEN_RERANK', label: 'Qwen Rerank', description: 'Direct Qwen3-8B (DeepInfra)' },
   { value: 'OPENAI', label: 'OpenAI', description: 'GPT-powered matching' },
 ];
 

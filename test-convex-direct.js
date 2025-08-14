@@ -5,7 +5,7 @@
 import { ConvexHttpClient } from 'convex/browser';
 import { api } from './convex/_generated/api.js';
 
-const CONVEX_URL = 'https://good-dolphin-454.convex.cloud';
+const CONVEX_URL = 'https://trustworthy-badger-677.convex.cloud';
 
 async function testConvex() {
   try {

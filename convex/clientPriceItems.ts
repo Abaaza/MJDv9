@@ -244,6 +244,25 @@ export const getByBasePriceItem = query({
   },
 });
 
+// Get client price item by price list and base price item
+export const getByPriceItem = query({
+  args: {
+    priceListId: v.id("clientPriceLists"),
+    priceItemId: v.id("priceItems"),
+  },
+  handler: async (ctx, args) => {
+    const clientPriceItem = await ctx.db
+      .query("clientPriceItems")
+      .withIndex("by_price_list_item", (q) => 
+        q.eq("priceListId", args.priceListId)
+         .eq("basePriceItemId", args.priceItemId)
+      )
+      .first();
+    
+    return clientPriceItem;
+  },
+});
+
 // Update rates from Excel mapping
 export const updateFromExcelMapping = mutation({
   args: {

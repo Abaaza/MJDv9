@@ -258,7 +258,7 @@ export async function uploadAndMatch(req: Request, res: Response): Promise<void>
     }
 
     // Console log removed for performance
-    if (!['LOCAL', 'COHERE', 'OPENAI'].includes(matchingMethod)) {
+    if (!['LOCAL', 'COHERE', 'OPENAI', 'COHERE_RERANK', 'QWEN', 'QWEN_RERANK'].includes(matchingMethod)) {
       res.status(400).json({ error: 'Invalid matching method' });
       return;
     }
@@ -505,7 +505,7 @@ export async function startMatching(req: Request, res: Response): Promise<void> 
   
   try {
     const { jobId } = req.params;
-    const { matchingMethod } = req.body;
+    let { matchingMethod } = req.body;
 
     if (!req.user) {
       res.status(401).json({ error: 'Not authenticated' });
@@ -524,6 +524,11 @@ export async function startMatching(req: Request, res: Response): Promise<void> 
     if (job.userId !== req.user.id) {
       res.status(403).json({ error: 'Access denied' });
       return;
+    }
+
+    // Use job's matching method if not provided in request
+    if (!matchingMethod) {
+      matchingMethod = job.matchingMethod;
     }
 
     // Console log removed for performance

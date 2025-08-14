@@ -57,18 +57,35 @@ export async function updateSetting(req: Request, res: Response): Promise<void> 
 export async function getApiKeys(req: Request, res: Response): Promise<void> {
   try {
     const settings = await convex.query(api.applicationSettings.getByKeys, {
-      keys: ['COHERE_API_KEY', 'OPENAI_API_KEY']
+      keys: ['COHERE_API_KEY', 'OPENAI_API_KEY', 'DEEPINFRA_API_KEY']
     });
     
     // Mask the API keys for security
-    const maskedKeys = settings.map(setting => ({
-      key: setting.key,
-      provider: setting.key === 'COHERE_API_KEY' ? 'cohere' : 'openai',
-      isSet: !!setting.value,
-      lastUpdated: setting.updatedAt,
-      // Show only last 4 characters
-      maskedValue: setting.value ? `${'*'.repeat(Math.max(0, setting.value.length - 4))}${setting.value.slice(-4)}` : null
-    }));
+    const maskedKeys = settings.map(setting => {
+      let provider: string;
+      switch (setting.key) {
+        case 'COHERE_API_KEY':
+          provider = 'cohere';
+          break;
+        case 'OPENAI_API_KEY':
+          provider = 'openai';
+          break;
+        case 'DEEPINFRA_API_KEY':
+          provider = 'deepinfra';
+          break;
+        default:
+          provider = setting.key.toLowerCase().replace('_api_key', '');
+      }
+      
+      return {
+        key: setting.key,
+        provider,
+        isSet: !!setting.value,
+        lastUpdated: setting.updatedAt,
+        // Show only last 4 characters
+        maskedValue: setting.value ? `${'*'.repeat(Math.max(0, setting.value.length - 4))}${setting.value.slice(-4)}` : null
+      };
+    });
     
     res.json(maskedKeys);
   } catch (error) {
@@ -87,8 +104,8 @@ export async function updateApiKey(req: Request, res: Response): Promise<void> {
       return;
     }
     
-    if (!['cohere', 'openai'].includes(provider)) {
-      res.status(400).json({ error: 'Invalid provider. Must be "cohere" or "openai"' });
+    if (!['cohere', 'openai', 'deepinfra'].includes(provider)) {
+      res.status(400).json({ error: 'Invalid provider. Must be "cohere", "openai", or "deepinfra"' });
       return;
     }
     
@@ -97,14 +114,24 @@ export async function updateApiKey(req: Request, res: Response): Promise<void> {
       return;
     }
     
-    const key = provider === 'cohere' ? 'COHERE_API_KEY' : 'OPENAI_API_KEY';
+    let key: 'COHERE_API_KEY' | 'OPENAI_API_KEY' | 'DEEPINFRA_API_KEY';
+    switch (provider) {
+      case 'cohere':
+        key = 'COHERE_API_KEY';
+        break;
+      case 'openai':
+        key = 'OPENAI_API_KEY';
+        break;
+      case 'deepinfra':
+        key = 'DEEPINFRA_API_KEY';
+        break;
+      default:
+        res.status(400).json({ error: 'Invalid provider' });
+        return;
+    }
     
     // Update in database
-    await apiKeyService.updateApiKey(
-      key as 'COHERE_API_KEY' | 'OPENAI_API_KEY',
-      apiKey.trim(),
-      req.user.id
-    );
+    await apiKeyService.updateApiKey(key, apiKey.trim(), req.user.id);
     
     // Test the API key
     let isValid = false;
@@ -118,9 +145,18 @@ export async function updateApiKey(req: Request, res: Response): Promise<void> {
           }
         });
         isValid = response.ok;
-      } else {
+      } else if (provider === 'openai') {
         // Test OpenAI API key
         const response = await fetch('https://api.openai.com/v1/models', {
+          headers: {
+            'Authorization': `Bearer ${apiKey.trim()}`,
+            'Accept': 'application/json'
+          }
+        });
+        isValid = response.ok;
+      } else if (provider === 'deepinfra') {
+        // Test DeepInfra API key
+        const response = await fetch('https://api.deepinfra.com/v1/models', {
           headers: {
             'Authorization': `Bearer ${apiKey.trim()}`,
             'Accept': 'application/json'

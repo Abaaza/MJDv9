@@ -55,7 +55,7 @@ interface MatchData {
 
 interface AIMatchResultsModalProps {
   jobId: string;
-  jobMatchingMethod: 'COHERE' | 'OPENAI' | 'COHERE_RERANK';
+  jobMatchingMethod: 'COHERE' | 'OPENAI' | 'COHERE_RERANK' | 'QWEN' | 'QWEN_RERANK';
   onClose?: () => void;
 }
 

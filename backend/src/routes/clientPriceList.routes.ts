@@ -3,10 +3,12 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { ClientPriceListController } from '../controllers/clientPriceList.controller';
+import { ClientPriceListSyncController } from '../controllers/clientPriceListSync.controller';
 import { authenticate } from '../middleware/auth';
 
 const router = Router();
 const controller = new ClientPriceListController();
+const syncController = new ClientPriceListSyncController();
 
 // Ensure temp_uploads directory exists
 const uploadDir = path.join(process.cwd(), 'temp_uploads');
@@ -68,5 +70,14 @@ router.get('/price-lists/:priceListId/mapping-stats', controller.getMappingStats
 
 // Verify or update a mapping
 router.patch('/mappings/:mappingId/verify', controller.verifyMapping.bind(controller));
+
+// Sync rates from Excel to database
+router.post('/price-lists/:priceListId/sync-rates', syncController.syncRatesFromExcel.bind(syncController));
+
+// Export updated Excel with current database rates
+router.get('/price-lists/:priceListId/export', syncController.exportToExcel.bind(syncController));
+
+// Validate mappings for a price list
+router.get('/price-lists/:priceListId/validate', syncController.validateMappings.bind(syncController));
 
 export default router;

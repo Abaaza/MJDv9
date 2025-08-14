@@ -22,7 +22,7 @@ export class ClientPriceListController {
   async createPriceList(req: AuthRequest, res: Response) {
     try {
       const { clientId, name, description, isDefault, effectiveFrom, effectiveTo } = req.body;
-      const userId = req.user?.userId;
+      const userId = req.user?.userId || req.user?.id;
 
       if (!userId) {
         return res.status(401).json({ error: 'Unauthorized' });
@@ -49,9 +49,10 @@ export class ClientPriceListController {
   async uploadAndSyncExcel(req: AuthRequest, res: Response) {
     try {
       const { clientId, priceListId, createNew } = req.body;
-      const userId = req.user?.userId;
+      const userId = req.user?.userId || req.user?.id;
 
       if (!userId) {
+        console.error('[ClientPriceList] No userId found in token:', req.user);
         return res.status(401).json({ error: 'Unauthorized' });
       }
 
@@ -71,6 +72,7 @@ export class ClientPriceListController {
       // Create new price list if requested
       if (createNew || !priceListId) {
         const priceListName = req.body.priceListName || `${fileName} - ${new Date().toLocaleDateString()}`;
+        console.log('[ClientPriceList] Creating new price list with userId:', userId, 'clientId:', clientId);
         targetPriceListId = await convexClient.mutation(api.clientPriceLists.create, {
           clientId,
           name: priceListName,
@@ -78,6 +80,7 @@ export class ClientPriceListController {
           sourceFileName: fileName,
           userId,
         });
+        console.log('[ClientPriceList] Created price list:', targetPriceListId);
       }
 
       // Process the Excel file and map items
@@ -316,6 +319,15 @@ export class ClientPriceListController {
     return letter;
   }
 
+  // Helper function to convert column letter to number
+  private getColumnNumber(col: string): number {
+    let num = 0;
+    for (let i = 0; i < col.length; i++) {
+      num = num * 26 + (col.charCodeAt(i) - 64);
+    }
+    return num;
+  }
+
   // Simple fuzzy matching function
   private fuzzyMatch(str1: string, str2: string): number {
     const longer = str1.length > str2.length ? str1 : str2;
@@ -450,5 +462,107 @@ export class ClientPriceListController {
       console.error('Error verifying mapping:', error);
       res.status(500).json({ error: 'Failed to verify mapping' });
     }
+  }
+
+  // Sync rates from Excel to database
+  async syncRatesFromExcel(req: AuthRequest, res: Response) {
+    try {
+      const { priceListId } = req.params;
+      
+      // Get the price list
+      const priceList = await convexClient.query(api.clientPriceLists.getById, {
+        id: priceListId as any,
+      });
+      
+      if (!priceList) {
+        return res.status(404).json({ error: 'Price list not found' });
+      }
+      
+      // Get the source file path
+      const sourceFileUrl = priceList.sourceFileUrl;
+      if (!sourceFileUrl) {
+        return res.status(400).json({ error: 'No source Excel file associated with this price list' });
+      }
+      
+      // Read the Excel file
+      const filePath = path.join(process.cwd(), sourceFileUrl);
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.readFile(filePath);
+      
+      // Get all mappings for this price list
+      const mappings = await convexClient.query(api.excelMappings.getByPriceList, {
+        priceListId: priceListId as any,
+      });
+      
+      let updatedCount = 0;
+      const updates: any[] = [];
+      
+      // Process each mapping
+      for (const mapping of mappings) {
+        try {
+          const worksheet = workbook.getWorksheet(mapping.sheetName);
+          if (!worksheet) continue;
+          
+          const row = worksheet.getRow(mapping.rowNumber);
+          const rateCol = this.getColumnNumber(mapping.rateColumn);
+          const rateCell = row.getCell(rateCol);
+          
+          let newRate = 0;
+          if (rateCell.formula) {
+            // If it's a formula, use the calculated result
+            newRate = Number(rateCell.result) || 0;
+          } else {
+            newRate = Number(rateCell.value) || 0;
+          }
+          
+          if (newRate > 0 && newRate !== mapping.originalRate) {
+            updates.push({
+              basePriceItemId: mapping.priceItemId,
+              rate: newRate,
+              excelRow: mapping.rowNumber,
+              excelSheet: mapping.sheetName,
+              excelCellRef: `${mapping.rateColumn}${mapping.rowNumber}`,
+              excelFormula: rateCell.formula || undefined,
+            });
+            updatedCount++;
+          }
+        } catch (error) {
+          console.error(`Error processing mapping ${mapping._id}:`, error);
+        }
+      }
+      
+      // Update client price items
+      if (updates.length > 0) {
+        await convexClient.mutation(api.clientPriceItems.updateFromExcelMapping, {
+          priceListId: priceListId as any,
+          mappings: updates,
+          userId: req.user.userId || req.user.id,
+        });
+        
+        // Update last synced timestamp
+        await convexClient.mutation(api.clientPriceLists.update, {
+          id: priceListId as any,
+          lastSyncedAt: Date.now(),
+        });
+      }
+      
+      res.json({
+        success: true,
+        updatedCount,
+        message: `Successfully updated ${updatedCount} rates from Excel`,
+      });
+    } catch (error) {
+      console.error('Error syncing rates from Excel:', error);
+      res.status(500).json({ error: 'Failed to sync rates from Excel' });
+    }
+  }
+  
+  // Helper function to convert column letter to number
+  private getColumnNumber(col: string): number {
+    let result = 0;
+    for (let i = 0; i < col.length; i++) {
+      result = result * 26 + (col.charCodeAt(i) - 64);
+    }
+    return result;
   }
 }

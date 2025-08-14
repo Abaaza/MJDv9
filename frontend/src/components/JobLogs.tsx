@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { AlertCircle, CheckCircle, Info, AlertTriangle, Terminal, Clock, Cpu, Zap, Package, Layers } from 'lucide-react';
 import { format } from 'date-fns';
 import { Progress } from '@/components/ui/progress';
+import { getMethodInfo, getMethodShortName, isAIMethod, type MatchingMethod } from '@/lib/methodUtils';
 
 interface JobLog {
   jobId: string;
@@ -27,7 +28,7 @@ export function JobLogs({ logs, className, title = "Processing Logs", jobStatus,
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const [elapsedTime, setElapsedTime] = useState('00:00');
   const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null);
-  const isAIMethod = matchingMethod && ['COHERE', 'OPENAI', 'COHERE_RERANK', 'HYBRID', 'HYBRID_CATEGORY', 'ADVANCED'].includes(matchingMethod);
+  const isAIMethod = matchingMethod && ['COHERE', 'OPENAI', 'COHERE_RERANK', 'QWEN', 'QWEN_RERANK', 'HYBRID', 'HYBRID_CATEGORY', 'ADVANCED'].includes(matchingMethod);
 
   // Parse batch progress from logs
   useEffect(() => {
@@ -85,8 +86,13 @@ export function JobLogs({ logs, className, title = "Processing Logs", jobStatus,
     if (message.includes('batch') || message.includes('Batch')) {
       return <Layers className="h-3 w-3" />;
     }
-    if (message.includes('AI') || message.includes('embedding') || message.includes('semantic')) {
+    if (message.includes('AI') || message.includes('embedding') || message.includes('semantic') || 
+        message.includes('Cohere') || message.includes('OpenAI') || message.includes('GPT')) {
       return <Cpu className="h-3 w-3" />;
+    }
+    if (message.includes('rerank') || message.includes('Rerank') || message.includes('v3.5') || 
+        message.includes('Qwen') || message.includes('DeepInfra')) {
+      return <Cpu className="h-3 w-3 animate-pulse" />;
     }
     if (message.includes('LOCAL') || message.includes('fuzzy')) {
       return <Zap className="h-3 w-3" />;
@@ -146,7 +152,7 @@ export function JobLogs({ logs, className, title = "Processing Logs", jobStatus,
               {title}
               {matchingMethod && (
                 <Badge variant="outline" className="text-xs">
-                  {matchingMethod}
+                  {getMethodShortName(matchingMethod as MatchingMethod)}
                 </Badge>
               )}
             </CardTitle>

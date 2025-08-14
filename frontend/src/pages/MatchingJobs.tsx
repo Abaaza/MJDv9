@@ -41,6 +41,7 @@ import { useJobPolling } from '../hooks/useJobPolling';
 import { JobLogs } from '../components/JobLogs';
 import { JobStatusIndicator } from '../components/JobStatusIndicator';
 import { QueuePosition } from '../components/QueuePosition';
+import { getMethodShortName, getMethodBadgeProps, type MatchingMethod } from '../lib/methodUtils';
 
 interface Job {
   _id: string;
@@ -229,7 +230,7 @@ export default function Projects() {
   // Get the selected job to access its matching method
   const selectedJob = jobs?.find(job => job._id === selectedJobId);
   const jobMatchingMethod = selectedJob?.matchingMethod || 'LOCAL';
-  const isAIJob = jobMatchingMethod === 'COHERE' || jobMatchingMethod === 'OPENAI' || jobMatchingMethod === 'COHERE_RERANK';
+  const isAIJob = jobMatchingMethod === 'COHERE' || jobMatchingMethod === 'OPENAI' || jobMatchingMethod === 'COHERE_RERANK' || jobMatchingMethod === 'QWEN' || jobMatchingMethod === 'QWEN_RERANK';
   const isLocalJob = jobMatchingMethod === 'LOCAL';
   const isAIDisabled = !isAIJob; // AI is disabled for LOCAL jobs
 
@@ -326,8 +327,8 @@ export default function Projects() {
       const manualMatches: typeof manualMatchResults = {};
       
       results.forEach((result: MatchResult) => {
-        // For AI methods (COHERE/OPENAI/COHERE_RERANK), always store the original AI match
-        if (result.matchMethod === 'COHERE' || result.matchMethod === 'OPENAI' || result.matchMethod === 'COHERE_RERANK') {
+        // For AI methods (COHERE/OPENAI/COHERE_RERANK/QWEN/QWEN_RERANK), always store the original AI match
+        if (result.matchMethod === 'COHERE' || result.matchMethod === 'OPENAI' || result.matchMethod === 'COHERE_RERANK' || result.matchMethod === 'QWEN' || result.matchMethod === 'QWEN_RERANK') {
           // Store the original AI match
           aiMatches[result._id] = {
             matchedDescription: result.matchedDescription || '',
@@ -924,7 +925,7 @@ export default function Projects() {
                       className="scale-90"
                     />
                     <span className="text-xs text-muted-foreground">
-                      {job.matchingMethod}
+                      {getMethodShortName(job.matchingMethod as MatchingMethod)}
                     </span>
                   </div>
                   
@@ -1113,7 +1114,7 @@ export default function Projects() {
               ) : (
                 <AIMatchResultsModal
                   jobId={selectedJobId}
-                  jobMatchingMethod={selectedJob.matchingMethod as 'COHERE' | 'OPENAI' | 'COHERE_RERANK'}
+                  jobMatchingMethod={selectedJob.matchingMethod as 'COHERE' | 'OPENAI' | 'COHERE_RERANK' | 'QWEN' | 'QWEN_RERANK'}
                   onClose={() => setShowResultsModal(false)}
                 />
               )}

@@ -10,7 +10,10 @@ export const createJob = mutation({
     matchingMethod: v.union(
       v.literal("LOCAL"),
       v.literal("COHERE"),
-      v.literal("OPENAI")
+      v.literal("OPENAI"),
+      v.literal("COHERE_RERANK"),
+      v.literal("QWEN"),
+      v.literal("QWEN_RERANK")
     ),
     clientId: v.optional(v.id("clients")),
     projectId: v.optional(v.id("projects")),

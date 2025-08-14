@@ -144,7 +144,7 @@ app.use('/api/jobs/:jobId/logs', logsLimiter);  // Special limiter for logs
 // File upload rate limiter (more restrictive)
 const uploadLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10, // Limit each IP to 10 uploads per windowMs
+  max: process.env.NODE_ENV === 'development' ? 100 : 10, // Higher limit for development
   message: 'Too many file uploads, please try again later',
 });
 

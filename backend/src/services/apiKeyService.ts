@@ -5,6 +5,7 @@ import NodeCache from 'node-cache';
 interface ApiKeys {
   cohereApiKey?: string;
   openaiApiKey?: string;
+  deepinfraApiKey?: string;
 }
 
 class ApiKeyService {
@@ -39,7 +40,7 @@ class ApiKeyService {
     
     try {
       const settings = await convex.query(api.applicationSettings.getByKeys, {
-        keys: ['COHERE_API_KEY', 'OPENAI_API_KEY']
+        keys: ['COHERE_API_KEY', 'OPENAI_API_KEY', 'DEEPINFRA_API_KEY']
       });
 
       const apiKeys: ApiKeys = {};
@@ -49,6 +50,8 @@ class ApiKeyService {
           apiKeys.cohereApiKey = setting.value;
         } else if (setting.key === 'OPENAI_API_KEY') {
           apiKeys.openaiApiKey = setting.value;
+        } else if (setting.key === 'DEEPINFRA_API_KEY') {
+          apiKeys.deepinfraApiKey = setting.value;
         }
       });
 
@@ -65,7 +68,8 @@ class ApiKeyService {
       // Fall back to environment variables if database fetch fails
       return {
         cohereApiKey: process.env.COHERE_API_KEY,
-        openaiApiKey: process.env.OPENAI_API_KEY
+        openaiApiKey: process.env.OPENAI_API_KEY,
+        deepinfraApiKey: process.env.DEEPINFRA_API_KEY
       };
     }
   }
@@ -80,6 +84,11 @@ class ApiKeyService {
     return keys.openaiApiKey;
   }
 
+  async getDeepInfraApiKey(): Promise<string | undefined> {
+    const keys = await this.getApiKeys();
+    return keys.deepinfraApiKey;
+  }
+
   // Clear cache when settings are updated
   clearCache(): void {
     this.cache.del(this.CACHE_KEY);
@@ -87,13 +96,28 @@ class ApiKeyService {
   }
 
   // Update API keys in database
-  async updateApiKey(key: 'COHERE_API_KEY' | 'OPENAI_API_KEY', value: string, userId: string): Promise<void> {
+  async updateApiKey(key: 'COHERE_API_KEY' | 'OPENAI_API_KEY' | 'DEEPINFRA_API_KEY', value: string, userId: string): Promise<void> {
     const convex = getConvexClient();
+    
+    let description: string;
+    switch (key) {
+      case 'COHERE_API_KEY':
+        description = 'Cohere API key for embeddings';
+        break;
+      case 'OPENAI_API_KEY':
+        description = 'OpenAI API key for embeddings';
+        break;
+      case 'DEEPINFRA_API_KEY':
+        description = 'DeepInfra API key for AI model access';
+        break;
+      default:
+        description = `${key} API key`;
+    }
     
     await convex.mutation(api.applicationSettings.upsert, {
       key,
       value,
-      description: key === 'COHERE_API_KEY' ? 'Cohere API key for embeddings' : 'OpenAI API key for embeddings',
+      description,
       userId: userId as any
     });
 

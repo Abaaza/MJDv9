@@ -43,10 +43,12 @@ export default function AdminSettings() {
   const [apiKeys, setApiKeys] = useState({
     COHERE_API_KEY: '',
     OPENAI_API_KEY: '',
+    DEEPINFRA_API_KEY: '',
   });
   const [showKeys, setShowKeys] = useState({
     COHERE_API_KEY: false,
     OPENAI_API_KEY: false,
+    DEEPINFRA_API_KEY: false,
   });
   const [selectedCurrency, setSelectedCurrency] = useState('GBP');
 
@@ -117,11 +119,13 @@ export default function AdminSettings() {
     if (settings) {
       const cohereKey = settings.find(s => s.key === 'COHERE_API_KEY');
       const openaiKey = settings.find(s => s.key === 'OPENAI_API_KEY');
+      const deepinfraKey = settings.find(s => s.key === 'DEEPINFRA_API_KEY');
       const currencySetting = settings.find(s => s.key === 'CURRENCY');
       
       setApiKeys({
         COHERE_API_KEY: cohereKey?.value || '',
         OPENAI_API_KEY: openaiKey?.value || '',
+        DEEPINFRA_API_KEY: deepinfraKey?.value || '',
       });
       
       setSelectedCurrency(currencySetting?.value || 'GBP');
@@ -269,6 +273,34 @@ export default function AdminSettings() {
               </div>
               <p className="text-sm text-muted-foreground mt-1">
                 Used for GPT-based embedding matching
+              </p>
+            </div>
+
+            <div>
+              <Label htmlFor="deepinfra-key">DeepInfra API Key</Label>
+              <div className="flex gap-2 mt-1">
+                <div className="relative flex-1">
+                  <Input
+                    id="deepinfra-key"
+                    type={showKeys.DEEPINFRA_API_KEY ? 'text' : 'password'}
+                    value={apiKeys.DEEPINFRA_API_KEY}
+                    onChange={(e) => setApiKeys({ ...apiKeys, DEEPINFRA_API_KEY: e.target.value })}
+                    placeholder="Enter DeepInfra API key"
+                  />
+                  <button
+                    onClick={() => setShowKeys({ ...showKeys, DEEPINFRA_API_KEY: !showKeys.DEEPINFRA_API_KEY })}
+                    className="absolute right-2 top-1/2 -translate-y-1/2"
+                  >
+                    {showKeys.DEEPINFRA_API_KEY ? (
+                      <EyeOff className="h-4 w-4 text-gray-500" />
+                    ) : (
+                      <Eye className="h-4 w-4 text-gray-500" />
+                    )}
+                  </button>
+                </div>
+              </div>
+              <p className="text-sm text-muted-foreground mt-1">
+                Used for Qwen3-Reranker-8B matching
               </p>
             </div>
 

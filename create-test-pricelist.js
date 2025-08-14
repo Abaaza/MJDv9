@@ -6,7 +6,7 @@
 import { ConvexHttpClient } from 'convex/browser';
 import { api } from './convex/_generated/api.js';
 
-const CONVEX_URL = 'https://good-dolphin-454.convex.cloud';
+const CONVEX_URL = 'https://trustworthy-badger-677.convex.cloud';
 
 async function createTestPriceList() {
   try {
@@ -70,7 +70,6 @@ async function createTestPriceList() {
       name: `${client.name} - Q1 2025 Rates`,
       description: 'Test price list created via script',
       isDefault: true,
-      isActive: true,
       effectiveFrom: today.getTime(),
       effectiveTo: nextYear.getTime(),
       sourceFileName: 'MJD-PRICELIST.xlsx',

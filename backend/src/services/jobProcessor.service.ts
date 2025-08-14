@@ -49,9 +49,9 @@ export class JobProcessorService extends EventEmitter {
     this.startProcessor();
   }
 
-  private translateMethodForMatchingService(method: string): 'LOCAL' | 'COHERE' | 'OPENAI' {
-    // MJDv9 matching service expects 'COHERE' and 'OPENAI' directly
-    return method as 'LOCAL' | 'COHERE' | 'OPENAI';
+  private translateMethodForMatchingService(method: string): 'LOCAL' | 'COHERE' | 'OPENAI' | 'COHERE_RERANK' | 'QWEN' | 'QWEN_RERANK' {
+    // Support all 6 matching methods
+    return method as 'LOCAL' | 'COHERE' | 'OPENAI' | 'COHERE_RERANK' | 'QWEN' | 'QWEN_RERANK';
   }
 
   async addJob(jobId: string, userId: string, items: any[], method: string): Promise<void> {
@@ -85,7 +85,30 @@ export class JobProcessorService extends EventEmitter {
     // Emit event for real-time updates
     this.emit('job:queued', { jobId, userId, itemCount: itemsWithQuantities });
     this.emitLog(jobId, 'info', `Timer started at 00:00`);
-    this.emitLog(jobId, 'info', `Job queued with ${itemsWithQuantities} items to match (${contextHeaders} context headers) using ${method} matching method`);
+    
+    this.emitLog(jobId, 'info', `Job queued with ${itemsWithQuantities} items to match (${contextHeaders} context headers)`);
+    
+    // Method-specific log messages using job.method
+    const jobMethodMessages: Record<string, string> = {
+      'LOCAL': `Using LOCAL fuzzy matching for fast pattern-based processing`,
+      'COHERE': `Using COHERE hybrid method (semantic embeddings + Rerank v3.5 model)`,
+      'OPENAI': `Using OpenAI GPT embeddings for advanced semantic matching`,
+      'COHERE_RERANK': `Using COHERE Rerank v3.5 for direct semantic reranking`,
+      'QWEN': `Using QWEN hybrid method (Cohere embeddings + Qwen3-Reranker-8B)`,
+      'QWEN_RERANK': `Using QWEN3-Reranker-8B for direct transformer-based reranking`
+    };
+    this.emitLog(jobId, 'info', jobMethodMessages[job.method] || `Using ${job.method} matching method`);
+    
+    // Add method-specific initialization message
+    const initMessages: Record<string, string> = {
+      'LOCAL': 'Initializing fuzzy string matching algorithm...',
+      'COHERE': 'Connecting to Cohere API for embeddings and reranking...',
+      'OPENAI': 'Connecting to OpenAI API for semantic embeddings...',
+      'COHERE_RERANK': 'Initializing Cohere Rerank v3.5 model...',
+      'QWEN': 'Initializing Cohere embeddings and Qwen3 reranker...',
+      'QWEN_RERANK': 'Connecting to DeepInfra for Qwen3-Reranker-8B model...'
+    };
+    this.emitLog(jobId, 'info', initMessages[job.method] || 'Initializing matching method...');
     
     // Update Convex with initial status
     await this.updateConvexStatus(jobId, {
@@ -95,7 +118,7 @@ export class JobProcessorService extends EventEmitter {
     });
     
     // Pre-generate embeddings for AI methods (non-blocking)
-    if (method === 'COHERE' || method === 'OPENAI' || method === 'HYBRID') {
+    if (method === 'COHERE' || method === 'OPENAI' || method === 'QWEN') {
       this.preGenerateEmbeddings(method).catch(error => {
         // Console log removed for performance
       });
@@ -301,30 +324,54 @@ export class JobProcessorService extends EventEmitter {
       this.emitLog(jobId, 'success', `Successfully loaded ${priceItems.length} price items`);
       
       // Step 2: Prepare batches (15-25%)
-      const isAIMethod = ['COHERE', 'OPENAI'].includes(job.method);
+      const isAIMethod = ['COHERE', 'OPENAI', 'COHERE_RERANK', 'QWEN', 'QWEN_RERANK'].includes(job.method);
       const totalBatches = Math.ceil(job.items.length / this.BATCH_SIZE);
       
       if (isAIMethod) {
         job.progress = 20;
-        job.progressMessage = 'Preparing batches for AI processing...';
+        
+        // Method-specific progress messages
+        const prepMessages: Record<string, string> = {
+          'COHERE': 'Preparing Cohere embeddings and reranking...',
+          'OPENAI': 'Preparing OpenAI GPT embeddings...',
+          'COHERE_RERANK': 'Preparing Cohere Rerank v3.5 processing...',
+          'QWEN': 'Preparing Qwen hybrid processing (embeddings + rerank)...',
+          'QWEN_RERANK': 'Preparing Qwen3-8B direct reranking...'
+        };
+        
+        job.progressMessage = prepMessages[job.method] || 'Preparing AI processing...';
         this.emitProgress(job);
         
-        // Log batch creation only for first batch to reduce verbosity
+        // Log batch creation with method details
         if (totalBatches > 0) {
-          this.emitLog(jobId, 'info', `Using ${job.method} method with ${totalBatches} batches`);
+          const methodDetails: Record<string, string> = {
+            'COHERE': `COHERE hybrid (embeddings + rerank) with ${totalBatches} batches`,
+            'OPENAI': `OpenAI GPT embeddings with ${totalBatches} batches`,
+            'COHERE_RERANK': `COHERE Rerank v3.5 with ${totalBatches} batches`,
+            'QWEN': `QWEN hybrid (Cohere + Qwen3) with ${totalBatches} batches`,
+            'QWEN_RERANK': `QWEN3-8B reranking with ${totalBatches} batches`
+          };
+          this.emitLog(jobId, 'info', methodDetails[job.method] || `Using ${job.method} method with ${totalBatches} batches`);
         }
         
         job.progress = 25;
-        job.progressMessage = `Starting AI processing of ${job.items.length} items in ${totalBatches} batches...`;
+        const startMessages: Record<string, string> = {
+          'COHERE': `Starting Cohere hybrid processing of ${job.items.length} items...`,
+          'OPENAI': `Starting OpenAI embeddings processing of ${job.items.length} items...`,
+          'COHERE_RERANK': `Starting Cohere v3.5 reranking of ${job.items.length} items...`,
+          'QWEN': `Starting Qwen hybrid matching of ${job.items.length} items...`,
+          'QWEN_RERANK': `Starting Qwen3-8B reranking of ${job.items.length} items...`
+        };
+        job.progressMessage = startMessages[job.method] || `Starting AI processing of ${job.items.length} items in ${totalBatches} batches...`;
         this.emitProgress(job);
       } else {
         job.progress = 25;
-        job.progressMessage = 'Starting LOCAL processing...';
+        job.progressMessage = 'Starting LOCAL fuzzy matching...';
         this.emitProgress(job);
         
-        this.emitLog(jobId, 'info', `Using LOCAL method for ${job.items.length} items`);
+        this.emitLog(jobId, 'info', `Starting LOCAL fuzzy matching for ${job.items.length} items`);
         
-        job.progressMessage = `Processing ${job.items.length} items with LOCAL matching...`;
+        job.progressMessage = `Processing ${job.items.length} items with ${job.method} method...`;
         this.emitProgress(job);
       }
       
@@ -373,7 +420,16 @@ export class JobProcessorService extends EventEmitter {
         
         // Only log every 5th batch or first/last batch to reduce verbosity
         if (batchIndex === 0 || batchIndex === totalBatches - 1 || batchIndex % 5 === 0) {
-          this.emitLog(jobId, 'info', `Processing batch ${batchNumber}/${totalBatches}`);
+          // Method-specific batch messages
+          const batchMessages: Record<string, string> = {
+            'LOCAL': `Running fuzzy matching on batch ${batchNumber}/${totalBatches}`,
+            'COHERE': `Processing batch ${batchNumber}/${totalBatches} with Cohere embeddings + rerank`,
+            'OPENAI': `Processing batch ${batchNumber}/${totalBatches} with OpenAI embeddings`,
+            'COHERE_RERANK': `Reranking batch ${batchNumber}/${totalBatches} with Cohere Rerank v3.5`,
+            'QWEN': `Processing batch ${batchNumber}/${totalBatches} with Qwen hybrid approach`,
+            'QWEN_RERANK': `Reranking batch ${batchNumber}/${totalBatches} with Qwen3-Reranker-8B`
+          };
+          this.emitLog(jobId, 'info', batchMessages[job.method] || `Processing batch ${batchNumber}/${totalBatches}`);
         }
         
         const batchStartTime = Date.now();
@@ -470,7 +526,7 @@ export class JobProcessorService extends EventEmitter {
       
       // Emit final progress update before finalizing
       this.emitProgress(job);
-      this.emitLog(jobId, 'success', 'âœ… Job completed successfully!');
+      this.emitLog(jobId, 'success', 'Job completed successfully!');
       
       
       // Update Convex with final progress before finalization

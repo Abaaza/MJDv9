@@ -3,8 +3,8 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-// Force use of production URL where API keys are stored
-const convexUrl = 'https://good-dolphin-454.convex.cloud';
+// Use URL from environment variable or fallback to good-dolphin
+const convexUrl = process.env.CONVEX_URL || 'https://good-dolphin-454.convex.cloud';
 
 // Create standard Convex client
 const convexClient = new ConvexHttpClient(convexUrl);

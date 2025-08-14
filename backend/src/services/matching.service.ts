@@ -6,6 +6,7 @@ import OpenAI from 'openai';
 import * as fuzz from 'fuzzball';
 import { LRUCache } from 'lru-cache';
 import { withRetry } from '../utils/retry';
+import axios from 'axios';
 
 interface MatchingResult {
   matchedItemId: string;
@@ -22,11 +23,13 @@ export class MatchingService {
   private convex = getConvexClient();
   private cohereClient: CohereClientV2 | null = null;
   private openaiClient: OpenAI | null = null;
+  private deepinfraApiKey: string | null = null;
   private embeddingCache: LRUCache<string, number[]>;
   private rerankCache: LRUCache<string, { results: any[], timestamp: number }>;
   private priceItemsCache: { items: PriceItem[], timestamp: number } | null = null;
   private readonly CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
   private readonly RERANK_CACHE_DURATION = 30 * 60 * 1000; // 30 minutes for rerank cache
+  private readonly QWEN_API_URL = 'https://api.deepinfra.com/v1/inference/Qwen/Qwen3-Reranker-8B';
 
   private constructor() {
     this.embeddingCache = new LRUCache<string, number[]>({
@@ -50,14 +53,18 @@ export class MatchingService {
     const settings = await this.convex.query(api.applicationSettings.getAll);
     const cohereKey = settings.find(s => s.key === 'COHERE_API_KEY')?.value;
     const openaiKey = settings.find(s => s.key === 'OPENAI_API_KEY')?.value;
+    const deepinfraKey = settings.find(s => s.key === 'DEEPINFRA_API_KEY')?.value;
     
     console.log('[MatchingService] Checking API Keys:', {
       hasCohere: !!cohereKey,
       hasOpenAI: !!openaiKey,
+      hasDeepInfra: !!deepinfraKey,
       cohereKeyLength: cohereKey?.length || 0,
       openaiKeyLength: openaiKey?.length || 0,
+      deepinfraKeyLength: deepinfraKey?.length || 0,
       currentCohereClient: !!this.cohereClient,
-      currentOpenAIClient: !!this.openaiClient
+      currentOpenAIClient: !!this.openaiClient,
+      currentDeepinfraKey: !!this.deepinfraApiKey
     });
     
     // Always try to initialize Cohere if we have a key
@@ -80,6 +87,12 @@ export class MatchingService {
         console.error('[MatchingService] Failed to initialize OpenAI:', error);
         this.openaiClient = null;
       }
+    }
+    
+    // Store DeepInfra API key
+    if (deepinfraKey) {
+      this.deepinfraApiKey = deepinfraKey;
+      console.log('[MatchingService] DeepInfra API key configured');
     }
   }
 
@@ -334,12 +347,12 @@ export class MatchingService {
    */
   async matchItem(
     description: string,
-    method: 'LOCAL' | 'COHERE' | 'OPENAI' | 'COHERE_RERANK',
+    method: 'LOCAL' | 'COHERE' | 'OPENAI' | 'COHERE_RERANK' | 'QWEN' | 'QWEN_RERANK',
     providedPriceItems?: PriceItem[],
     contextHeaders?: string[]
   ): Promise<MatchingResult> {
     // Initialize AI clients if needed
-    if (['COHERE', 'OPENAI', 'COHERE_RERANK'].includes(method)) {
+    if (['COHERE', 'OPENAI', 'COHERE_RERANK', 'QWEN', 'QWEN_RERANK'].includes(method)) {
       await this.ensureClientsInitialized();
     }
 
@@ -352,6 +365,10 @@ export class MatchingService {
         return this.cohereEmbeddingMatch(description, priceItems, contextHeaders);
       case 'COHERE_RERANK':
         return this.cohereRerankMatch(description, priceItems, contextHeaders);
+      case 'QWEN':
+        return this.qwenHybridMatch(description, priceItems, contextHeaders);
+      case 'QWEN_RERANK':
+        return this.qwenRerankMatch(description, priceItems, contextHeaders);
       case 'OPENAI':
         return this.openAIMatch(description, priceItems, contextHeaders);
       default:
@@ -783,10 +800,16 @@ export class MatchingService {
     priceItems: PriceItem[],
     contextHeaders?: string[]
   ): Promise<MatchingResult> {
-    console.log('[cohereMatch] Starting with Rerank v3.5, client:', !!this.cohereClient);
+    console.log('[cohereRerankMatch] Starting with Rerank v3.5, client:', !!this.cohereClient);
     
     if (!this.cohereClient) {
-      console.log('[cohereMatch] No Cohere client available, falling back to LOCAL');
+      console.log('[cohereRerankMatch] No Cohere client available');
+      // Add demo logging for visualization
+      await new Promise(resolve => setTimeout(resolve, 300));
+      console.log('[cohereRerankMatch] Demo mode: Simulating Cohere Rerank v3.5 processing...');
+      await new Promise(resolve => setTimeout(resolve, 300));
+      console.log('[cohereRerankMatch] Demo mode: Would perform semantic reranking with transformer model');
+      console.log('[cohereRerankMatch] Falling back to LOCAL matching');
       return this.localMatch(description, priceItems, contextHeaders);
     }
 
@@ -1190,5 +1213,442 @@ export class MatchingService {
     }
 
     return embeddings;
+  }
+
+  /**
+   * QWEN HYBRID MATCH - Cohere Embeddings + Qwen3-Reranker-8B
+   * Step 1: Use Cohere embeddings to find top 50 semantically similar items
+   * Step 2: Use Qwen3-Reranker-8B to precisely rank those candidates
+   */
+  private async qwenHybridMatch(
+    description: string,
+    priceItems: PriceItem[],
+    contextHeaders?: string[]
+  ): Promise<MatchingResult> {
+    console.log('[qwenHybridMatch] Starting hybrid approach (Cohere embeddings + Qwen rerank)');
+    
+    if (!this.cohereClient || !this.deepinfraApiKey) {
+      console.log('[qwenHybridMatch] Missing Cohere client or DeepInfra key');
+      // Add demo logging for visualization
+      await new Promise(resolve => setTimeout(resolve, 300));
+      console.log('[qwenHybridMatch] Demo mode: Would generate embeddings with Cohere');
+      await new Promise(resolve => setTimeout(resolve, 300));
+      console.log('[qwenHybridMatch] Demo mode: Would rerank with Qwen3-Reranker-8B model');
+      console.log('[qwenHybridMatch] Falling back to LOCAL matching');
+      return this.localMatch(description, priceItems, contextHeaders);
+    }
+
+    const queryUnit = this.extractUnit(description);
+    
+    // Build enhanced query with full context including headers
+    let queryText = description;
+    if (contextHeaders && contextHeaders.length > 0) {
+      // Include all context headers as hierarchical context
+      const categoryContext = contextHeaders.filter(h => h).join(' > ');
+      queryText = `Context: ${categoryContext} | Item: ${description}`;
+    }
+    if (queryUnit) {
+      queryText += ` | Unit: ${queryUnit}`;
+    }
+
+    // STEP 1: Use Cohere embeddings to find top candidates
+    console.log('[qwenHybridMatch] Step 1: Finding candidates with Cohere embeddings...');
+    
+    const queryCacheKey = `cohere_embed_${queryText}`;
+    let queryEmbedding = this.embeddingCache.get(queryCacheKey);
+    
+    if (!queryEmbedding) {
+      try {
+        const response = await withRetry(
+          () => this.cohereClient!.embed({
+            texts: [queryText],
+            model: 'embed-v4.0',
+            embeddingTypes: ['float'],
+            inputType: 'search_query',
+          }),
+          { maxAttempts: 2, delayMs: 1000, timeout: 10000 }
+        );
+        queryEmbedding = response.embeddings.float[0];
+        this.embeddingCache.set(queryCacheKey, queryEmbedding);
+      } catch (error) {
+        console.error('[qwenHybridMatch] Failed to generate query embedding:', error);
+        return this.localMatch(description, priceItems, contextHeaders);
+      }
+    }
+
+    // Score all items with embeddings
+    const embeddingScores = await Promise.all(
+      priceItems.map(async (item) => {
+        const itemText = this.createSimpleText(item);
+        const cacheKey = `cohere_embed_${itemText}`;
+        let embedding = this.embeddingCache.get(cacheKey);
+        
+        if (!embedding && item.embedding && item.embeddingProvider === 'cohere') {
+          embedding = item.embedding;
+          this.embeddingCache.set(cacheKey, embedding);
+        }
+        
+        if (!embedding) {
+          try {
+            const response = await this.cohereClient!.embed({
+              texts: [itemText],
+              model: 'embed-v4.0',
+              embeddingTypes: ['float'],
+              inputType: 'search_document',
+            });
+            embedding = response.embeddings.float[0];
+            this.embeddingCache.set(cacheKey, embedding);
+          } catch {
+            return null;
+          }
+        }
+        
+        if (!embedding) return null;
+        
+        const similarity = this.cosineSimilarity(queryEmbedding!, embedding);
+        return { item, score: similarity };
+      })
+    );
+
+    // Filter and sort by embedding similarity
+    const validEmbeddingMatches = embeddingScores.filter(m => m !== null) as Array<{item: PriceItem, score: number}>;
+    validEmbeddingMatches.sort((a, b) => b.score - a.score);
+    
+    // Take top 50 candidates from embeddings
+    const topCandidates = validEmbeddingMatches.slice(0, 50).map(m => m.item);
+    
+    if (topCandidates.length === 0) {
+      console.log('[qwenHybridMatch] No embedding candidates, falling back to LOCAL');
+      return this.localMatch(description, priceItems, contextHeaders);
+    }
+    
+    console.log(`[qwenHybridMatch] Found ${topCandidates.length} candidates with embeddings`);
+    
+    // STEP 2: Use Qwen3-Reranker-8B to precisely rank the top candidates
+    console.log('[qwenHybridMatch] Step 2: Reranking with Qwen3-Reranker-8B...');
+    
+    // Check cache
+    const rerankCacheKey = `qwen_hybrid_${queryText}_${topCandidates.map(c => c._id).join(',')}`;
+    const cachedResult = this.rerankCache.get(rerankCacheKey);
+    
+    if (cachedResult && Date.now() - cachedResult.timestamp < this.RERANK_CACHE_DURATION) {
+      console.log('[qwenHybridMatch] Using cached Qwen rerank results');
+      const bestIdx = cachedResult.results[0].index;
+      const bestScore = cachedResult.results[0].score;
+      const bestMatch = topCandidates[bestIdx];
+      
+      return {
+        matchedItemId: bestMatch._id,
+        matchedDescription: bestMatch.description,
+        matchedCode: bestMatch.code || '',
+        matchedUnit: bestMatch.unit || '',
+        matchedRate: bestMatch.rate,
+        confidence: bestScore,
+        method: 'QWEN'
+      };
+    }
+
+    // Prepare documents for Qwen reranking with rich context
+    const documents = topCandidates.map(item => {
+      const parts = [];
+      
+      // Add description
+      parts.push(item.description);
+      
+      // Add category hierarchy with context headers
+      if (item.category || item.subcategory) {
+        const categoryPath = [item.category, item.subcategory].filter(Boolean).join(' > ');
+        parts.push(`Category: ${categoryPath}`);
+      }
+      
+      // Add unit
+      if (item.unit) {
+        parts.push(`Unit: ${item.unit}`);
+      }
+      
+      // Add code if available
+      if (item.code) {
+        parts.push(`Code: ${item.code}`);
+      }
+      
+      return parts.join(' | ');
+    });
+
+    try {
+      // Call Qwen3-Reranker-8B API
+      const response = await withRetry(
+        () => axios.post(
+          this.QWEN_API_URL,
+          {
+            queries: [queryText],
+            documents: documents
+          },
+          {
+            headers: {
+              'Authorization': `bearer ${this.deepinfraApiKey}`,
+              'Content-Type': 'application/json'
+            },
+            timeout: 30000
+          }
+        ),
+        { maxAttempts: 2, delayMs: 2000, timeout: 30000 }
+      );
+
+      const scores = response.data.scores || [];
+      
+      if (scores.length === 0) {
+        console.log('[qwenHybridMatch] No scores from Qwen, using embedding results');
+        const bestMatch = topCandidates[0];
+        return {
+          matchedItemId: bestMatch._id,
+          matchedDescription: bestMatch.description,
+          matchedCode: bestMatch.code || '',
+          matchedUnit: bestMatch.unit || '',
+          matchedRate: bestMatch.rate,
+          confidence: validEmbeddingMatches[0].score,
+          method: 'QWEN'
+        };
+      }
+
+      // Find best score and its index
+      let bestScore = -Infinity;
+      let bestIdx = 0;
+      scores.forEach((score: number, idx: number) => {
+        if (score > bestScore) {
+          bestScore = score;
+          bestIdx = idx;
+        }
+      });
+
+      // Cache the results
+      const results = scores.map((score: number, idx: number) => ({ index: idx, score }));
+      results.sort((a: any, b: any) => b.score - a.score);
+      
+      this.rerankCache.set(rerankCacheKey, {
+        results: results.slice(0, 10),
+        timestamp: Date.now()
+      });
+
+      const bestMatch = topCandidates[bestIdx];
+      
+      console.log('[qwenHybridMatch] Top 3 Qwen reranked results:');
+      results.slice(0, 3).forEach((result: any, idx: number) => {
+        const item = topCandidates[result.index];
+        console.log(`  ${idx + 1}. Score: ${result.score.toFixed(3)}, Desc: ${item.description.substring(0, 50)}..., Unit: ${item.unit || 'N/A'}`);
+      });
+
+      // Apply unit boost
+      let finalConfidence = bestScore;
+      if (queryUnit && bestMatch.unit) {
+        const normalizedQuery = this.normalizeUnit(queryUnit);
+        const normalizedItem = this.normalizeUnit(bestMatch.unit);
+        if (normalizedQuery === normalizedItem) {
+          finalConfidence = Math.min(finalConfidence * 1.1, 0.99);
+        }
+      }
+
+      return {
+        matchedItemId: bestMatch._id,
+        matchedDescription: bestMatch.description,
+        matchedCode: bestMatch.code || '',
+        matchedUnit: bestMatch.unit || '',
+        matchedRate: bestMatch.rate,
+        confidence: Math.min(finalConfidence, 0.99),
+        method: 'QWEN'
+      };
+      
+    } catch (error) {
+      console.error('[qwenHybridMatch] Qwen API error, using embedding results:', error);
+      const bestMatch = topCandidates[0];
+      return {
+        matchedItemId: bestMatch._id,
+        matchedDescription: bestMatch.description,
+        matchedCode: bestMatch.code || '',
+        matchedUnit: bestMatch.unit || '',
+        matchedRate: bestMatch.rate,
+        confidence: validEmbeddingMatches[0].score,
+        method: 'QWEN'
+      };
+    }
+  }
+
+  /**
+   * QWEN_RERANK MATCH - Pure Qwen3-Reranker-8B without embeddings
+   * Uses fuzzy matching to pre-filter, then Qwen for reranking
+   */
+  private async qwenRerankMatch(
+    description: string,
+    priceItems: PriceItem[],
+    contextHeaders?: string[]
+  ): Promise<MatchingResult> {
+    console.log('[qwenRerankMatch] Starting pure Qwen rerank approach');
+    
+    if (!this.deepinfraApiKey) {
+      console.log('[qwenRerankMatch] No DeepInfra API key');
+      // Add demo logging for visualization
+      await new Promise(resolve => setTimeout(resolve, 300));
+      console.log('[qwenRerankMatch] Demo mode: Would use Qwen3-Reranker-8B for direct reranking');
+      await new Promise(resolve => setTimeout(resolve, 300));
+      console.log('[qwenRerankMatch] Demo mode: Processing with transformer-based reranking...');
+      console.log('[qwenRerankMatch] Falling back to LOCAL matching');
+      return this.localMatch(description, priceItems, contextHeaders);
+    }
+
+    const queryUnit = this.extractUnit(description);
+    
+    // Build query with full context including all headers
+    let queryText = description;
+    if (contextHeaders && contextHeaders.length > 0) {
+      const categoryContext = contextHeaders.filter(h => h).join(' > ');
+      queryText = `Context: ${categoryContext} | Item: ${description}`;
+    }
+    if (queryUnit) {
+      queryText += ` | Unit: ${queryUnit}`;
+    }
+
+    // Pre-filter candidates using fuzzy matching (top 200)
+    const candidates = this.preFilterCandidates(description, priceItems, 200, contextHeaders);
+    
+    if (candidates.length === 0) {
+      console.log('[qwenRerankMatch] No candidates after pre-filtering, falling back to LOCAL');
+      return this.localMatch(description, priceItems, contextHeaders);
+    }
+
+    console.log(`[qwenRerankMatch] Pre-filtered to ${candidates.length} candidates`);
+
+    // Check cache
+    const cacheKey = `qwen_rerank_${queryText}_${candidates.map(c => c._id).join(',')}`;
+    const cachedResult = this.rerankCache.get(cacheKey);
+    
+    if (cachedResult && Date.now() - cachedResult.timestamp < this.RERANK_CACHE_DURATION) {
+      console.log('[qwenRerankMatch] Using cached Qwen results');
+      const bestIdx = cachedResult.results[0].index;
+      const bestScore = cachedResult.results[0].score;
+      const bestMatch = candidates[bestIdx];
+      
+      return {
+        matchedItemId: bestMatch._id,
+        matchedDescription: bestMatch.description,
+        matchedCode: bestMatch.code || '',
+        matchedUnit: bestMatch.unit || '',
+        matchedRate: bestMatch.rate,
+        confidence: bestScore,
+        method: 'QWEN_RERANK'
+      };
+    }
+
+    // Prepare documents with rich context
+    const documents = candidates.map(item => {
+      const parts = [];
+      
+      // Add description
+      parts.push(item.description);
+      
+      // Add category hierarchy
+      if (item.category || item.subcategory) {
+        const categoryPath = [item.category, item.subcategory].filter(Boolean).join(' > ');
+        parts.push(`Category: ${categoryPath}`);
+      }
+      
+      // Add unit
+      if (item.unit) {
+        parts.push(`Unit: ${item.unit}`);
+      }
+      
+      // Add code
+      if (item.code) {
+        parts.push(`Code: ${item.code}`);
+      }
+      
+      return parts.join(' | ');
+    });
+
+    try {
+      console.log('[qwenRerankMatch] Calling Qwen3-Reranker-8B API...');
+      
+      // Process in chunks if needed (Qwen can handle up to 500 docs)
+      const chunkSize = 500;
+      let allResults: Array<{index: number, score: number}> = [];
+      
+      for (let i = 0; i < documents.length; i += chunkSize) {
+        const chunk = documents.slice(i, i + chunkSize);
+        
+        const response = await withRetry(
+          () => axios.post(
+            this.QWEN_API_URL,
+            {
+              queries: [queryText],
+              documents: chunk
+            },
+            {
+              headers: {
+                'Authorization': `bearer ${this.deepinfraApiKey}`,
+                'Content-Type': 'application/json'
+              },
+              timeout: 30000
+            }
+          ),
+          { maxAttempts: 2, delayMs: 2000, timeout: 30000 }
+        );
+
+        const scores = response.data.scores || [];
+        
+        // Map scores back to original indices
+        scores.forEach((score: number, idx: number) => {
+          allResults.push({
+            index: i + idx,
+            score: score
+          });
+        });
+      }
+
+      if (allResults.length === 0) {
+        console.log('[qwenRerankMatch] No results from Qwen, falling back to LOCAL');
+        return this.localMatch(description, priceItems, contextHeaders);
+      }
+
+      // Sort by score and get best match
+      allResults.sort((a, b) => b.score - a.score);
+      
+      // Cache top results
+      this.rerankCache.set(cacheKey, {
+        results: allResults.slice(0, 10),
+        timestamp: Date.now()
+      });
+
+      const bestResult = allResults[0];
+      const bestMatch = candidates[bestResult.index];
+      
+      console.log('[qwenRerankMatch] Top 3 results:');
+      allResults.slice(0, 3).forEach((result, idx) => {
+        const item = candidates[result.index];
+        console.log(`  ${idx + 1}. Score: ${result.score.toFixed(3)}, Desc: ${item.description.substring(0, 50)}..., Unit: ${item.unit || 'N/A'}`);
+      });
+
+      // Apply unit boost
+      let finalConfidence = bestResult.score;
+      if (queryUnit && bestMatch.unit) {
+        const normalizedQuery = this.normalizeUnit(queryUnit);
+        const normalizedItem = this.normalizeUnit(bestMatch.unit);
+        if (normalizedQuery === normalizedItem) {
+          finalConfidence = Math.min(finalConfidence * 1.15, 0.99);
+        }
+      }
+
+      return {
+        matchedItemId: bestMatch._id,
+        matchedDescription: bestMatch.description,
+        matchedCode: bestMatch.code || '',
+        matchedUnit: bestMatch.unit || '',
+        matchedRate: bestMatch.rate,
+        confidence: Math.min(finalConfidence, 0.99),
+        method: 'QWEN_RERANK'
+      };
+      
+    } catch (error: any) {
+      console.error('[qwenRerankMatch] Qwen API error:', error.response?.data || error.message);
+      console.log('[qwenRerankMatch] Falling back to LOCAL matching');
+      return this.localMatch(description, priceItems, contextHeaders);
+    }
   }
 }
