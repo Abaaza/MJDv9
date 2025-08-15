@@ -8,18 +8,9 @@ import fs from 'fs/promises';
 
 const convexClient = new ConvexHttpClient(process.env.CONVEX_URL!);
 
-interface AuthRequest extends Request {
-  user?: {
-    id: string;
-    userId: string;
-    email: string;
-    role: string;
-  };
-}
-
 export class ClientPriceListController {
   // Create a new client price list
-  async createPriceList(req: AuthRequest, res: Response) {
+  async createPriceList(req: Request, res: Response) {
     try {
       const { clientId, name, description, isDefault, effectiveFrom, effectiveTo } = req.body;
       const userId = req.user?.userId || req.user?.id;
@@ -35,7 +26,7 @@ export class ClientPriceListController {
         isDefault,
         effectiveFrom,
         effectiveTo,
-        userId,
+        userId: userId as any,
       });
 
       res.json({ success: true, priceListId });
@@ -46,7 +37,7 @@ export class ClientPriceListController {
   }
 
   // Upload and sync Excel file with client price list
-  async uploadAndSyncExcel(req: AuthRequest, res: Response) {
+  async uploadAndSyncExcel(req: Request, res: Response) {
     try {
       const { clientId, priceListId, createNew } = req.body;
       const userId = req.user?.userId || req.user?.id;
@@ -78,7 +69,7 @@ export class ClientPriceListController {
           name: priceListName,
           description: `Imported from ${fileName}`,
           sourceFileName: fileName,
-          userId,
+          userId: userId as any,
         });
         console.log('[ClientPriceList] Created price list:', targetPriceListId);
       }
@@ -97,7 +88,7 @@ export class ClientPriceListController {
       await convexClient.mutation(api.clientPriceLists.syncFromExcel, {
         priceListId: targetPriceListId,
         sourceFileUrl: `/uploads/client-price-lists/${storedFileName}`,
-        userId,
+        userId: userId as any,
       });
 
       // Clean up temp file
@@ -369,7 +360,7 @@ export class ClientPriceListController {
   }
 
   // Get all price lists for a client
-  async getClientPriceLists(req: AuthRequest, res: Response) {
+  async getClientPriceLists(req: Request, res: Response) {
     try {
       const { clientId } = req.params;
       
@@ -384,8 +375,61 @@ export class ClientPriceListController {
     }
   }
 
+  // Update a price list
+  async updatePriceList(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+      const updates = req.body;
+      
+      await convexClient.mutation(api.clientPriceLists.update, {
+        id: id as any,
+        ...updates,
+      });
+
+      res.json({ success: true, message: 'Price list updated successfully' });
+    } catch (error) {
+      console.error('Error updating price list:', error);
+      res.status(500).json({ error: 'Failed to update price list' });
+    }
+  }
+
+  // Get mapping statistics for a price list
+  async getMappingStats(req: Request, res: Response) {
+    try {
+      const { priceListId } = req.params;
+      
+      const stats = await convexClient.query(api.excelMappings.getMappingStats, {
+        priceListId: priceListId as any,
+      });
+
+      res.json(stats);
+    } catch (error) {
+      console.error('Error getting mapping stats:', error);
+      res.status(500).json({ error: 'Failed to get mapping statistics' });
+    }
+  }
+
+  // Verify or update a mapping
+  async verifyMapping(req: Request, res: Response) {
+    try {
+      const { mappingId } = req.params;
+      const { isVerified, newPriceItemId } = req.body;
+      
+      await convexClient.mutation(api.excelMappings.verifyMapping, {
+        mappingId: mappingId as any,
+        isVerified,
+        newPriceItemId: newPriceItemId as any,
+      });
+
+      res.json({ success: true, message: 'Mapping verified successfully' });
+    } catch (error) {
+      console.error('Error verifying mapping:', error);
+      res.status(500).json({ error: 'Failed to verify mapping' });
+    }
+  }
+
   // Get effective price for items
-  async getEffectivePrices(req: AuthRequest, res: Response) {
+  async getEffectivePrices(req: Request, res: Response) {
     try {
       const { clientId } = req.params;
       const { priceItemIds, date } = req.body;
@@ -409,160 +453,5 @@ export class ClientPriceListController {
       console.error('Error fetching effective prices:', error);
       res.status(500).json({ error: 'Failed to fetch effective prices' });
     }
-  }
-
-  // Update price list
-  async updatePriceList(req: AuthRequest, res: Response) {
-    try {
-      const { id } = req.params;
-      const updates = req.body;
-
-      await convexClient.mutation(api.clientPriceLists.update, {
-        id: id as any,
-        ...updates,
-      });
-
-      res.json({ success: true });
-    } catch (error) {
-      console.error('Error updating price list:', error);
-      res.status(500).json({ error: 'Failed to update price list' });
-    }
-  }
-
-  // Get mapping statistics
-  async getMappingStats(req: AuthRequest, res: Response) {
-    try {
-      const { priceListId } = req.params;
-
-      const stats = await convexClient.query(api.excelMappings.getMappingStats, {
-        priceListId: priceListId as any,
-      });
-
-      res.json(stats);
-    } catch (error) {
-      console.error('Error fetching mapping stats:', error);
-      res.status(500).json({ error: 'Failed to fetch mapping statistics' });
-    }
-  }
-
-  // Verify or update a mapping
-  async verifyMapping(req: AuthRequest, res: Response) {
-    try {
-      const { mappingId } = req.params;
-      const { isVerified, newPriceItemId } = req.body;
-
-      await convexClient.mutation(api.excelMappings.verifyMapping, {
-        mappingId: mappingId as any,
-        isVerified,
-        newPriceItemId,
-      });
-
-      res.json({ success: true });
-    } catch (error) {
-      console.error('Error verifying mapping:', error);
-      res.status(500).json({ error: 'Failed to verify mapping' });
-    }
-  }
-
-  // Sync rates from Excel to database
-  async syncRatesFromExcel(req: AuthRequest, res: Response) {
-    try {
-      const { priceListId } = req.params;
-      
-      // Get the price list
-      const priceList = await convexClient.query(api.clientPriceLists.getById, {
-        id: priceListId as any,
-      });
-      
-      if (!priceList) {
-        return res.status(404).json({ error: 'Price list not found' });
-      }
-      
-      // Get the source file path
-      const sourceFileUrl = priceList.sourceFileUrl;
-      if (!sourceFileUrl) {
-        return res.status(400).json({ error: 'No source Excel file associated with this price list' });
-      }
-      
-      // Read the Excel file
-      const filePath = path.join(process.cwd(), sourceFileUrl);
-      const workbook = new ExcelJS.Workbook();
-      await workbook.xlsx.readFile(filePath);
-      
-      // Get all mappings for this price list
-      const mappings = await convexClient.query(api.excelMappings.getByPriceList, {
-        priceListId: priceListId as any,
-      });
-      
-      let updatedCount = 0;
-      const updates: any[] = [];
-      
-      // Process each mapping
-      for (const mapping of mappings) {
-        try {
-          const worksheet = workbook.getWorksheet(mapping.sheetName);
-          if (!worksheet) continue;
-          
-          const row = worksheet.getRow(mapping.rowNumber);
-          const rateCol = this.getColumnNumber(mapping.rateColumn);
-          const rateCell = row.getCell(rateCol);
-          
-          let newRate = 0;
-          if (rateCell.formula) {
-            // If it's a formula, use the calculated result
-            newRate = Number(rateCell.result) || 0;
-          } else {
-            newRate = Number(rateCell.value) || 0;
-          }
-          
-          if (newRate > 0 && newRate !== mapping.originalRate) {
-            updates.push({
-              basePriceItemId: mapping.priceItemId,
-              rate: newRate,
-              excelRow: mapping.rowNumber,
-              excelSheet: mapping.sheetName,
-              excelCellRef: `${mapping.rateColumn}${mapping.rowNumber}`,
-              excelFormula: rateCell.formula || undefined,
-            });
-            updatedCount++;
-          }
-        } catch (error) {
-          console.error(`Error processing mapping ${mapping._id}:`, error);
-        }
-      }
-      
-      // Update client price items
-      if (updates.length > 0) {
-        await convexClient.mutation(api.clientPriceItems.updateFromExcelMapping, {
-          priceListId: priceListId as any,
-          mappings: updates,
-          userId: req.user.userId || req.user.id,
-        });
-        
-        // Update last synced timestamp
-        await convexClient.mutation(api.clientPriceLists.update, {
-          id: priceListId as any,
-          lastSyncedAt: Date.now(),
-        });
-      }
-      
-      res.json({
-        success: true,
-        updatedCount,
-        message: `Successfully updated ${updatedCount} rates from Excel`,
-      });
-    } catch (error) {
-      console.error('Error syncing rates from Excel:', error);
-      res.status(500).json({ error: 'Failed to sync rates from Excel' });
-    }
-  }
-  
-  // Helper function to convert column letter to number
-  private getColumnNumber(col: string): number {
-    let result = 0;
-    for (let i = 0; i < col.length; i++) {
-      result = result * 26 + (col.charCodeAt(i) - 64);
-    }
-    return result;
   }
 }

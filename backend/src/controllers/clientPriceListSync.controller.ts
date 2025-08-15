@@ -7,18 +7,9 @@ import fs from 'fs/promises';
 
 const convexClient = new ConvexHttpClient(process.env.CONVEX_URL!);
 
-interface AuthRequest extends Request {
-  user?: {
-    id: string;
-    userId: string;
-    email: string;
-    role: string;
-  };
-}
-
 export class ClientPriceListSyncController {
   // Sync rates from Excel to database
-  async syncRatesFromExcel(req: AuthRequest, res: Response) {
+  async syncRatesFromExcel(req: Request, res: Response) {
     try {
       const { priceListId } = req.params;
       const userId = req.user?.userId || req.user?.id;
@@ -129,7 +120,6 @@ export class ClientPriceListSyncController {
         // Update last synced timestamp
         await convexClient.mutation(api.clientPriceLists.update, {
           id: priceListId as any,
-          lastSyncedAt: Date.now(),
         });
 
         console.log(`[PriceListSync] Successfully updated ${updatedCount} price items`);
@@ -148,7 +138,7 @@ export class ClientPriceListSyncController {
   }
 
   // Export updated Excel with current database rates
-  async exportToExcel(req: AuthRequest, res: Response) {
+  async exportToExcel(req: Request, res: Response) {
     try {
       const { priceListId } = req.params;
 
@@ -248,7 +238,7 @@ export class ClientPriceListSyncController {
   }
 
   // Validate mappings
-  async validateMappings(req: AuthRequest, res: Response) {
+  async validateMappings(req: Request, res: Response) {
     try {
       const { priceListId } = req.params;
 

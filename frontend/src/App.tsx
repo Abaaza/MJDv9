@@ -16,6 +16,7 @@ import PriceListSpreadsheet from './pages/PriceListSpreadsheet';
 import PriceListSpreadsheetEnhanced from './pages/PriceListSpreadsheetEnhanced';
 import PriceListSpreadsheetSafe from './pages/PriceListSpreadsheetSafe';
 import PriceListExcel from './pages/PriceListExcel';
+import { ClientPriceListManager } from './pages/ClientPriceListManager';
 import Projects from './pages/Projects';
 import Clients from './pages/Clients';
 import AdminSettings from './pages/AdminSettings';
@@ -87,6 +88,7 @@ function App() {
                 <Route path="price-matching" element={<PriceMatchingNew />} />
                 <Route path="price-list" element={<PriceList />} />
                 <Route path="price-list-spreadsheet" element={<PriceListExcel />} />
+                <Route path="client-price-lists" element={<ClientPriceListManager />} />
                 <Route path="projects" element={<Projects />} />
                 <Route path="clients" element={<Clients />} />
                 <Route path="activity" element={<Activity />} />

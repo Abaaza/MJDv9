@@ -14,6 +14,7 @@ import {
   ChevronLeft,
   Activity,
   FlaskConical,
+  MapPin,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useAuthStore } from '../stores/auth.store';
@@ -31,6 +32,7 @@ export default function Layout() {
     { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
     { name: 'Price Matching', href: '/price-matching', icon: FileSpreadsheet },
     { name: 'Price List', href: '/price-list', icon: DollarSign },
+    { name: 'Client Price Lists', href: '/client-price-lists', icon: MapPin },
     { name: 'Projects', href: '/projects', icon: FolderOpen },
     { name: 'Clients', href: '/clients', icon: Users },
     { name: 'Activity', href: '/activity', icon: Activity },

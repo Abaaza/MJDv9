@@ -148,6 +148,23 @@ export const getById = query({
   },
 });
 
+// Sync price list from Excel file
+export const syncFromExcel = mutation({
+  args: {
+    priceListId: v.id("clientPriceLists"),
+    sourceFileUrl: v.string(),
+    userId: v.id("users"),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.priceListId, {
+      sourceFileUrl: args.sourceFileUrl,
+      updatedAt: Date.now(),
+    });
+    
+    return { success: true };
+  },
+});
+
 // Get all active price lists
 export const getAllActive = query({
   handler: async (ctx) => {
@@ -195,23 +212,3 @@ export const deletePriceList = mutation({
   },
 });
 
-// Sync prices from Excel
-export const syncFromExcel = mutation({
-  args: {
-    priceListId: v.id("clientPriceLists"),
-    sourceFileUrl: v.string(),
-    userId: v.id("users"),
-  },
-  handler: async (ctx, args) => {
-    // Update the price list with new source file and sync time
-    await ctx.db.patch(args.priceListId, {
-      sourceFileUrl: args.sourceFileUrl,
-      lastSyncedAt: Date.now(),
-      updatedAt: Date.now(),
-    });
-    
-    // The actual Excel processing will be handled by the backend API
-    // This just updates the metadata
-    return { success: true, priceListId: args.priceListId };
-  },
-});

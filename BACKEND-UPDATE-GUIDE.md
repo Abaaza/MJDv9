@@ -8,9 +8,12 @@ This guide provides a complete, hassle-free process for updating the backend on 
 
 ## Quick Info
 - **EC2 IP**: 100.24.46.199
+- **EC2 Instance ID**: i-08aaff0571cba4906
+- **Security Group**: sg-01e6d76ec6665d76e
 - **Backend Port**: 5000
 - **Process Manager**: PM2 (process name: `boq-backend`)
 - **Backend Directory**: `/home/ec2-user/app/backend`
+- **PEM Key Location**: `C:\Users\abaza\Downloads\backend-key.pem`
 - **CloudFront Domain**: api-mjd.braunwell.io → origin-mjd.braunwell.io → 100.24.46.199
 
 ---
@@ -125,16 +128,16 @@ echo "Update complete!"
 
 ## Step 3: Upload and Execute Update
 
-### Option A: Using SCP (if you have PEM key)
+### Option A: Using SCP (Recommended - PEM key available)
 ```bash
 # 1. Create tar archive
 tar -czf backend-update.tar.gz backend-update/
 
 # 2. Upload to EC2
-scp -i your-key.pem backend-update.tar.gz ec2-user@100.24.46.199:/home/ec2-user/
+scp -i "C:\Users\abaza\Downloads\backend-key.pem" backend-update.tar.gz ec2-user@100.24.46.199:/home/ec2-user/
 
 # 3. Connect and extract
-ssh -i your-key.pem ec2-user@100.24.46.199
+ssh -i "C:\Users\abaza\Downloads\backend-key.pem" ec2-user@100.24.46.199
 tar -xzf backend-update.tar.gz
 cd backend-update
 chmod +x update.sh
@@ -154,8 +157,8 @@ pm2 restart boq-backend
 ### Option C: Manual file updates via SSH
 ```bash
 # For individual file updates
-scp -i your-key.pem backend/src/services/matching.service.ts ec2-user@100.24.46.199:/home/ec2-user/app/backend/src/services/
-ssh -i your-key.pem ec2-user@100.24.46.199 "cd /home/ec2-user/app/backend && npm run build && pm2 restart boq-backend"
+scp -i "C:\Users\abaza\Downloads\backend-key.pem" backend/src/services/matching.service.ts ec2-user@100.24.46.199:/home/ec2-user/app/backend/src/services/
+ssh -i "C:\Users\abaza\Downloads\backend-key.pem" ec2-user@100.24.46.199 "cd /home/ec2-user/app/backend && npm run build && pm2 restart boq-backend"
 ```
 
 ---
@@ -292,19 +295,23 @@ pm2 restart boq-backend
 
 ```bash
 # SSH to EC2
-ssh -i your-key.pem ec2-user@100.24.46.199
+ssh -i "C:\Users\abaza\Downloads\backend-key.pem" ec2-user@100.24.46.199
 
 # Once connected:
 cd /home/ec2-user/app/backend    # Go to backend
 pm2 status                       # Check status
 pm2 restart boq-backend         # Restart backend
 pm2 logs boq-backend            # View logs
+pm2 logs boq-backend -f         # View logs in real-time (follow mode)
 pm2 monit                       # Real-time monitoring
 
 # Test endpoints
 curl http://localhost:5000/api/health
 curl -k https://100.24.46.199/api/health
 curl https://api-mjd.braunwell.io/api/health
+
+# View live logs from outside SSH (direct command)
+ssh -i "C:\Users\abaza\Downloads\backend-key.pem" ec2-user@100.24.46.199 "pm2 logs boq-backend --lines 100 -f"
 ```
 
 ---
@@ -324,7 +331,25 @@ Key points Claude Code should verify:
 
 ---
 
+## SSH Troubleshooting
+
+### If SSH Connection Fails
+1. **Check your current IP**: `curl https://api.ipify.org`
+2. **Update Security Group** if IP changed:
+```bash
+# Check current SSH rules
+aws ec2 describe-security-groups --group-ids sg-01e6d76ec6665d76e --region us-east-1 --query "SecurityGroups[0].IpPermissions[?FromPort==\`22\`]"
+
+# Add your new IP
+aws ec2 authorize-security-group-ingress --group-id sg-01e6d76ec6665d76e --protocol tcp --port 22 --cidr YOUR_IP/32 --region us-east-1
+```
+
+---
+
 **File Reference**: `BACKEND-UPDATE-GUIDE.md`
-**Last Updated**: August 13, 2025
+**Last Updated**: August 15, 2025
 **EC2 Instance**: 100.24.46.199
+**Instance ID**: i-08aaff0571cba4906
+**Security Group**: sg-01e6d76ec6665d76e
+**PEM Key**: `C:\Users\abaza\Downloads\backend-key.pem`
 **Process**: boq-backend (PM2)
