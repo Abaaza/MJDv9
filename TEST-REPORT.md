@@ -40,10 +40,12 @@ The MJD BOQ Matching System has been comprehensively tested across all major com
    - Created missing table.tsx component
    - Build process now successful
 
-### 🔧 Known Limitations (Non-Critical)
-1. **Advanced Matching Methods**
-   - COHERE_RERANK, QWEN, QWEN_RERANK require API keys
-   - These are premium features for future enhancement
+### ✅ FIXED - Advanced Matching Methods
+1. **All Matching Methods Now Working**
+   - COHERE_RERANK ✅ Deployed and functional
+   - QWEN ✅ Deployed and functional  
+   - QWEN_RERANK ✅ Deployed and functional
+   - Backend updated with full support for all methods
 
 2. **File Size Limits**
    - Maximum file size: 10MB (for security)
