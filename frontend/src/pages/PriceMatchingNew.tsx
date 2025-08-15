@@ -161,9 +161,8 @@ export default function PriceMatchingNew() {
       uploadData.append('projectName', formData.projectName);
       uploadData.append('matchingMethod', formData.matchingMethod);
       
-      const response = await api.post('/price-matching/upload-and-match', uploadData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      // Don't set Content-Type header - let axios set it automatically with boundary
+      const response = await api.post('/price-matching/upload-and-match', uploadData);
       return response.data;
     },
     onSuccess: (data) => {
