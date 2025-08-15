@@ -150,16 +150,31 @@ export default function PriceMatchingNew() {
       // Debug logging
       console.log('Upload data:', {
         file: formData.file,
+        fileName: formData.file?.name,
+        fileSize: formData.file?.size,
+        fileType: formData.file?.type,
         clientId,
         projectName: formData.projectName,
         matchingMethod: formData.matchingMethod,
       });
       
       const uploadData = new FormData();
+      
+      // Ensure file is valid before appending
+      if (!formData.file) {
+        console.error('File is null or undefined!');
+        throw new Error('File is missing from form data');
+      }
+      
       uploadData.append('file', formData.file);
       uploadData.append('clientId', clientId);
       uploadData.append('projectName', formData.projectName);
       uploadData.append('matchingMethod', formData.matchingMethod);
+      
+      // Log FormData contents for debugging
+      for (let pair of uploadData.entries()) {
+        console.log('FormData entry:', pair[0], pair[1]);
+      }
       
       // Don't set Content-Type header - let axios set it automatically with boundary
       const response = await api.post('/price-matching/upload-and-match', uploadData);

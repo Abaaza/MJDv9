@@ -32,7 +32,10 @@ api.interceptors.request.use(
     
     // Remove Content-Type header for FormData - let browser set it with boundary
     if (config.data instanceof FormData) {
+      console.log('FormData detected, removing Content-Type header');
       delete config.headers['Content-Type'];
+      // Log the final headers being sent
+      console.log('Final headers for FormData request:', config.headers);
     }
     
     return config;
