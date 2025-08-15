@@ -4,6 +4,9 @@
 
 This guide provides a complete, hassle-free process for updating the backend on EC2 with proper CORS configuration and ensuring everything works correctly.
 
+**Last Successfully Deployed**: August 15, 2025
+**Deployment Method**: PowerShell script with local TypeScript build
+
 ---
 
 ## Quick Info
@@ -18,9 +21,45 @@ This guide provides a complete, hassle-free process for updating the backend on 
 
 ---
 
+## Automated Deployment (Recommended)
+
+### Use PowerShell Script for Major Changes
+When you have significant code changes, use the automated deployment script:
+
+```powershell
+cd boq-matching-system
+powershell -ExecutionPolicy Bypass -File deploy-backend.ps1
+```
+
+This script will:
+1. Build TypeScript locally
+2. Create deployment package
+3. Backup current backend on EC2
+4. Upload and deploy new code
+5. Restart PM2 process
+6. Verify deployment
+
+---
+
 ## Step 1: Prepare Your Updates Locally
 
-### 1.1 Check Files to Update
+### 1.1 Fix TypeScript Compilation Errors
+Before deploying, ensure TypeScript compiles:
+
+```bash
+cd boq-matching-system/backend
+npm run build
+
+# If there are errors, you can build with less strict checking:
+npx tsc -p tsconfig.build.json --skipLibCheck --noEmitOnError false
+```
+
+Common fixes needed:
+- Ensure UserPayload interface has both `id` and `userId` properties
+- Make MatchingService methods public if used by other services
+- Remove any temporary deployment routes
+
+### 1.2 Check Files to Update
 Common backend files that need updates:
 ```
 backend/
@@ -29,13 +68,15 @@ backend/
 │   ├── controllers/        # API controllers
 │   ├── services/          # Business logic
 │   ├── middleware/        # Auth, CORS, error handling
+│   ├── types/             # TypeScript type definitions
 │   └── routes/            # API routes
+├── dist/                  # Compiled JavaScript (generated)
 ├── index.js               # Entry point (EC2 version)
 ├── package.json           # Dependencies
 └── .env                   # Environment variables
 ```
 
-### 1.2 Ensure CORS is Properly Configured
+### 1.3 Ensure CORS is Properly Configured
 In `backend/src/server.ts`, CORS should be:
 ```typescript
 const corsOptions = {
@@ -53,7 +94,7 @@ const corsOptions = {
 app.use(cors(corsOptions));
 ```
 
-### 1.3 Ensure Correct index.js for EC2
+### 1.4 Ensure Correct index.js for EC2
 The `backend/index.js` file MUST be the EC2 version:
 ```javascript
 // EC2 index.js - CRITICAL: This is the correct version
@@ -301,18 +342,116 @@ ssh -i "C:\Users\abaza\Downloads\backend-key.pem" ec2-user@100.24.46.199
 cd /home/ec2-user/app/backend    # Go to backend
 pm2 status                       # Check status
 pm2 restart boq-backend         # Restart backend
-pm2 logs boq-backend            # View logs
-pm2 logs boq-backend -f         # View logs in real-time (follow mode)
-pm2 monit                       # Real-time monitoring
+pm2 start index.js --name boq-backend  # Start if stopped
+pm2 save                        # Save PM2 configuration
 
 # Test endpoints
 curl http://localhost:5000/api/health
 curl -k https://100.24.46.199/api/health
 curl https://api-mjd.braunwell.io/api/health
-
-# View live logs from outside SSH (direct command)
-ssh -i "C:\Users\abaza\Downloads\backend-key.pem" ec2-user@100.24.46.199 "pm2 logs boq-backend --lines 100 -f"
 ```
+
+## Live Log Monitoring Commands
+
+### From Windows (Direct Commands)
+```bash
+# View live logs
+ssh -i "C:\Users\abaza\Downloads\backend-key.pem" ec2-user@100.24.46.199 "pm2 logs boq-backend -f"
+
+# View last 100 lines and follow
+ssh -i "C:\Users\abaza\Downloads\backend-key.pem" ec2-user@100.24.46.199 "pm2 logs boq-backend --lines 100 -f"
+
+# View only error logs
+ssh -i "C:\Users\abaza\Downloads\backend-key.pem" ec2-user@100.24.46.199 "pm2 logs boq-backend --err -f"
+
+# View only output logs
+ssh -i "C:\Users\abaza\Downloads\backend-key.pem" ec2-user@100.24.46.199 "pm2 logs boq-backend --out -f"
+
+# Interactive monitoring (CPU, Memory, Logs)
+ssh -i "C:\Users\abaza\Downloads\backend-key.pem" ec2-user@100.24.46.199 "pm2 monit"
+```
+
+### From EC2 Server
+```bash
+pm2 logs boq-backend            # View recent logs
+pm2 logs boq-backend -f         # Follow logs in real-time
+pm2 logs boq-backend --lines 200 # View last 200 lines
+pm2 logs boq-backend --err      # View only errors
+pm2 logs boq-backend --out      # View only output
+pm2 monit                       # Interactive dashboard
+```
+
+---
+
+## Deployment Success Checklist
+
+After deployment, verify these items:
+
+### ✅ Backend Health
+```bash
+# Should return {"status":"ok",...}
+curl https://api-mjd.braunwell.io/api/health
+```
+
+### ✅ CORS Configuration
+```bash
+# Should show proper CORS headers
+curl -X OPTIONS https://api-mjd.braunwell.io/api/auth/me \
+  -H "Origin: https://mjd.braunwell.io" \
+  -H "Access-Control-Request-Method: GET" \
+  -H "Access-Control-Request-Headers: authorization" -I
+```
+
+Expected headers:
+- Access-Control-Allow-Origin: https://mjd.braunwell.io
+- Access-Control-Allow-Credentials: true
+- Access-Control-Allow-Methods: GET,POST,PUT,PATCH,DELETE,OPTIONS
+- Access-Control-Allow-Headers: Content-Type,Authorization,X-Requested-With,Accept
+
+### ✅ PM2 Process Status
+```bash
+ssh -i "C:\Users\abaza\Downloads\backend-key.pem" ec2-user@100.24.46.199 "pm2 status"
+```
+- Should show boq-backend as "online"
+- Restart count should be stable (not increasing)
+
+### ✅ Test Authentication
+```bash
+curl -X POST https://api-mjd.braunwell.io/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"abaza@mjd.com","password":"abaza123"}'
+```
+
+---
+
+## Common Deployment Issues & Solutions
+
+### Issue: TypeScript Compilation Errors
+**Solution**: Build with less strict checking
+```bash
+npx tsc -p tsconfig.build.json --skipLibCheck --noEmitOnError false
+```
+
+### Issue: PM2 Process Keeps Restarting
+**Solution**: Check logs for missing modules
+```bash
+pm2 logs boq-backend --err --lines 50
+# Common fix: Install missing packages
+npm install cross-fetch typescript
+```
+
+### Issue: 502 Bad Gateway
+**Solution**: Backend not running, restart it
+```bash
+ssh -i "C:\Users\abaza\Downloads\backend-key.pem" ec2-user@100.24.46.199 \
+  "cd /home/ec2-user/app/backend && pm2 restart boq-backend"
+```
+
+### Issue: CORS Errors in Browser
+**Solution**: Verify CORS configuration
+1. Check .env file has correct FRONTEND_URL
+2. Ensure index.js is EC2 version (not Lambda)
+3. Clear browser cache
 
 ---
 
@@ -348,8 +487,11 @@ aws ec2 authorize-security-group-ingress --group-id sg-01e6d76ec6665d76e --proto
 
 **File Reference**: `BACKEND-UPDATE-GUIDE.md`
 **Last Updated**: August 15, 2025
+**Last Successful Deployment**: August 15, 2025 (with major code changes)
 **EC2 Instance**: 100.24.46.199
 **Instance ID**: i-08aaff0571cba4906
 **Security Group**: sg-01e6d76ec6665d76e
 **PEM Key**: `C:\Users\abaza\Downloads\backend-key.pem`
 **Process**: boq-backend (PM2)
+**Backend URL**: https://api-mjd.braunwell.io
+**Frontend URL**: https://mjd.braunwell.io

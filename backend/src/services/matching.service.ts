@@ -140,7 +140,7 @@ export class MatchingService {
   /**
    * Extract unit from description - Enhanced for better detection
    */
-  private extractUnit(text: string): string {
+  public extractUnit(text: string): string {
     // First try to extract units in parentheses or after numbers
     const inParentheses = text.match(/\(([^)]+)\)/);
     if (inParentheses) {
@@ -228,7 +228,7 @@ export class MatchingService {
   /**
    * Normalize unit for comparison - Enhanced with more variations
    */
-  private normalizeUnit(unit: string): string {
+  public normalizeUnit(unit: string): string {
     const normalized = unit.toUpperCase().trim()
       .replace(/\./g, '') // Remove dots
       .replace(/\s+/g, ' '); // Normalize spaces

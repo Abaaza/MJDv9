@@ -1,6 +1,6 @@
 import React from 'react';
 import { useQuery } from 'convex/react';
-import { api } from '../../../convex/_generated/api';
+import { api } from '../../convex/_generated/api';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { AlertCircle, CheckCircle, RefreshCw } from 'lucide-react';

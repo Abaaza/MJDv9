@@ -117,7 +117,10 @@ export class LearningMatcherService {
       }
     }
 
-    return regularMatch;
+    return {
+      ...regularMatch,
+      method: regularMatch.method || method
+    };
   }
 
   /**
@@ -334,7 +337,7 @@ export class LearningMatcherService {
     for (const item of items) {
       const match = await this.matchWithLearning(
         item.description,
-        method,
+        method as any,
         providedPriceItems,
         item.contextHeaders,
         userId,

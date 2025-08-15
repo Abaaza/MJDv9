@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useConvex } from 'convex/react';
-import { api } from '../../../convex/_generated/api';
+import { api } from '../../convex/_generated/api';
 import { PriceListMappingModal } from '../components/PriceListMappingModal';
 import {
   Select,

@@ -72,6 +72,7 @@ export async function login(req: Request<{}, {}, LoginRequest>, res: Response): 
     // Generate tokens
     const tokens = generateTokens({
       id: user._id,
+      userId: user._id,
       email: user.email,
       role: user.role,
     });
@@ -152,6 +153,7 @@ export async function refresh(req: Request, res: Response): Promise<void> {
     // Generate new tokens
     const tokens = generateTokens({
       id: user._id,
+      userId: user._id,
       email: user.email,
       role: user.role,
     });
