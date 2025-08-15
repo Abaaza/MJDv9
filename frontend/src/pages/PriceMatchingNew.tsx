@@ -147,6 +147,14 @@ export default function PriceMatchingNew() {
         throw new Error('Please select or enter a client name');
       }
 
+      // Debug logging
+      console.log('Upload data:', {
+        file: formData.file,
+        clientId,
+        projectName: formData.projectName,
+        matchingMethod: formData.matchingMethod,
+      });
+      
       const uploadData = new FormData();
       uploadData.append('file', formData.file);
       uploadData.append('clientId', clientId);
